@@ -8,16 +8,8 @@ from itertools import count as _count
 from inspect import isfunction
 from time import strptime
 from collections import defaultdict
-from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
 from xml.etree import cElementTree
-
-# deepcopy instance method patch for Python < 2.7:
-if types.MethodType not in _deepcopy_dispatch:
-    assert PY2
-    def _deepcopy_method(x, memo):
-        return type(x)(x.im_func, deepcopy(x.im_self, memo), x.im_class)
-    _deepcopy_dispatch[types.MethodType] = _deepcopy_method
 
 import pony
 from pony import options
@@ -27,6 +19,7 @@ from pony.thirdparty.decorator import decorator as _decorator
 
 if pony.MODE.startswith('GAE-'): localbase = object
 else: from threading import local as localbase
+
 
 class PonyDeprecationWarning(DeprecationWarning):
     pass
@@ -104,6 +97,10 @@ def throw(exc_type, *args, **kwargs):
         else:
             raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
     finally: del exc
+
+def truncate_repr(s, max_len=100):
+    s = repr(s)
+    return s if len(s) <= max_len else s[:max_len-3] + '...'
 
 lambda_args_cache = {}
 
@@ -306,7 +303,7 @@ def strjoin(sep, strings, source_encoding='ascii', dest_encoding=None):
             strings[i] = s.decode(source_encoding, 'replace').replace(u'\ufffd', '?')
     result = sep.join(strings)
     if dest_encoding is None: return result
-    return result.encode(dest_encoding, replace)
+    return result.encode(dest_encoding, 'replace')
 
 def count(*args, **kwargs):
     if kwargs: return _count(*args, **kwargs)

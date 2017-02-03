@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-
+from pony.py23compat import PY2
 from datetime import date
 import unittest
 
@@ -263,11 +263,11 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int, columns=['a', 'b'])
         db.generate_mapping(create_tables=True)
 
-    @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: %r'" % set(['a']))
+    @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: %r'" % {'a'})
     def test_columns6(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
-            id = PrimaryKey(int, columns=set(['a']))
+            id = PrimaryKey(int, columns={'a'})
         db.generate_mapping(create_tables=True)
 
     @raises_exception(TypeError, "Parameter 'column' must be a string. Got: 4")
@@ -393,7 +393,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(create_tables=True)
         self.assertEqual(Stat.webinarshow.column, None)
         self.assertEqual(WebinarShow.stats.column, 'stats')
-        
+
     def test_columns_22(self):
         db = Database('sqlite', ':memory:')
         class ZStat(db.Entity):
@@ -525,6 +525,27 @@ class TestAttribute(unittest.TestCase):
             a = Set('Entity1', py_check=lambda val: True)
         db.generate_mapping(create_tables=True)
 
+    @raises_exception(ValueError, "Check for attribute Entity1.a failed. Value: " + (
+        "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345..." if PY2
+        else "'123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456..."
+    ))
+    def test_py_check_truncate(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(str, py_check=lambda val: False)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a='1234567890' * 1000)
+
+    @raises_exception(ValueError, 'Value for attribute Entity1.a is too long. Max length is 10, value length is 10000')
+    def test_str_max_len(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(str, 10)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a='1234567890' * 1000)
+
     def test_foreign_key_sql_type_1(self):
         db = Database('sqlite', ':memory:')
         class Foo(db.Entity):
@@ -648,7 +669,7 @@ class TestAttribute(unittest.TestCase):
         db = Database('sqlite', ':memory:')
         class Foo(db.Entity):
             x = Required(str, sql_default='')
-                              
+
 
 if __name__ == '__main__':
     unittest.main()

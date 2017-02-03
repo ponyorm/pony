@@ -65,7 +65,7 @@ class TestOneToManyRequired(unittest.TestCase):
         s1, s2, s3, s4 = Student.select().order_by(Student.id)
         g1, g2 = Group[101], Group[102]
         g1.students = g2.students
-        self.assertEqual(set(g1.students), set([s3, s4]))
+        self.assertEqual(set(g1.students), {s3, s4})
         self.assertEqual(s1._status_, 'marked_to_delete')
         self.assertEqual(s2._status_, 'marked_to_delete')
 
@@ -74,7 +74,7 @@ class TestOneToManyRequired(unittest.TestCase):
         Group, Student = self.Group, self.Student
         g = Group[101]
         g.students.add(None)
-        
+
     @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
     def test_6(self):
         Group, Student = self.Group, self.Student
@@ -127,7 +127,7 @@ class TestOneToManyRequired(unittest.TestCase):
         e = g.students.is_empty()  # should take result from the cache
         self.assertEqual(e, False)
         self.assertEqual(db.last_sql, None)
-        
+
         g = Group[102]
         c = g.students.count()
         self.assertEqual(c, 2)
@@ -223,7 +223,7 @@ class TestOneToManyOptional(unittest.TestCase):
 
     def test_1(self):
         self.Student[1].group = None
-        self.assertEqual(set(self.Group[101].students), set([self.Student[2]]))
+        self.assertEqual(set(self.Group[101].students), {self.Student[2]})
 
     def test_2(self):
         Student, Group = self.Student, self.Group
@@ -246,7 +246,7 @@ class TestOneToManyOptional(unittest.TestCase):
         s1, s2, s3, s4 = Student.select().order_by(Student.id)
         g1, g2 = Group[101], Group[102]
         g1.students = g2.students
-        self.assertEqual(set(g1.students), set([s3, s4]))
+        self.assertEqual(set(g1.students), {s3, s4})
         self.assertEqual(s1.group, None)
         self.assertEqual(s2.group, None)
 
@@ -255,7 +255,7 @@ class TestOneToManyOptional(unittest.TestCase):
         Group, Student = self.Group, self.Student
         g = Group[101]
         g.students.add(None)
-        
+
     @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
     def test_6(self):
         Group, Student = self.Group, self.Student

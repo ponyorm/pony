@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, xrange
 
-import types
+import sys, types
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
@@ -74,26 +74,35 @@ class Decompiler(object):
         decompiler.assnames = set()
         decompiler.decompile()
         decompiler.ast = decompiler.stack.pop()
-        decompiler.external_names = set(decompiler.names - decompiler.assnames)
+        decompiler.external_names = decompiler.names - decompiler.assnames
         assert not decompiler.stack, decompiler.stack
     def decompile(decompiler):
+        PY36 = sys.version_info >= (3, 6)
         code = decompiler.code
         co_code = code.co_code
         free = code.co_cellvars + code.co_freevars
         try:
+            extended_arg = 0
             while decompiler.pos < decompiler.end:
                 i = decompiler.pos
                 if i in decompiler.targets: decompiler.process_target(i)
                 op = ord(code.co_code[i])
-                i += 1
-                if op >= HAVE_ARGUMENT:
-                    oparg = ord(co_code[i]) + ord(co_code[i+1])*256
+                if PY36:
+                    if op >= HAVE_ARGUMENT:
+                        oparg = ord(co_code[i + 1]) | extended_arg
+                        extended_arg = (arg << 8) if op == EXTENDED_ARG else 0
                     i += 2
-                    if op == EXTENDED_ARG:
-                        op = ord(code.co_code[i])
-                        i += 1
-                        oparg = ord(co_code[i]) + ord(co_code[i+1])*256 + oparg*65536
+                else:
+                    i += 1
+                    if op >= HAVE_ARGUMENT:
+                        oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256
                         i += 2
+                        if op == EXTENDED_ARG:
+                            op = ord(code.co_code[i])
+                            i += 1
+                            oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256 + oparg * 65536
+                            i += 2
+                if op >= HAVE_ARGUMENT:
                     if op in hasconst: arg = [code.co_consts[oparg]]
                     elif op in hasname: arg = [code.co_names[oparg]]
                     elif op in hasjrel: arg = [i + oparg]
@@ -147,12 +156,24 @@ class Decompiler(object):
         if isinstance(oper2, ast.Tuple): return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
         else: return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
 
+    def BUILD_CONST_KEY_MAP(decompiler, length):
+        keys = decompiler.stack.pop()
+        assert isinstance(keys, ast.Const)
+        keys = [ ast.Const(key) for key in keys.value ]
+        values = decompiler.pop_items(length)
+        pairs = list(izip(keys, values))
+        return ast.Dict(pairs)
+
     def BUILD_LIST(decompiler, size):
         return ast.List(decompiler.pop_items(size))
 
-    def BUILD_MAP(decompiler, not_used):
-        # Pushes a new empty dictionary object onto the stack. The argument is ignored and set to zero by the compiler
-        return ast.Dict(())
+    def BUILD_MAP(decompiler, length):
+        if sys.version_info < (3, 5):
+            return ast.Dict(())
+        data = decompiler.pop_items(2 * length)  # [key1, value1, key2, value2, ...]
+        it = iter(data)
+        pairs = list(izip(it, it))  # [(key1, value1), (key2, value2), ...]
+        return ast.Dict(pairs)
 
     def BUILD_SET(decompiler, size):
         return ast.Set(decompiler.pop_items(size))
@@ -173,7 +194,10 @@ class Decompiler(object):
             args.append(ast.Keyword(key, arg))
         for i in xrange(posarg): args.append(pop())
         args.reverse()
-        tos = pop()
+        return decompiler._call_function(args, star, star2)
+
+    def _call_function(decompiler, args, star=None, star2=None):
+        tos = decompiler.stack.pop()
         if isinstance(tos, ast.GenExpr):
             assert len(args) == 1 and star is None and star2 is None
             genexpr = tos
@@ -188,12 +212,30 @@ class Decompiler(object):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
 
     def CALL_FUNCTION_KW(decompiler, argc):
-        return decompiler.CALL_FUNCTION(argc, None, decompiler.stack.pop())
+        if sys.version_info < (3, 6):
+            return decompiler.CALL_FUNCTION(argc, star2=decompiler.stack.pop())
+        keys = decompiler.stack.pop()
+        assert isinstance(keys, ast.Const)
+        keys = keys.value
+        values = decompiler.pop_items(argc)
+        assert len(keys) <= len(values)
+        args = values[:-len(keys)]
+        for key, value in izip(keys, values[-len(keys):]):
+            args.append(ast.Keyword(key, value))
+        return decompiler._call_function(args)
 
     def CALL_FUNCTION_VAR_KW(decompiler, argc):
         star2 = decompiler.stack.pop()
         star = decompiler.stack.pop()
         return decompiler.CALL_FUNCTION(argc, star, star2)
+
+    def CALL_FUNCTION_EX(decompiler, argc):
+        star2 = None
+        if argc:
+            if argc != 1: throw(NotImplementedError)
+            star2 = decompiler.stack.pop()
+        star = decompiler.stack.pop()
+        return decompiler._call_function([], star, star2)
 
     def COMPARE_OP(decompiler, op):
         oper2 = decompiler.stack.pop()
@@ -270,8 +312,9 @@ class Decompiler(object):
         if decompiler.targets.get(endpos) is then: decompiler.targets[endpos] = if_exp
         return if_exp
 
-    def LIST_APPEND(decompiler):
-        throw(NotImplementedError)
+    def LIST_APPEND(decompiler, offset=None):
+        throw(InvalidQuery('Use generator expression (... for ... in ...) '
+                           'instead of list comprehension [... for ... in ...] inside query'))
 
     def LOAD_ATTR(decompiler, attr_name):
         return ast.Getattr(decompiler.stack.pop(), attr_name)
@@ -305,9 +348,16 @@ class Decompiler(object):
         return decompiler.MAKE_FUNCTION(argc)
 
     def MAKE_FUNCTION(decompiler, argc):
-        if argc: throw(NotImplementedError)
-        tos = decompiler.stack.pop()
-        if not PY2: tos = decompiler.stack.pop()
+        if sys.version_info >= (3, 6):
+            if argc:
+                if argc != 0x08: throw(NotImplementedError, argc)
+            qualname = decompiler.stack.pop()
+            tos = decompiler.stack.pop()
+            if (argc & 0x08): func_closure = decompiler.stack.pop()
+        else:
+            if argc: throw(NotImplementedError)
+            tos = decompiler.stack.pop()
+            if not PY2: tos = decompiler.stack.pop()
         codeobject = tos.value
         func_decompiler = Decompiler(codeobject)
         # decompiler.names.update(decompiler.names)  ???
@@ -375,7 +425,8 @@ class Decompiler(object):
 
     def STORE_FAST(decompiler, varname):
         if varname.startswith('_['):
-            throw(InvalidQuery('Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query'))
+            throw(InvalidQuery('Use generator expression (... for ... in ...) '
+                               'instead of list comprehension [... for ... in ...] inside query'))
         decompiler.assnames.add(varname)
         decompiler.store(ast.AssName(varname, 'OP_ASSIGN'))
 

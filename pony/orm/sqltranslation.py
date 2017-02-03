@@ -16,7 +16,8 @@ from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
-    get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
+    get_normalized_type_of, normalize_type, coerce_types, are_comparable_types, \
+    Json
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
@@ -68,6 +69,8 @@ def type2str(t):
 class SQLTranslator(ASTTranslator):
     dialect = None
     row_value_syntax = True
+    json_path_wildcard_syntax = False
+    json_values_are_comparable = True
     rowid_support = False
 
     def default_post(translator, node):
@@ -77,6 +80,9 @@ class SQLTranslator(ASTTranslator):
         if hasattr(node, 'monad'): return  # monad already assigned somehow
         if not getattr(node, 'external', False) or getattr(node, 'constant', False):
             return ASTTranslator.dispatch(translator, node)  # default route
+        translator.call(translator.dispatch_external, node)
+
+    def dispatch_external(translator, node):
         varkey = translator.filter_num, node.src
         t = translator.vartypes[varkey]
         tt = type(t)
@@ -331,6 +337,8 @@ class SQLTranslator(ASTTranslator):
             offset = 0
             provider = translator.database.provider
             for m in expr_monads:
+                if m.disable_distinct:
+                    translator.distinct = False
                 expr_type = m.type
                 if isinstance(expr_type, SetType): expr_type = expr_type.item_type
                 if isinstance(expr_type, EntityMeta):
@@ -343,11 +351,13 @@ class SQLTranslator(ASTTranslator):
                     offset = next_offset
                 else:
                     converter = provider.get_converter_by_py_type(expr_type)
-                    def func(value, sql2py=converter.sql2py):
+                    def func(value, converter=converter):
                         if value is None: return None
-                        return sql2py(value)
+                        value = converter.sql2py(value)
+                        value = converter.dbval2val(value)
+                        return value
                     row_layout.append((func, offset, ast2src(m.node)))
-                    m.orderby_columns = (offset+1,)
+                    m.orderby_columns = (offset+1,) if not m.disable_ordering else ()
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
@@ -384,7 +394,7 @@ class SQLTranslator(ASTTranslator):
         if len(translator.aggregated_subquery_paths) != 1: return False
         return next(iter(translator.aggregated_subquery_paths))
     def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, for_update=False, nowait=False,
-                          is_not_null_checks=False):
+                          attrs_to_prefetch=(), is_not_null_checks=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
@@ -439,7 +449,7 @@ class SQLTranslator(ASTTranslator):
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:
             select_ast, attr_offsets = translator.expr_type._construct_select_clause_(
-                                            translator.alias, distinct, translator.tableref.used_attrs)
+                translator.alias, distinct, translator.tableref.used_attrs, attrs_to_prefetch)
         sql_ast.append(select_ast)
         sql_ast.append(translator.subquery.from_ast)
 
@@ -656,16 +666,21 @@ class SQLTranslator(ASTTranslator):
             return translator.ConstMonad.new(translator, value)
         else:
             return translator.ListMonad(translator, [ translator.ConstMonad.new(translator, item) for item in value ])
+    def postEllipsis(translator, node):
+        return translator.ConstMonad.new(translator, Ellipsis)
     def postList(translator, node):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postTuple(translator, node):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
-        argnames = translator.argnames
-        if translator.argnames and name in translator.argnames:
-            i = translator.argnames.index(name)
-            return translator.expr_monads[i]
+        t = translator
+        while t is not None:
+            argnames = t.argnames
+            if argnames is not None and name in argnames:
+                i = argnames.index(name)
+                return t.expr_monads[i]
+            t = t.parent
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
@@ -690,6 +705,16 @@ class SQLTranslator(ASTTranslator):
         return translator.AndMonad([ subnode.monad for subnode in node.nodes ])
     def postOr(translator, node):
         return translator.OrMonad([ subnode.monad for subnode in node.nodes ])
+    def postBitor(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left | right
+    def postBitand(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left & right
+    def postBitxor(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left ^ right
+
     def preNot(translator, node):
         translator.inside_not = not translator.inside_not
     def postNot(translator, node):
@@ -698,20 +723,23 @@ class SQLTranslator(ASTTranslator):
     def preCallFunc(translator, node):
         if node.star_args is not None: throw(NotImplementedError, '*%s is not supported' % ast2src(node.star_args))
         if node.dstar_args is not None: throw(NotImplementedError, '**%s is not supported' % ast2src(node.dstar_args))
-        if not isinstance(node.node, (ast.Name, ast.Getattr)): throw(NotImplementedError)
+        func_node = node.node
+        if isinstance(func_node, ast.CallFunc):
+            if isinstance(func_node.node, ast.Name) and func_node.node.name == 'getattr': return
+        if not isinstance(func_node, (ast.Name, ast.Getattr)): throw(NotImplementedError)
         if len(node.args) > 1: return
         if not node.args: return
         arg = node.args[0]
         if isinstance(arg, ast.GenExpr):
-            translator.dispatch(node.node)
-            func_monad = node.node.monad
+            translator.dispatch(func_node)
+            func_monad = func_node.monad
             translator.dispatch(arg)
             query_set_monad = arg.monad
             return func_monad(query_set_monad)
         if not isinstance(arg, ast.Lambda): return
         lambda_expr = arg
-        translator.dispatch(node.node)
-        method_monad = node.node.monad
+        translator.dispatch(func_node)
+        method_monad = func_node.monad
         if not isinstance(method_monad, MethodMonad): throw(NotImplementedError)
         entity_monad = method_monad.parent
         if not isinstance(entity_monad, EntityMonad): throw(NotImplementedError)
@@ -738,8 +766,8 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        if isinstance(func_monad, ErrorSpecialFuncMonad):
-            'Function %r cannot be used in this way: %s' % (func_monad.func.__name__, ast2src(node))
+        if isinstance(func_monad, ErrorSpecialFuncMonad): throw(TypeError,
+            'Function %r cannot be used this way: %s' % (func_monad.func.__name__, ast2src(node)))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
@@ -755,8 +783,11 @@ class SQLTranslator(ASTTranslator):
         if isinstance(sub, ast.Sliceobj):
             start, stop, step = (sub.nodes+[None])[:3]
             if start is not None: start = start.monad
+            if isinstance(start, NoneMonad): start = None
             if stop is not None: stop = stop.monad
+            if isinstance(stop, NoneMonad): stop = None
             if step is not None: step = step.monad
+            if isinstance(step, NoneMonad): step = None
             return node.expr.monad[start:stop:step]
         else: return node.expr.monad[sub.monad]
     def postSlice(translator, node):
@@ -764,8 +795,10 @@ class SQLTranslator(ASTTranslator):
         expr_monad = node.expr.monad
         upper = node.upper
         if upper is not None: upper = upper.monad
+        if isinstance(upper, NoneMonad): upper = None
         lower = node.lower
         if lower is not None: lower = lower.monad
+        if isinstance(lower, NoneMonad): lower = None
         return expr_monad[lower:upper]
     def postSliceobj(translator, node):
         pass
@@ -829,21 +862,28 @@ class Subquery(object):
         tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
         tablerefs[name_path] = tableref
         return tableref
-    def get_short_alias(subquery, name_path, entity_name):
-        if name_path:
-            if is_ident(name_path): return name_path
-            if not options.SIMPLE_ALIASES and len(name_path) <= max_alias_length:
-                return name_path
-        name = entity_name[:max_alias_length-3].lower()
+    def make_alias(subquery, name):
+        name = name[:max_alias_length-3].lower()
         i = subquery.alias_counters.setdefault(name, 0) + 1
-        alias = '%s-%d' % (name, i)
+        alias = name if i == 1 and name != 't' else '%s-%d' % (name, i)
         subquery.alias_counters[name] = i
         return alias
+    def join_table(subquery, parent_alias, alias, table_name, join_cond):
+        new_item = [alias, 'TABLE', table_name, join_cond]
+        from_ast = subquery.from_ast
+        for i in xrange(1, len(from_ast)):
+            if from_ast[i][0] == parent_alias:
+                for j in xrange(i+1, len(from_ast)):
+                    if len(from_ast[j]) < 4:  # item without join condition
+                        from_ast.insert(j, new_item)
+                        return
+        from_ast.append(new_item)
 
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
         tableref.subquery = subquery
-        tableref.alias = tableref.name_path = name
+        tableref.name_path = name
+        tableref.alias = subquery.make_alias(name)
         tableref.entity = entity
         tableref.joined = False
         tableref.can_affect_distinct = True
@@ -864,6 +904,7 @@ class JoinedTableRef(object):
     def __init__(tableref, subquery, name_path, parent_tableref, attr):
         tableref.subquery = subquery
         tableref.name_path = name_path
+        tableref.var_name = name_path if is_ident(name_path) else None
         tableref.alias = None
         tableref.optimized = None
         tableref.parent_tableref = parent_tableref
@@ -890,7 +931,7 @@ class JoinedTableRef(object):
                 assert reverse.columns and not reverse.is_collection
                 rentity = reverse.entity
                 pk_columns = rentity._pk_columns_
-                alias = subquery.get_short_alias(tableref.name_path, rentity.__name__)
+                alias = subquery.make_alias(tableref.var_name or rentity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_pk_columns, reverse.columns)
             else:
                 if attr.pk_offset is not None:
@@ -903,21 +944,19 @@ class JoinedTableRef(object):
                     tableref.optimized = True
                     tableref.joined = True
                     return parent_alias, left_columns
-                alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
+                alias = subquery.make_alias(tableref.var_name or entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
-            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
-            alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
+            alias = subquery.make_alias(tableref.var_name or entity.__name__)
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
-            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         else:
             right_m2m_columns = attr.reverse_columns if attr.symmetric else attr.columns
             if not tableref.joined:
                 m2m_table = attr.table
-                m2m_alias = subquery.get_short_alias(None, 't')
+                m2m_alias = subquery.make_alias('t')
                 reverse_columns = attr.columns if attr.symmetric else attr.reverse.columns
                 m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
-                subquery.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
+                subquery.join_table(parent_alias, m2m_alias, m2m_table, m2m_join_cond)
                 if pk_only:
                     tableref.alias = m2m_alias
                     tableref.pk_columns = right_m2m_columns
@@ -927,13 +966,13 @@ class JoinedTableRef(object):
             elif tableref.optimized:
                 assert not pk_only
                 m2m_alias = tableref.alias
-            alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
+            alias = subquery.make_alias(tableref.var_name or entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
-            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         if not pk_only and entity._discriminator_attr_:
             discr_criteria = entity._construct_discriminator_criteria_(alias)
             assert discr_criteria is not None
-            subquery.conditions.insert(0, discr_criteria)
+            join_cond.append(discr_criteria)
+        subquery.join_table(parent_alias, alias, entity._table_, join_cond)
         tableref.alias = alias
         tableref.pk_columns = pk_columns
         tableref.optimized = False
@@ -959,6 +998,8 @@ class MonadMixin(with_metaclass(MonadMeta)):
     pass
 
 class Monad(with_metaclass(MonadMeta)):
+    disable_distinct = False
+    disable_ordering = False
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
@@ -1046,7 +1087,11 @@ class Monad(with_metaclass(MonadMeta)):
     def __floordiv__(monad, monad2): throw(TypeError)
     def __pow__(monad, monad2): throw(TypeError)
     def __neg__(monad): throw(TypeError)
+    def __or__(monad): throw(TypeError)
+    def __and__(monad): throw(TypeError)
+    def __xor__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
+    def cast_from_json(monad, type): assert False, monad
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -1163,7 +1208,9 @@ class ListMonad(Monad):
         monad.items = items
     def contains(monad, x, not_in=False):
         translator = monad.translator
-        for item in monad.items: check_comparable(item, x)
+        if isinstance(x.type, SetType): throw(TypeError,
+            "Type of `%s` is '%s'. Expression `{EXPR}` is not supported" % (ast2src(x.node), type2str(x.type)))
+        for item in monad.items: check_comparable(x, item)
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in: sql = [ 'NOT_IN', left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
@@ -1314,8 +1361,6 @@ class StringMixin(MonadMixin):
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
-            if isinstance(start, NoneMonad): start = None
-            if isinstance(stop, NoneMonad): stop = None
             if start is None and stop is None: return monad
             if isinstance(monad, translator.StringConstMonad) \
                and (start is None or isinstance(start, translator.NumericConstMonad)) \
@@ -1438,6 +1483,48 @@ class StringMixin(MonadMixin):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, 'RTRIM')
 
+class JsonMixin(object):
+    disable_distinct = True  # at least in Oracle we cannot use DISTINCT with JSON column
+    disable_ordering = True  # at least in Oracle we cannot use ORDER BY with JSON column
+
+    def mixin_init(monad):
+        assert monad.type is Json, monad.type
+    def get_path(monad):
+        return monad, []
+    def __getitem__(monad, key):
+        return monad.translator.JsonItemMonad(monad, key)
+    def contains(monad, key, not_in=False):
+        translator = monad.translator
+        if isinstance(key, ParamMonad):
+            if translator.dialect == 'Oracle': throw(TypeError,
+                'For `key in JSON` operation %s supports literal key values only, '
+                'parameters are not allowed: {EXPR}' % translator.dialect)
+        elif not isinstance(key, StringConstMonad): raise NotImplementedError
+        base_monad, path = monad.get_path()
+        base_sql = base_monad.getsql()[0]
+        key_sql = key.getsql()[0]
+        sql = [ 'JSON_CONTAINS', base_sql, path, key_sql ]
+        if not_in: sql = [ 'NOT', sql ]
+        return translator.BoolExprMonad(translator, sql)
+    def __or__(monad, other):
+        translator = monad.translator
+        if not isinstance(other, translator.JsonMixin):
+            raise TypeError('Should be JSON: %s' % ast2src(other.node))
+        left_sql = monad.getsql()[0]
+        right_sql = other.getsql()[0]
+        sql = [ 'JSON_CONCAT', left_sql, right_sql ]
+        return translator.JsonExprMonad(translator, Json, sql)
+    def len(monad):
+        translator = monad.translator
+        sql = [ 'JSON_ARRAY_LENGTH', monad.getsql()[0] ]
+        return translator.NumericExprMonad(translator, int, sql)
+    def cast_from_json(monad, type):
+        if type in (Json, NoneType): return monad
+        throw(TypeError, 'Cannot compare whole JSON value, you need to select specific sub-item: {EXPR}')
+    def nonzero(monad):
+        translator = monad.translator
+        return translator.BoolExprMonad(translator, [ 'JSON_NONZERO', monad.getsql()[0] ])
+
 class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
@@ -1485,6 +1572,7 @@ class AttrMonad(Monad):
         elif type is datetime: cls = translator.DatetimeAttrMonad
         elif type is buffer: cls = translator.BufferAttrMonad
         elif type is UUID: cls = translator.UuidAttrMonad
+        elif type is Json: cls = translator.JsonAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
@@ -1538,6 +1626,7 @@ class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad): pass
 class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 class UuidAttrMonad(UuidMixin, AttrMonad): pass
+class JsonAttrMonad(JsonMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
@@ -1551,8 +1640,9 @@ class ParamMonad(Monad):
         elif type is datetime: cls = translator.DatetimeParamMonad
         elif type is buffer: cls = translator.BufferParamMonad
         elif type is UUID: cls = translator.UuidParamMonad
+        elif type is Json: cls = translator.JsonParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
-        else: throw(NotImplementedError, type)  # pragma: no cover
+        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type))
         result = cls(translator, type, paramkey)
         result.aggregated = False
         return result
@@ -1593,6 +1683,10 @@ class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
 
+class JsonParamMonad(JsonMixin, ParamMonad):
+    def getsql(monad, subquery=None):
+        return [ [ 'JSON_PARAM', ParamMonad.getsql(monad)[0] ] ]
+
 class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
@@ -1602,6 +1696,7 @@ class ExprMonad(Monad):
         elif type is time: cls = translator.TimeExprMonad
         elif type is timedelta: cls = translator.TimedeltaExprMonad
         elif type is datetime: cls = translator.DatetimeExprMonad
+        elif type is Json: cls = translator.JsonExprMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
     def __new__(cls, *args):
@@ -1619,6 +1714,42 @@ class DateExprMonad(DateMixin, ExprMonad): pass
 class TimeExprMonad(TimeMixin, ExprMonad): pass
 class TimedeltaExprMonad(TimedeltaMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
+class JsonExprMonad(JsonMixin, ExprMonad): pass
+
+class JsonItemMonad(JsonMixin, Monad):
+    def __init__(monad, parent, key):
+        assert isinstance(parent, JsonMixin), parent
+        translator = parent.translator
+        Monad.__init__(monad, translator, Json)
+        monad.parent = parent
+        if isinstance(key, slice):
+            if key != slice(None, None, None): throw(NotImplementedError)
+            monad.key_ast = [ 'VALUE', key ]
+        elif isinstance(key, (ParamMonad, StringConstMonad, NumericConstMonad, EllipsisMonad)):
+            monad.key_ast = key.getsql()[0]
+        else: throw(TypeError, 'Invalid JSON path item: %s' % ast2src(key.node))
+        if isinstance(key, (slice, EllipsisMonad)) and not translator.json_path_wildcard_syntax:
+            throw(TranslationError, '%s does not support wildcards in JSON path: {EXPR}' % translator.dialect)
+    def get_path(monad):
+        path = []
+        while isinstance(monad, JsonItemMonad):
+            path.append(monad.key_ast)
+            monad = monad.parent
+        path.reverse()
+        return monad, path
+    def cast_from_json(monad, type):
+        translator = monad.translator
+        if issubclass(type, Json):
+            if not translator.json_values_are_comparable: throw(TranslationError,
+                '%s does not support comparison of json structures: {EXPR}' % translator.dialect)
+            return monad
+        base_monad, path = monad.get_path()
+        sql = [ 'JSON_VALUE', base_monad.getsql()[0], path, type ]
+        return translator.ExprMonad.new(translator, Json if type is NoneType else type, sql)
+    def getsql(monad):
+        base_monad, path = monad.get_path()
+        base_sql = base_monad.getsql()[0]
+        return [ [ 'JSON_QUERY', base_sql, path ] ]
 
 class ConstMonad(Monad):
     @staticmethod
@@ -1632,6 +1763,8 @@ class ConstMonad(Monad):
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
+        elif value_type is Json: cls = translator.JsonConstMonad
+        elif issubclass(value_type, type(Ellipsis)): cls = translator.EllipsisMonad
         else: throw(NotImplementedError, value_type)  # pragma: no cover
         result = cls(translator, value)
         result.aggregated = False
@@ -1652,12 +1785,15 @@ class NoneMonad(ConstMonad):
         assert value is None
         ConstMonad.__init__(monad, translator, value)
 
-class BufferConstMonad(BufferMixin, ConstMonad): pass
+class EllipsisMonad(ConstMonad):
+    pass
 
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
         return monad.translator.ConstMonad.new(monad.translator, len(monad.value))
 
+class JsonConstMonad(JsonMixin, ConstMonad): pass
+class BufferConstMonad(BufferMixin, ConstMonad): pass
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 class DateConstMonad(DateMixin, ConstMonad): pass
 class TimeConstMonad(TimeMixin, ConstMonad): pass
@@ -1698,6 +1834,8 @@ cmp_negate = { '<' : '>=', '<=' : '>', '==' : '!=', 'is' : 'is not' }
 cmp_negate.update((b, a) for a, b in items_list(cmp_negate))
 
 class CmpMonad(BoolMonad):
+    EQ = 'EQ'
+    NE = 'NE'
     def __init__(monad, op, left, right):
         translator = left.translator
         if op == '<>': op = '!='
@@ -1713,14 +1851,19 @@ class CmpMonad(BoolMonad):
         result_type, left, right = coerce_monads(left, right)
         BoolMonad.__init__(monad, translator)
         monad.op = op
+        monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
+
+        if isinstance(left, JsonMixin):
+            left = left.cast_from_json(right.type)
+        if isinstance(right, JsonMixin):
+            right = right.cast_from_json(left.type)
+
         monad.left = left
         monad.right = right
-        monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):
         op = monad.op
-        sql = []
         left_sql = monad.left.getsql()
         if op == 'is':
             return [ sqland([ [ 'IS_NULL', item ] for item in left_sql ]) ]
@@ -1740,13 +1883,13 @@ class CmpMonad(BoolMonad):
                 return [ [ cmp_ops[op], [ 'ROW' ] + left_sql, [ 'ROW' ] + right_sql ] ]
             clauses = []
             for i in xrange(1, size):
-                clauses.append(sqland([ [ 'EQ', left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
+                clauses.append(sqland([ [ monad.EQ, left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
                                 + [ [ cmp_ops[op[0] if i < size - 1 else op], left_sql[i], right_sql[i] ] ]))
             return [ sqlor(clauses) ]
         if op == '==':
-            return [ sqland([ [ 'EQ', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
+            return [ sqland([ [ monad.EQ, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         if op == '!=':
-            return [ sqlor([ [ 'NE', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
+            return [ sqlor([ [ monad.NE, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         assert False, op  # pragma: no cover
 
 class LogicalBinOpMonad(BoolMonad):
@@ -1913,6 +2056,12 @@ class FuncLenMonad(FuncMonad):
     func = len
     def call(monad, x):
         return x.len()
+
+class GetattrMonad(FuncMonad):
+    func = getattr
+    def call(monad, obj_monad, name_monad):
+        name = name_monad.node._attrname_value
+        return obj_monad.getattr(name)
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count
@@ -2268,10 +2417,10 @@ class AttrSetMonad(SetMixin, Monad):
         outer_conditions = subquery.outer_conditions
 
         groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
-        assert len(set(alias for _, alias, column in groupby_columns)) == 1
+        assert len({alias for _, alias, column in groupby_columns}) == 1
 
         if extra_grouping:
-            inner_alias = translator.subquery.get_short_alias(None, 't')
+            inner_alias = translator.subquery.make_alias('t')
             inner_columns = [ 'DISTINCT' ]
             col_mapping = {}
             col_names = set()
@@ -2311,7 +2460,7 @@ class AttrSetMonad(SetMixin, Monad):
             subquery_ast.append([ 'WHERE' ] + inner_conditions)
         subquery_ast.append([ 'GROUP_BY' ] + groupby_columns)
 
-        alias = translator.subquery.get_short_alias(None, 't')
+        alias = translator.subquery.make_alias('t')
         for cond in outer_conditions: cond[2][1] = alias
         translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
         expr_ast = [ 'COLUMN', alias, expr_name ]
@@ -2452,7 +2601,7 @@ class QuerySetMonad(SetMixin, Monad):
                 new_names.append(new_name)
                 select_ast[i] = [ 'AS', column_ast, new_name ]
 
-            alias = subquery.get_short_alias(None, 't')
+            alias = subquery.make_alias('t')
             outer_conditions = [ [ 'EQ', item_column, [ 'COLUMN', alias, new_name ] ]
                                     for item_column, new_name in izip(item_columns, new_names) ]
             subquery.from_ast.append([ alias, 'SELECT', subquery_ast[1:], sqland(outer_conditions) ])
@@ -2515,7 +2664,7 @@ class QuerySetMonad(SetMixin, Monad):
                         [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ] ],
                         from_ast, where_ast ]
                 else:
-                    alias = translator.subquery.get_short_alias(None, 't')
+                    alias = translator.subquery.make_alias('t')
                     sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
                                 [ 'FROM', [ alias, 'SELECT', [
                                   [ 'DISTINCT' ] + sub.expr_columns, from_ast, where_ast ] ] ] ]

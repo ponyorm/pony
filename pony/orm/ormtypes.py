@@ -1,9 +1,10 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, items_list, izip, basestring, unicode, buffer, int_types
 
-import types
+import types, weakref
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
+from functools import wraps, WRAPPER_ASSIGNMENTS
 from uuid import UUID
 
 from pony.utils import throw, parse_expr
@@ -121,17 +122,15 @@ class RawSQLType(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-numeric_types = set([ bool, int, float, Decimal ])
-comparable_types = set([ int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID ])
-primitive_types = comparable_types | set([ buffer ])
-function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
+numeric_types = {bool, int, float, Decimal}
+comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID}
+primitive_types = comparable_types | {buffer}
+function_types = {type, types.FunctionType, types.BuiltinFunctionType}
 type_normalization_dict = { long : int } if PY2 else {}
 
 def get_normalized_type_of(value):
     t = type(value)
     if t is tuple: return tuple(get_normalized_type_of(item) for item in value)
-    try: hash(value)  # without this, cannot do tests like 'if value in special_fucntions...'
-    except TypeError: throw(TypeError, 'Unsupported type %r' % t.__name__)
     if t.__name__ == 'EntityMeta': return SetType(value)
     if t.__name__ == 'EntityIter': return SetType(value.entity)
     if PY2 and isinstance(value, str):
@@ -154,7 +153,9 @@ def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
+    if t in (slice, type(Ellipsis)): return t
     if issubclass(t, basestring): return unicode
+    if issubclass(t, (dict, Json)): return Json
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
@@ -184,6 +185,10 @@ def are_comparable_types(t1, t2, op='=='):
     # types must be normalized already!
     tt1 = type(t1)
     tt2 = type(t2)
+
+    t12 = {t1, t2}
+    if Json in t12 and t12 < {Json, str, unicode, int, bool, float}:
+        return True
     if op in ('in', 'not in'):
         if tt2 is RawSQLType: return True
         if tt2 is not SetType: return False
@@ -214,3 +219,78 @@ def are_comparable_types(t1, t2, op='=='):
         return False
     if t1 is t2 and t1 in comparable_types: return True
     return (t1, t2) in coercions
+
+class TrackedValue(object):
+    def __init__(self, obj, attr):
+        self.obj_ref = weakref.ref(obj)
+        self.attr = attr
+    @classmethod
+    def make(cls, obj, attr, value):
+        if isinstance(value, dict):
+            return TrackedDict(obj, attr, value)
+        if isinstance(value, list):
+            return TrackedList(obj, attr, value)
+        return value
+    def _changed_(self):
+        obj = self.obj_ref()
+        if obj is not None:
+            obj._attr_changed_(self.attr)
+    def get_untracked(self):
+        assert False, 'Abstract method'  # pragma: no cover
+
+def tracked_method(func):
+    @wraps(func, assigned=('__name__', '__doc__') if PY2 else WRAPPER_ASSIGNMENTS)
+    def new_func(self, *args, **kw):
+        result = func(self, *args, **kw)
+        self._changed_()
+        return result
+    return new_func
+
+class TrackedDict(TrackedValue, dict):
+    def __init__(self, obj, attr, value):
+        TrackedValue.__init__(self, obj, attr)
+        dict.__init__(self, ((key, self.make(obj, attr, val))
+                             for key, val in value.items()))
+    def __reduce__(self):
+        return dict, (dict(self),)
+    __setitem__ = tracked_method(dict.__setitem__)
+    __delitem__ = tracked_method(dict.__delitem__)
+    update = tracked_method(dict.update)
+    setdefault = tracked_method(dict.setdefault)
+    pop = tracked_method(dict.pop)
+    popitem = tracked_method(dict.popitem)
+    clear = tracked_method(dict.clear)
+    def get_untracked(self):
+        return {key: val.get_untracked() if isinstance(val, TrackedValue) else val
+                for key, val in self.items()}
+
+class TrackedList(TrackedValue, list):
+    def __init__(self, obj, attr, value):
+        TrackedValue.__init__(self, obj, attr)
+        list.__init__(self, (self.make(obj, attr, val) for val in value))
+    def __reduce__(self):
+        return list, (list(self),)
+    __setitem__ = tracked_method(list.__setitem__)
+    __delitem__ = tracked_method(list.__delitem__)
+    extend = tracked_method(list.extend)
+    append = tracked_method(list.append)
+    pop = tracked_method(list.pop)
+    remove = tracked_method(list.remove)
+    insert = tracked_method(list.insert)
+    reverse = tracked_method(list.reverse)
+    sort = tracked_method(list.sort)
+    if PY2:
+        __setslice__ = tracked_method(list.__setslice__)
+    else:
+        clear = tracked_method(list.clear)
+    def get_untracked(self):
+        return [val.get_untracked() if isinstance(val, TrackedValue) else val for val in self]
+
+class Json(object):
+    """A wrapper over a dict or list
+    """
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+
+    def __repr__(self):
+        return '<Json %r>' % self.wrapped

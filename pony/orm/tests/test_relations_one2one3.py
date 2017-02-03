@@ -38,9 +38,9 @@ class TestOneToOne3(unittest.TestCase):
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
 FROM "Person" "p"
-  LEFT JOIN "Passport" "passport-1"
-    ON "p"."id" = "passport-1"."person"
-WHERE "passport-1"."id" IS NULL''')
+  LEFT JOIN "Passport" "passport"
+    ON "p"."id" = "passport"."person"
+WHERE "passport"."id" IS NULL''')
 
     @db_session
     def test_3(self):
@@ -48,9 +48,9 @@ WHERE "passport-1"."id" IS NULL''')
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
 FROM "Person" "p"
-  LEFT JOIN "Passport" "passport-1"
-    ON "p"."id" = "passport-1"."person"
-WHERE "passport-1"."id" IS NULL''')
+  LEFT JOIN "Passport" "passport"
+    ON "p"."id" = "passport"."person"
+WHERE "passport"."id" IS NULL''')
 
     @db_session
     def test_4(self):
@@ -58,9 +58,9 @@ WHERE "passport-1"."id" IS NULL''')
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
 FROM "Person" "p"
-  LEFT JOIN "Passport" "passport-1"
-    ON "p"."id" = "passport-1"."person"
-WHERE "passport-1"."id" IS NOT NULL''')
+  LEFT JOIN "Passport" "passport"
+    ON "p"."id" = "passport"."person"
+WHERE "passport"."id" IS NOT NULL''')
 
     @db_session
     def test_5(self):
@@ -70,7 +70,7 @@ WHERE "passport-1"."id" IS NOT NULL''')
         sql = self.db.last_sql
         self.assertEqual(sql, '''DELETE FROM "Person"
 WHERE "id" = ?
-  AND "name" = ?''')        
+  AND "name" = ?''')
 
     @raises_exception(ConstraintError, 'Cannot unlink Passport[1] from previous Person[1] object, because Passport.person attribute is required')
     @db_session

@@ -94,7 +94,7 @@ class TestPrefetching(unittest.TestCase):
     def test_10(self):
         with db_session:
             s1 = Student.select().prefetch(Student.courses).first()
-        self.assertEqual(set(s1.courses.name), set(['Math', 'Physics']))
+        self.assertEqual(set(s1.courses.name), {'Math', 'Physics'})
 
     @raises_exception(DatabaseSessionIsOver, 'Cannot load attribute Student[1].biography: the database session is over')
     def test_11(self):
@@ -106,6 +106,10 @@ class TestPrefetching(unittest.TestCase):
         with db_session:
             s1 = Student.select().prefetch(Student.biography).first()
         self.assertEqual(s1.biography, 'some text')
+        self.assertEqual(db.last_sql, '''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."biography"
+FROM "Student" "s"
+ORDER BY 1
+LIMIT 1''')
 
 if __name__ == '__main__':
     unittest.main()

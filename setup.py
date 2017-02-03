@@ -43,39 +43,35 @@ creating database schema based on the diagram and start working with the databas
 
 Pony ORM Links:
 =================
-- Main site: http://ponyorm.com
-- Documentation: http://doc.ponyorm.com
+- Main site: https://ponyorm.com
+- Documentation: https://docs.ponyorm.com
 - GitHub: https://github.com/ponyorm/pony
 - Mailing list:  http://ponyorm-list.ponyorm.com
 - ER Diagram Editor: https://editor.ponyorm.com
-- Blog: http://blog.ponyorm.com
+- Blog: https://blog.ponyorm.com
 """
 
 classifiers = [
     'Development Status :: 4 - Beta',
     'Intended Audience :: Developers',
-    'License :: Free for non-commercial use',
-    'License :: OSI Approved :: GNU Affero General Public License v3',
-    'License :: Other/Proprietary License',
-    'License :: Free For Educational Use',
-    'License :: Free for non-commercial use',
+    'License :: OSI Approved :: Apache Software License',
     'Operating System :: OS Independent',
     'Programming Language :: Python',
     'Programming Language :: Python :: 2',
-    'Programming Language :: Python :: 2.6',
     'Programming Language :: Python :: 2.7',
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.3',
     'Programming Language :: Python :: 3.4',
     'Programming Language :: Python :: 3.5',
+    'Programming Language :: Python :: 3.6',
     'Topic :: Software Development :: Libraries',
     'Topic :: Database'
 ]
 
 author = "Alexander Kozlovsky, Alexey Malashkevich"
 author_email = "team@ponyorm.com"
-url = "http://ponyorm.com"
-lic = "AGPL, Commercial, Free for educational and non-commercial use"
+url = "https://ponyorm.com"
+licence = "Apache License Version 2.0"
 
 packages = [
     "pony",
@@ -85,15 +81,16 @@ packages = [
     "pony.orm.integration",
     "pony.orm.tests",
     "pony.thirdparty",
-    "pony.thirdparty.compiler"
+    "pony.thirdparty.compiler",
+    "pony.utils"
 ]
 
 download_url = "http://pypi.python.org/pypi/pony/"
 
 if __name__ == "__main__":
     pv = sys.version_info[:2]
-    if pv not in ((2, 6), (2, 7), (3, 3), (3, 4), (3, 5)):
-        s = "Sorry, but %s %s requires Python of one of the following versions: 2.6, 2.7, 3.3, 3.4 and 3.5." \
+    if pv not in ((2, 7), (3, 3), (3, 4), (3, 5), (3, 6)):
+        s = "Sorry, but %s %s requires Python of one of the following versions: 2.7, 3.3-3.6." \
             " You have version %s"
         print(s % (name, version, sys.version.split(' ', 1)[0]))
         sys.exit(1)
@@ -107,7 +104,7 @@ if __name__ == "__main__":
         author=author,
         author_email=author_email,
         url=url,
-        license=lic,
+        license=licence,
         packages=packages,
         download_url=download_url
     )

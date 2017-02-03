@@ -5,18 +5,27 @@ from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
 
-import psycopg2
+try:
+    import psycopg2
+except ImportError:
+    from psycopg2cffi import compat
+    compat.register()
+
 from psycopg2 import extensions
 
 import psycopg2.extras
 psycopg2.extras.register_uuid()
 
-from pony.orm import core, dbschema, dbapiprovider
+psycopg2.extras.register_default_json(loads=lambda x: x)
+psycopg2.extras.register_default_jsonb(loads=lambda x: x)
+
+from pony.orm import core, dbschema, dbapiprovider, sqltranslation, ormtypes
 from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder
 from pony.converting import timedelta2str
+from pony.utils import is_ident
 
 NoneType = type(None)
 
@@ -40,7 +49,7 @@ class PGValue(Value):
 
 class PGSQLBuilder(SQLBuilder):
     dialect = 'PostgreSQL'
-    make_value = PGValue
+    value_class = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         if not values: result = [ 'INSERT INTO ', builder.quote_name(table_name) ,' DEFAULT VALUES' ]
         else: result = SQLBuilder.INSERT(builder, table_name, columns, values)
@@ -68,6 +77,34 @@ class PGSQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
+    def eval_json_path(builder, values):
+        result = []
+        for value in values:
+            if isinstance(value, int):
+                result.append(str(value))
+            elif isinstance(value, basestring):
+                result.append(value if is_ident(value) else '"%s"' % value.replace('"', '\\"'))
+            else: assert False, value
+        return '{%s}' % ','.join(result)
+    def JSON_QUERY(builder, expr, path):
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        return '(', builder(expr), " #> ", path_sql, ')'
+    json_value_type_mapping = {bool: 'boolean', int: 'integer', float: 'real'}
+    def JSON_VALUE(builder, expr, path, type):
+        if type is ormtypes.Json: return builder.JSON_QUERY(expr, path)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        sql = '(', builder(expr), " #>> ", path_sql, ')'
+        type_name = builder.json_value_type_mapping.get(type, 'text')
+        return sql if type_name == 'text' else (sql, '::', type_name)
+    def JSON_NONZERO(builder, expr):
+        return 'coalesce(', builder(expr), ", 'null'::jsonb) NOT IN (" \
+               "'null'::jsonb, 'false'::jsonb, '0'::jsonb, '\"\"'::jsonb, '[]'::jsonb, '{}'::jsonb)"
+    def JSON_CONCAT(builder, left, right):
+        return '(', builder(left), '||', builder(right), ')'
+    def JSON_CONTAINS(builder, expr, path, key):
+        return (builder.JSON_QUERY(expr, path) if path else builder(expr)), ' ? ', builder(key)
+    def JSON_ARRAY_LENGTH(builder, value):
+        return 'jsonb_array_length(', builder(value), ')'
 
 class PGStrConverter(dbapiprovider.StrConverter):
     if PY2:
@@ -98,6 +135,10 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
 class PGUuidConverter(dbapiprovider.UuidConverter):
     def py2sql(converter, val):
         return val
+
+class PGJsonConverter(dbapiprovider.JsonConverter):
+    def sql_type(self):
+        return "JSONB"
 
 class PGPool(Pool):
     def _connect(pool):
@@ -184,7 +225,7 @@ class PGProvider(DBAPIProvider):
                     'WHERE schemaname = %s AND lower(tablename) = lower(%s)'
         cursor.execute(sql, (schema_name, table_name))
         row = cursor.fetchone()
-        return row
+        return row[0] if row is not None else None
 
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
@@ -239,6 +280,7 @@ class PGProvider(DBAPIProvider):
         (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
         (buffer, PGBlobConverter),
+        (ormtypes.Json, PGJsonConverter),
     ]
 
 provider_cls = PGProvider

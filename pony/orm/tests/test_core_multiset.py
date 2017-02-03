@@ -119,7 +119,7 @@ class TestMultiset(unittest.TestCase):
         d = Department[1]
         multiset = d.groups.students.courses
         self.assertFalse(multiset != multiset)
-        
+
     @db_session
     def test_multiset_contains(self):
         d = Department[1]

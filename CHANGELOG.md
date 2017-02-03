@@ -1,3 +1,76 @@
+# Pony ORM Release 0.7.1 (2017-01-10)
+
+## New features
+
+* New warning DatabaseContainsIncorrectEmptyValue added, it is raised when the required attribute is empty during loading an entity from the database
+
+## Bugfixes
+
+* Fixes #216: Added Python 3.6 support
+* Fixes #203: subtranslator should use argnames from parent translator
+* Change a way aliases in SQL query are generated in order to fix a problem when a subquery alias masks a base query alias
+* Volatile attribute bug fixed
+* Fix creation of self-referenced foreign keys - before this Pony didn't create the foreign key for self-referenced attributes
+* Bug fixed: when required attribute is empty the loading from the database shouldn't raise the validation error. Now Pony raises the warning DatabaseContainsIncorrectEmptyValue
+* Throw an error with more clear explanation when a list comprehension is used inside a query instead of a generator expression: "Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query"
+
+
+# Pony ORM Release 0.7 (2016-10-11)
+
+Starting with this release Pony ORM is release under the Apache License, Version 2.0.
+
+## New features
+
+* Added getattr() support in queries: https://docs.ponyorm.com/api_reference.html#getattr
+
+## Backward incompatible changes
+
+* #159: exceptions happened during flush() should not be wrapped with CommitException
+
+Before this release an exception that happened in a hook(https://docs.ponyorm.com/api_reference.html#entity-hooks), could be raised in two ways - either wrapped into the CommitException or without wrapping. It depended if the exception happened during the execution of flush() or commit() function on the db_session exit. Now the exception happened inside the hook never will be wrapped into the CommitException.
+
+## Bugfixes
+
+* #190: Timedelta is not supported when using pymysql
+
+
+# Pony ORM Release 0.6.6 (2016-08-22)
+
+## New features
+
+* Added native JSON data type support in all supported databases: https://docs.ponyorm.com/json.html
+
+## Backward incompatible changes
+
+* Dropped Python 2.6 support
+
+## Improvements
+
+* #179 Added the compatibility with PYPY using psycopg2cffi
+* Added an experimental @db_session `strict` parameter: https://docs.ponyorm.com/transactions.html#strict
+
+## Bugfixes
+
+* #182 - LEFT JOIN doesn't work as expected for inherited entities when foreign key is None
+* Some small bugs were fixed
+
+
+# Pony ORM Release 0.6.5 (2016-04-04)
+
+## Improvements
+
+* Fixes #172: Query prefetch() method should load specified lazy attributes right in the main query if possible
+
+## Bugfixes
+
+* Fixes #168: Incorrect caching when slicing the same query multiple times
+* Fixes #169: When py_check() returns False, Pony should truncate too large values in resulting ValueError message
+* Fixes #171: AssertionError when saving changes of multiple objects
+* Fixes #176: Autostripped strings are not validated correctly for Required attributes
+
+See blog post for more detailed information: https://blog.ponyorm.com/2016/04/04/pony-orm-release-0-6-5/
+
+
 # Pony ORM Release 0.6.4 (2016-02-10)
 
 This release brings no new features, has no backward incompatible changes, only bug fixes.

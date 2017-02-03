@@ -26,20 +26,20 @@ class TestRawSQL(unittest.TestCase):
     def test_1(self):
         # raw_sql result can be treated as a logical expression
         persons = select(p for p in Person if raw_sql('abs("p"."age") > 25'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_2(self):
         # raw_sql result can be used for comparison
         persons = select(p for p in Person if raw_sql('abs("p"."age")') > 25)[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_3(self):
         # raw_sql can accept $parameters
         x = 25
         persons = select(p for p in Person if raw_sql('abs("p"."age") > $x'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_4(self):
@@ -47,7 +47,7 @@ class TestRawSQL(unittest.TestCase):
         x = 1
         s = 'p.id > $x'
         persons = select(p for p in Person if raw_sql(s))[:]
-        self.assertEqual(set(persons), set([Person[2], Person[3]]))
+        self.assertEqual(set(persons), {Person[2], Person[3]})
 
     @db_session
     def test_5(self):
@@ -55,14 +55,14 @@ class TestRawSQL(unittest.TestCase):
         x = 1
         cond = raw_sql('p.id > $x')
         persons = select(p for p in Person if cond)[:]
-        self.assertEqual(set(persons), set([Person[2], Person[3]]))
+        self.assertEqual(set(persons), {Person[2], Person[3]})
 
     @db_session
     def test_6(self):
         # correct converter should be applied to raw_sql parameter type
         x = date(1990, 1, 1)
         persons = select(p for p in Person if raw_sql('p.dob < $x'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_7(self):
@@ -70,19 +70,19 @@ class TestRawSQL(unittest.TestCase):
         x = 10
         y = 15
         persons = select(p for p in Person if raw_sql('p.age > $(x + y)'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_8(self):
         # raw_sql argument may be complex expression (2)
         persons = select(p for p in Person if raw_sql('p.dob < $date.today()'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2], Person[3]]))
+        self.assertEqual(set(persons), {Person[1], Person[2], Person[3]})
 
     @db_session
     def test_9(self):
         # using raw_sql in the expression part of the generator
         names = select(raw_sql('UPPER(p.name)') for p in Person)[:]
-        self.assertEqual(set(names), set(['JOHN', 'MIKE', 'MARY']))
+        self.assertEqual(set(names), {'JOHN', 'MIKE', 'MARY'})
 
     @db_session
     def test_10(self):
@@ -101,21 +101,21 @@ class TestRawSQL(unittest.TestCase):
         # raw_sql can be used in lambdas
         x = 25
         persons = Person.select(lambda p: p.age > raw_sql('$x'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_13(self):
         # raw_sql in filter()
         x = 25
         persons = select(p for p in Person).filter(lambda p: p.age > raw_sql('$x'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_14(self):
         # raw_sql in filter() without using lambda
         x = 25
         persons = Person.select().filter(raw_sql('p.age > $x'))[:]
-        self.assertEqual(set(persons), set([Person[1], Person[2]]))
+        self.assertEqual(set(persons), {Person[1], Person[2]})
 
     @db_session
     def test_15(self):
@@ -123,7 +123,7 @@ class TestRawSQL(unittest.TestCase):
         x = '123'
         y = 'John'
         persons = Person.select(lambda p: raw_sql("UPPER(p.name) || $x") == raw_sql("UPPER($y || '123')"))[:]
-        self.assertEqual(set(persons), set([Person[1]]))
+        self.assertEqual(set(persons), {Person[1]})
 
     @db_session
     def test_16(self):
@@ -135,7 +135,7 @@ class TestRawSQL(unittest.TestCase):
         y = 'j'
         q = q.filter(lambda p: p.dob > x and p.name.startswith(raw_sql('UPPER($y)')))
         persons = q[:]
-        self.assertEqual(set(persons), set([Person[1]]))
+        self.assertEqual(set(persons), {Person[1]})
 
     @db_session
     def test_17(self):
@@ -152,7 +152,7 @@ class TestRawSQL(unittest.TestCase):
         self.assertEqual(persons, [Person[1], Person[3], Person[2]])
 
     @db_session
-    @raises_exception(TypeError, "raw_sql(p.name)")
+    @raises_exception(TypeError, "Function 'raw_sql' cannot be used this way: raw_sql(p.name)")
     def test_19(self):
         # raw_sql argument cannot depend on iterator variables
         select(p for p in Person if raw_sql(p.name))[:]

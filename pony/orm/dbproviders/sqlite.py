@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
-import os.path
+import os.path, re, json
 import sqlite3 as sqlite
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -10,12 +10,18 @@ from time import strptime
 from threading import Lock
 from uuid import UUID
 from binascii import hexlify
+from functools import wraps
 
-from pony.orm import core, dbschema, sqltranslation, dbapiprovider
+from pony.orm import core, dbschema, sqltranslation, dbapiprovider, ormtypes
 from pony.orm.core import log_orm
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decorator, absolutize_path, throw
+from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, throw
+
+from contextlib import contextmanager
+
+class SqliteExtensionUnavailable(Exception):
+    pass
 
 NoneType = type(None)
 
@@ -49,6 +55,9 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
+    def __init__(builder, provider, ast):
+        builder.json1_available = provider.json1_available
+        SQLBuilder.__init__(builder, provider, ast)
     def SELECT_FOR_UPDATE(builder, nowait, *sections):
         assert not builder.indent and not nowait
         return builder.SELECT(*sections)
@@ -124,6 +133,24 @@ class SQLiteBuilder(SQLBuilder):
     PY_UPPER = make_unary_func('py_upper')
     PY_LOWER = make_unary_func('py_lower')
 
+    def JSON_QUERY(builder, expr, path):
+        fname = 'json_extract' if builder.json1_available else 'py_json_extract'
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', path_sql, '))'
+    # json_value_type_mapping = {unicode: 'text', bool: 'boolean', int: 'integer', float: 'real', Json: None}
+    def JSON_VALUE(builder, expr, path, type):
+        func_name = 'json_extract' if builder.json1_available else 'py_json_extract'
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        return func_name, '(', builder(expr), ', ', path_sql, ')'
+    def JSON_NONZERO(builder, expr):
+        return builder(expr), ''' NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
+    def JSON_ARRAY_LENGTH(builder, value):
+        func_name = 'json_array_length' if builder.json1_available else 'py_json_array_length'
+        return func_name, '(', builder(value), ')'
+    def JSON_CONTAINS(builder, expr, path, key):
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        return 'py_json_contains(', builder(expr), ', ', path_sql, ',  ', builder(key), ')'
+
 class SQLiteIntConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
         attr = converter.attr
@@ -175,6 +202,23 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
     def py2sql(converter, val):
         return datetime2timestamp(val)
 
+class SQLiteJsonConverter(dbapiprovider.JsonConverter):
+    json_kwargs = {'separators': (',', ':'), 'sort_keys': True, 'ensure_ascii': False}
+
+def print_traceback(func):
+    @wraps(func)
+    def wrapper(*args, **kw):
+        try:
+            return func(*args, **kw)
+        except:
+            if core.debug:
+                import traceback
+                msg = traceback.format_exc()
+                log_orm(msg)
+            raise
+    return wrapper
+
+
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
     max_name_len = 1024
@@ -201,12 +245,18 @@ class SQLiteProvider(DBAPIProvider):
         (time, SQLiteTimeConverter),
         (timedelta, SQLiteTimedeltaConverter),
         (UUID, dbapiprovider.UuidConverter),
-            (buffer, dbapiprovider.BlobConverter),
-        ]
+        (buffer, dbapiprovider.BlobConverter),
+        (ormtypes.Json, SQLiteJsonConverter)
+    ]
 
     def __init__(provider, *args, **kwargs):
         DBAPIProvider.__init__(provider, *args, **kwargs)
         provider.transaction_lock = Lock()
+
+    @wrap_dbapi_exceptions
+    def inspect_connection(provider, conn):
+        DBAPIProvider.inspect_connection(provider, conn)
+        provider.json1_available = provider.check_json1(conn)
 
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):
@@ -317,6 +367,16 @@ class SQLiteProvider(DBAPIProvider):
     def fk_exists(provider, connection, table_name, fk_name):
         assert False  # pragma: no cover
 
+    def check_json1(provider, connection):
+        cursor = connection.cursor()
+        sql = '''
+            select json('{"this": "is", "a": ["test"]}')'''
+        try:
+            cursor.execute(sql)
+            return True
+        except sqlite.OperationalError:
+            return False
+
 provider_cls = SQLiteProvider
 
 def _text_factory(s):
@@ -340,6 +400,96 @@ def make_string_function(name, base_func):
 py_upper = make_string_function('py_upper', unicode.upper)
 py_lower = make_string_function('py_lower', unicode.lower)
 
+@print_traceback
+def py_json_unwrap(value):
+    # [null,some-value] -> some-value
+    assert value.startswith('[null,'), value
+    return value[6:-1]
+
+path_cache = {}
+
+json_path_re = re.compile(r'\[(\d+)\]|\.(?:(\w+)|"([^"]*)")', re.UNICODE)
+
+def _parse_path(path):
+    if path in path_cache:
+        return path_cache[path]
+    keys = None
+    if isinstance(path, basestring) and path.startswith('$'):
+        keys = []
+        pos = 1
+        path_len = len(path)
+        while pos < path_len:
+            match = json_path_re.match(path, pos)
+            if match is not None:
+                g1, g2, g3 = match.groups()
+                keys.append(int(g1) if g1 else g2 or g3)
+                pos = match.end()
+            else:
+                keys = None
+                break
+        else: keys = tuple(keys)
+    path_cache[path] = keys
+    return keys
+
+def _traverse(obj, keys):
+    if keys is None: return None
+    list_or_dict = (list, dict)
+    for key in keys:
+        if type(obj) not in list_or_dict: return None
+        try: obj = obj[key]
+        except (KeyError, IndexError): return None
+    return obj
+
+def _extract(expr, *paths):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    result = []
+    for path in paths:
+        keys = _parse_path(path)
+        result.append(_traverse(expr, keys))
+    return result[0] if len(paths) == 1 else result
+
+@print_traceback
+def py_json_extract(expr, *paths):
+    result = _extract(expr, *paths)
+    if type(result) in (list, dict):
+        result = json.dumps(result, **SQLiteJsonConverter.json_kwargs)
+    return result
+
+@print_traceback
+def py_json_query(expr, path, with_wrapper):
+    result = _extract(expr, path)
+    if type(result) not in (list, dict):
+        if not with_wrapper: return None
+        result = [result]
+    return json.dumps(result, **SQLiteJsonConverter.json_kwargs)
+
+@print_traceback
+def py_json_value(expr, path):
+    result = _extract(expr, path)
+    return result if type(result) not in (list, dict) else None
+
+@print_traceback
+def py_json_contains(expr, path, key):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    keys = _parse_path(path)
+    expr = _traverse(expr, keys)
+    return type(expr) in (list, dict) and key in expr
+
+@print_traceback
+def py_json_nonzero(expr, path):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    keys = _parse_path(path)
+    expr = _traverse(expr, keys)
+    return bool(expr)
+
+@print_traceback
+def py_json_array_length(expr, path=None):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    if path:
+        keys = _parse_path(path)
+        expr = _traverse(expr, keys)
+    return len(expr) if type(expr) is list else 0
+
 class SQLitePool(Pool):
     def __init__(pool, filename, create_db): # called separately in each thread
         pool.filename = filename
@@ -354,6 +504,12 @@ class SQLitePool(Pool):
         con.create_function('power', 2, pow)
         con.create_function('rand', 0, random)
         con.create_function('py_upper', 1, py_upper)
+        con.create_function('py_lower', 1, py_lower)
+        con.create_function('py_json_unwrap', 1, py_json_unwrap)
+        con.create_function('py_json_extract', -1, py_json_extract)
+        con.create_function('py_json_contains', 3, py_json_contains)
+        con.create_function('py_json_nonzero', 2, py_json_nonzero)
+        con.create_function('py_json_array_length', -1, py_json_array_length)
         con.create_function('py_lower', 1, py_lower)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')

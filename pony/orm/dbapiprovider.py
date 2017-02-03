@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
-import os, re
+import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
@@ -9,7 +9,7 @@ from uuid import uuid4, UUID
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType
+from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, Json
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -326,6 +326,9 @@ class Pool(localbase):
         if con is not None: con.close()
 
 class Converter(object):
+    EQ = 'EQ'
+    NE = 'NE'
+    optimistic = True
     def __deepcopy__(converter, memo):
         return converter  # Converter instances are "immutable"
     def __init__(converter, provider, py_type, attr=None):
@@ -345,6 +348,12 @@ class Converter(object):
         return val
     def sql2py(converter, val):
         return val
+    def val2dbval(self, val, obj=None):
+        return val
+    def dbval2val(self, dbval, obj=None):
+        return dbval
+    def dbvals_equal(self, x, y):
+        return x == y
     def get_sql_type(converter, attr=None):
         if attr is not None and attr.sql_type is not None:
             return attr.sql_type
@@ -373,7 +382,7 @@ class NoneConverter(Converter):  # used for raw_sql() parameters only
     def get_sql_type(converter, attr=None):
         assert False
     def get_fk_type(converter, sql_type):
-        assert False    
+        assert False
 
 class BoolConverter(Converter):
     def validate(converter, val):
@@ -527,7 +536,7 @@ class RealConverter(Converter):
             throw(ValueError, 'Value %r of attr %s is greater than the maximum allowed value %r'
                              % (val, converter.attr, converter.max_val))
         return val
-    def equals(converter, x, y):
+    def dbvals_equal(converter, x, y):
         tolerance = converter.tolerance
         if tolerance is None or x is None or y is None: return x == y
         denominator = max(abs(x), abs(y))
@@ -631,7 +640,7 @@ class ConverterWithMicroseconds(Converter):
         Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
-        args = attr.args        
+        args = attr.args
         if len(args) > 1: throw(TypeError, 'Too many positional parameters for attribute %s. '
                                            'Expected: precision, got: %r' % (attr, args))
         provider = attr.entity._database_.provider
@@ -725,3 +734,26 @@ class UuidConverter(Converter):
     sql2py = validate
     def sql_type(converter):
         return "UUID"
+
+class JsonConverter(Converter):
+    json_kwargs = {}
+    class JsonEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, Json):
+                return obj.wrapped
+            return json.JSONEncoder.default(self, obj)
+    def val2dbval(self, val, obj=None):
+        return json.dumps(val, cls=self.JsonEncoder, **self.json_kwargs)
+    def dbval2val(self, dbval, obj=None):
+        if isinstance(dbval, (int, bool, float, type(None))):
+            return dbval
+        val = json.loads(dbval)
+        if obj is None:
+            return val
+        return TrackedValue.make(obj, self.attr, val)
+    def dbvals_equal(self, x, y):
+        if isinstance(x, basestring): x = json.loads(x)
+        if isinstance(y, basestring): y = json.loads(y)
+        return x == y
+    def sql_type(self):
+        return "JSON"
