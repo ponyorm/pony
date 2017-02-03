@@ -1796,7 +1796,7 @@ class Attribute(object):
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
         attr.is_volatile = kwargs.pop('volatile', False)
-        attr.optimistic = kwargs.pop('optimistic', True)
+        attr.optimistic = kwargs.pop('optimistic', None)
         attr.sql_default = kwargs.pop('sql_default', None)
         attr.py_check = kwargs.pop('py_check', None)
         attr.hidden = kwargs.pop('hidden', False)
@@ -4620,7 +4620,8 @@ class Entity(with_metaclass(EntityMeta)):
         for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._rbits_):
             converters = attr.converters
             assert converters
-            if not (attr.optimistic and converters[0].optimistic): continue
+            optimistic = attr.optimistic if attr.optimistic is not None else converters[0].optimistic
+            if not optimistic: continue
             dbval = obj._dbvals_[attr]
             optimistic_columns.extend(attr.columns)
             optimistic_converters.extend(attr.converters)
