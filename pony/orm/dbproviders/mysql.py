@@ -103,9 +103,9 @@ class MySQLBuilder(SQLBuilder):
         return 'COALESCE(CAST(', builder(expr), ''' as CHAR), 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_ARRAY_LENGTH(builder, value):
         return 'json_length(', builder(value), ')'
-    def EQ_JSON(builder, left, right):
+    def JSON_EQ(builder, left, right):
         return '(', builder(left), ' = CAST(', builder(right), ' AS JSON))'
-    def NE_JSON(builder, left, right):
+    def JSON_NE(builder, left, right):
         return '(', builder(left), ' != CAST(', builder(right), ' AS JSON))'
     def JSON_CONTAINS(builder, expr, path, key):
         key_sql = builder(key)
@@ -163,7 +163,8 @@ class MySQLUuidConverter(dbapiprovider.UuidConverter):
         return 'BINARY(16)'
 
 class MySQLJsonConverter(dbapiprovider.JsonConverter):
-    EQ = 'EQ_JSON'
+    EQ = 'JSON_EQ'
+    NE = 'JSON_NE'
     def init(self, kwargs):
         if self.provider.server_version < (5, 7, 8):
             version = '.'.join(imap(str, self.provider.server_version))
