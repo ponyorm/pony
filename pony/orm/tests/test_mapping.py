@@ -103,7 +103,7 @@ class TestColumnsMapping(unittest.TestCase):
         db.generate_mapping()
         self.assertEqual(db.schema.tables['student'].column_list[0].name, 'id')
 
-    @raises_exception(DBSchemaError, "Column 'name' already exists in table 'student'")
+    @raises_exception(DBSchemaError, "Column `name` already exists in table `student`")
     def test_table_check7(self):
         db = Database('sqlite', ':memory:')
         class Student(db.Entity):

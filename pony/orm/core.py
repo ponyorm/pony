@@ -935,13 +935,13 @@ class Database(object):
                     normalized_table_name = provider.normalize_name(table_name)
                     if normalized_table_name != table_name \
                     and provider.table_exists(cursor, normalized_table_name):
-                        throw(TableDoesNotExist, 'Table %s does not exist (probably you meant table %s)'
+                        throw(TableDoesNotExist, 'Table `%s` does not exist (probably you meant table `%s`)'
                                                  % (table_name, normalized_table_name))
-                throw(TableDoesNotExist, 'Table %s does not exist' % table_name)
+                throw(TableDoesNotExist, 'Table `%s` does not exist' % table_name)
         if not with_all_data:
             for table_name in existed_tables:
                 if provider.table_has_data(cursor, table_name): throw(TableIsNotEmpty,
-                    'Cannot drop table %s because it is not empty. Specify option '
+                    'Cannot drop table `%s` because it is not empty. Specify option '
                     'with_all_data=True if you want to drop table with all data' % table_name)
         for table_name in existed_tables:
             provider.drop_table(cursor, table_name)

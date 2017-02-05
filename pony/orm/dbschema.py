@@ -81,9 +81,9 @@ class DBSchema(object):
                     quote_name = provider.quote_name
                     n1, n2 = quote_name(db_object.name), quote_name(name)
                     tn1, tn2 = db_object.typename, db_object.typename.lower()
-                    throw(DBSchemaError, '%s %s cannot be created, because %s %s ' \
+                    throw(DBSchemaError, '%s `%s` cannot be created, because %s `%s` ' \
                                          '(with a different letter case) already exists in the database. ' \
-                                         'Try to delete %s %s first.' % (tn1, n1, tn2, n2, n2, tn2))
+                                         'Try to delete `%s` %s first.' % (tn1, n1, tn2, n2, n2, tn2))
     def check_tables(schema, connection):
         provider = schema.provider
         cursor = connection.cursor()
@@ -108,9 +108,9 @@ class Table(DBObject):
     rename_table_sql_template = "ALTER TABLE %(prev_name)s RENAME TO %(new_name)s"
     def __init__(table, schema, name, entity=None):
         if name in schema.tables:
-            throw(DBSchemaError, "Table %r already exists in database schema" % name)
+            throw(DBSchemaError, "Table `%s` already exists in database schema" % name)
         if name in schema.names:
-            throw(DBSchemaError, "Table %r cannot be created, name is already in use" % name)
+            throw(DBSchemaError, "Table `%s` cannot be created, name is already in use" % name)
         schema.tables[name] = table
         schema.names[name] = table
         table.schema = schema
@@ -132,7 +132,7 @@ class Table(DBObject):
         table_name = table.name
         if isinstance(table_name, tuple):
             table_name = '.'.join(table_name)
-        return '<Table(%s)>' % table_name
+        return '<Table `%s`>' % table_name
     def add_entity(table, entity):
         for e in table.entities:
             if e._root_ is not entity._root_:
@@ -237,7 +237,7 @@ class Table(DBObject):
         if index:
             if index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
                 return index
-            throw(DBSchemaError, 'Two different indexes are defined for the same column%s for table %s: %s'
+            throw(DBSchemaError, 'Two different indexes are defined for the same column%s for table `%s`: %s'
                                  % ('s' if len(col_names) > 1 else '', table.name, ', '.join(col_names)))
         return table.schema.index_class(index_name, table, col_names, is_pk, is_unique)
     def add_foreign_key(table, fk_name, parent_table, parent_col_names, child_col_names, index_name=None):
@@ -252,7 +252,7 @@ class Column(object):
     rename_sql_template = 'ALTER TABLE %(table_name)s RENAME COLUMN %(prev_name)s TO %(new_name)s'
     def __init__(column, name, table, sql_type, converter, is_not_null=None, sql_default=None):
         if name in table.column_dict:
-            throw(DBSchemaError, "Column %r already exists in table %r" % (name, table.name))
+            throw(DBSchemaError, "Column `%s` already exists in table `%s`" % (name, table.name))
         table.column_dict[name] = column
         table.column_list.append(column)
         column.table = table
@@ -265,7 +265,7 @@ class Column(object):
         column.is_pk_part = False
         column.is_unique = False
     def __repr__(column):
-        return '<Column(%s.%s)>' % (column.table.name, column.name)
+        return '<Column `%s`.`%s`>' % (column.table.name, column.name)
     def db_rename(column, cursor, table_name):
         schema = column.table.schema
         provider = schema.provider
@@ -312,7 +312,7 @@ class Constraint(DBObject):
         if name is not None:
             assert name not in schema.names
             if name in schema.constraints: throw(DBSchemaError,
-                "Constraint with name %r already exists" % name)
+                "Constraint with name `%s` already exists" % name)
             schema.names[name] = constraint
             schema.constraints[name] = constraint
         constraint.schema = schema
@@ -330,15 +330,16 @@ class DBIndex(Constraint):
         for col_name in col_names:
             column = table.column_dict.get(col_name)
             if column is None: throw(DBSchemaError,
-                "Column %r does not belong to table %r and cannot be part of its index"
+                "Column `%s` does not belong to table `%s` and cannot be part of its index"
                 % (col_name, table.name))
             columns.append(column)
         if col_names in table.indexes:
-            if len(col_names) == 1: throw(DBSchemaError, "Index for column %r already exists" % col_names[0])
-            else: throw(DBSchemaError, "Index for columns (%s) already exists" % ', '.join(repr(column.name) for column in columns))
+            if len(col_names) == 1: throw(DBSchemaError, "Index for column `%s` already exists" % col_names[0])
+            else: throw(DBSchemaError, "Index for columns (%s) already exists"
+                                       % ', '.join('`%s`' % column.name for column in columns))
         if is_pk:
             if table.pk_index is not None: throw(DBSchemaError,
-                'Primary key for table %r is already defined' % table.name)
+                'Primary key for table `%s` is already defined' % table.name)
             table.pk_index = index
             if is_unique is None: is_unique = True
             elif not is_unique: throw(DBSchemaError,
@@ -346,7 +347,7 @@ class DBIndex(Constraint):
         elif is_unique is None: is_unique = False
         schema = table.schema
         if name is not None and name in schema.names:
-            throw(DBSchemaError, 'Index %s cannot be created, name is already in use' % name)
+            throw(DBSchemaError, 'Index `%s` cannot be created, name is already in use' % name)
         Constraint.__init__(index, name, schema)
         for column in columns:
             column.is_pk = column.is_pk or (len(col_names) == 1 and is_pk)
@@ -401,20 +402,20 @@ class ForeignKey(Constraint):
         for col_name in parent_col_names:
             column = parent_table.column_dict[col_name]
             if column.table is not parent_table: throw(DBSchemaError,
-                'Column %r does not belong to table %r' % (col_name, parent_table.name))
+                'Column `%s` does not belong to table `%s`' % (col_name, parent_table.name))
         for col_name in child_col_names:
             column = child_table.column_dict[col_name]
             if column.table is not child_table: throw(DBSchemaError,
-                'Column %r does not belong to table %r' % (col_name, child_table.name))
+                'Column `%s` does not belong to table `%s`' % (col_name, child_table.name))
         if len(parent_col_names) != len(child_col_names): throw(DBSchemaError,
             'Foreign key columns count do not match')
         if child_col_names in child_table.foreign_keys:
-            if len(child_col_names) == 1: throw(DBSchemaError, 'Foreign key for column %r already defined'
+            if len(child_col_names) == 1: throw(DBSchemaError, 'Foreign key for column `%s` already defined'
                                                                % child_col_names[0])
             else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined'
-                                       % ', '.join(imap(repr, child_col_names)))
+                                       % ', '.join('`%s`' % col_name for col_name in child_col_names))
         if name is not None and name in schema.names:
-            throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use' % name)
+            throw(DBSchemaError, 'Foreign key `%s` cannot be created, name is already in use' % name)
         Constraint.__init__(fk, name, schema)
         child_table.foreign_keys[child_col_names] = fk
         if child_table is not parent_table:
@@ -494,7 +495,7 @@ class RenameM2MTables(DbUpgrade):
                     rest.append(table)
             if len(rest) == len(rename_list):
                 table = rest[0]
-                throw(UpgradeError, 'Cannot rename table %s to %s: new name is already taken'
+                throw(UpgradeError, 'Cannot rename table `%s` to `%s`: new name is already taken'
                                     % (table.name.obsolete_name, table.name))
             rename_list = rest
 
