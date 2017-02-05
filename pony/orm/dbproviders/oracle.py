@@ -101,7 +101,6 @@ class OraColumn(Column):
     auto_template = None
 
 class OraSchema(DBSchema):
-    dialect = 'Oracle'
     table_class = OraTable
     column_class = OraColumn
 
@@ -117,7 +116,6 @@ class OraConstMonad(sqltranslation.ConstMonad):
         return sqltranslation.ConstMonad.new(translator, value)
 
 class OraTranslator(sqltranslation.SQLTranslator):
-    dialect = 'Oracle'
     rowid_support = True
     json_path_wildcard_syntax = True
     json_values_are_comparable = False
@@ -130,7 +128,6 @@ class OraTranslator(sqltranslation.SQLTranslator):
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
 
 class OraBuilder(SQLBuilder):
-    dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
         result = SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:

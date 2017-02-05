@@ -39,16 +39,13 @@ class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
 
 class MySQLSchema(dbschema.DBSchema):
-    dialect = 'MySQL'
     inline_fk_syntax = False
     column_class = MySQLColumn
 
 class MySQLTranslator(SQLTranslator):
-    dialect = 'MySQL'
     json_path_wildcard_syntax = True
 
 class MySQLBuilder(SQLBuilder):
-    dialect = 'MySQL'
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', imap(builder, args)), ')'
     def TRIM(builder, expr, chars=None):

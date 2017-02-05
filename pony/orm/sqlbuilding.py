@@ -448,9 +448,9 @@ class SQLBuilder(object):
         elif kind == 'DISTINCT':
             if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
             if len(expr_list) == 1: return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
-            if builder.dialect == 'PostgreSQL':
+            if builder.provider.dialect == 'PostgreSQL':
                 return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
-            elif builder.dialect == 'MySQL':
+            elif builder.provider.dialect == 'MySQL':
                 return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
             # Oracle and SQLite queries translated to completely different subquery syntax
             else: throw(NotImplementedError)  # This line must not be executed

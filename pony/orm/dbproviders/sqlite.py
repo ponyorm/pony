@@ -29,7 +29,6 @@ class SQLiteForeignKey(dbschema.ForeignKey):
         assert False  # pragma: no cover
 
 class SQLiteSchema(dbschema.DBSchema):
-    dialect = 'SQLite'
     named_foreign_keys = False
     fk_class = SQLiteForeignKey
 
@@ -44,7 +43,6 @@ def make_overriden_string_func(sqlop):
 
 
 class SQLiteTranslator(sqltranslation.SQLTranslator):
-    dialect = 'SQLite'
     sqlite_version = sqlite.sqlite_version_info
     row_value_syntax = False
     rowid_support = True
@@ -53,7 +51,6 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
     StringMixin_LOWER = make_overriden_string_func('PY_LOWER')
 
 class SQLiteBuilder(SQLBuilder):
-    dialect = 'SQLite'
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)

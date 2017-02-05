@@ -37,11 +37,10 @@ class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
 
 class PGSchema(dbschema.DBSchema):
-    dialect = 'PostgreSQL'
     column_class = PGColumn
 
 class PGTranslator(SQLTranslator):
-    dialect = 'PostgreSQL'
+    pass
 
 class PGValue(Value):
     __slots__ = []
@@ -52,7 +51,6 @@ class PGValue(Value):
     if not PY2: __str__ = __unicode__
 
 class PGSQLBuilder(SQLBuilder):
-    dialect = 'PostgreSQL'
     value_class = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         if not values: result = [ 'INSERT INTO ', builder.quote_name(table_name) ,' DEFAULT VALUES' ]

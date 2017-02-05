@@ -233,7 +233,7 @@ class Column(object):
         else:
             append(case(column.sql_type))
             if column.is_pk:
-                if schema.dialect == 'SQLite': append(case('NOT NULL'))
+                if schema.provider.dialect == 'SQLite': append(case('NOT NULL'))
                 append(case('PRIMARY KEY'))
             else:
                 if column.is_unique: append(case('UNIQUE'))
