@@ -28,8 +28,13 @@ class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(fk):
         assert False  # pragma: no cover
 
+class SQLiteIndex(dbschema.DBIndex):
+    def can_be_renamed(index):
+        return False
+
 class SQLiteSchema(dbschema.DBSchema):
     named_foreign_keys = False
+    index_class = SQLiteIndex
     fk_class = SQLiteForeignKey
 
 def make_overriden_string_func(sqlop):

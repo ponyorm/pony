@@ -35,12 +35,27 @@ from pony.orm.sqlbuilding import Value, Param, SQLBuilder, join
 from pony.utils import throw
 from pony.converting import str2timedelta, timedelta2str
 
+class MySQLIndex(dbschema.DBIndex):
+    rename_sql_template = 'ALTER TABLE %(table_name)s RENAME INDEX %(prev_name)s TO %(new_name)s'
+    drop_sql_template = 'DROP INDEX %(name)s ON %(table_name)s'
+
+    def can_be_renamed(index):
+        return index.schema.provider.server_version >= (5, 7)
+
+class MySQLForeignKey(dbschema.ForeignKey):
+    drop_sql_template = 'ALTER TABLE %(table_name)s DROP FOREIGN KEY %(name)s'
+
+    def can_be_renamed(fk):
+        return False
+
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
 
 class MySQLSchema(dbschema.DBSchema):
     inline_fk_syntax = False
     column_class = MySQLColumn
+    index_class = MySQLIndex
+    fk_class = MySQLForeignKey
 
 class MySQLTranslator(SQLTranslator):
     json_path_wildcard_syntax = True

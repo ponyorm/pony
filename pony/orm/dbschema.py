@@ -85,6 +85,7 @@ class DBObject(object):
 
 class Table(DBObject):
     typename = 'Table'
+    rename_table_sql_template = "ALTER TABLE %(prev_name)s RENAME TO %(new_name)s"
     def __init__(table, schema, name, entity=None):
         if name in schema.tables:
             throw(DBSchemaError, "Table %r already exists in database schema" % name)
@@ -122,6 +123,33 @@ class Table(DBObject):
         table.entities.add(entity)
     def exists(table, provider, cursor, case_sensitive=True):
         return provider.table_exists(cursor, table.name, case_sensitive)
+    def db_rename(table, cursor):
+        schema = table.schema
+        provider = schema.provider
+        provider.rename_table(cursor, table.name.obsolete_name, table.name)
+
+        constraints = [ index for key, index in sorted(table.indexes.items()) if not index.is_pk ]
+        if schema.named_foreign_keys:
+            constraints.extend(fk for key, fk in sorted(table.foreign_keys.items()))
+
+        quote_name = provider.quote_name
+        table_name = quote_name(table.name)
+
+        for constraint in constraints:
+            name = constraint.name
+            assert name.obsolete_name
+            if name == name.obsolete_name: continue
+            prev_name = quote_name(name.obsolete_name)
+            new_name = quote_name(name)
+            if constraint.can_be_renamed():
+                sql = constraint.rename_sql_template % dict(
+                    table_name=table_name, prev_name=prev_name, new_name=new_name)
+                provider.execute(cursor, sql)
+            else:
+                drop_sql = constraint.drop_sql_template % dict(
+                    table_name=table_name, name=prev_name)
+                provider.execute(cursor, drop_sql)
+                constraint.create(provider, cursor)
     def get_create_command(table):
         schema = table.schema
         case = schema.case
@@ -249,6 +277,8 @@ class Column(object):
         return ' '.join(result)
 
 class Constraint(DBObject):
+    rename_sql_template = 'ALTER TABLE %(table_name)s RENAME CONSTRAINT %(prev_name)s TO %(new_name)s'
+    drop_sql_template = 'ALTER TABLE %(table_name)s DROP CONSTRAINT %(name)s'
     def __init__(constraint, name, schema):
         if name is not None:
             assert name not in schema.names
@@ -258,9 +288,13 @@ class Constraint(DBObject):
             schema.constraints[name] = constraint
         constraint.schema = schema
         constraint.name = name
+    def can_be_renamed(constraint):
+        return True
 
 class DBIndex(Constraint):
     typename = 'Index'
+    rename_sql_template = 'ALTER INDEX %(prev_name)s RENAME TO %(new_name)s'
+    drop_sql_template = 'DROP INDEX %(name)s'
     def __init__(index, name, table, col_names, is_pk=False, is_unique=None):
         assert len(col_names) > 0
         columns = []
