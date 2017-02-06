@@ -378,12 +378,13 @@ class SQLiteProvider(DBAPIProvider):
         return SQLitePool(filename, create_db, **kwargs)
 
     def table_exists(provider, cursor, table_name, case_sensitive=True):
-        return provider._exists(cursor, table_name, None, case_sensitive)
+        return provider._exists(cursor, table_name, None, case_sensitive=False)
 
     def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
-        return provider._exists(cursor, table_name, index_name, case_sensitive)
+        return provider._exists(cursor, table_name, index_name, case_sensitive=False)
 
-    def _exists(provider, cursor, table_name, index_name=None, case_sensitive=True):
+    def _exists(provider, cursor, table_name, index_name=None, case_sensitive=False):
+        # Note on case-sensitivity: SQLite treats "Table1" and "table1" as the same name, even with quotes
         db_name, table_name = provider.split_table_name(table_name)
 
         if db_name is None: catalog_name = 'sqlite_master'
