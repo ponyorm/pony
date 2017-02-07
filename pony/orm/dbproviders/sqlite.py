@@ -32,8 +32,13 @@ class SQLiteIndex(dbschema.DBIndex):
     def can_be_renamed(index):
         return False
 
+class SQLiteColumn(dbschema.Column):
+    def db_rename(column, cursor, table_name):
+        throw(NotImplementedError)
+
 class SQLiteSchema(dbschema.DBSchema):
     named_foreign_keys = False
+    column_class = SQLiteColumn
     index_class = SQLiteIndex
     fk_class = SQLiteForeignKey
 

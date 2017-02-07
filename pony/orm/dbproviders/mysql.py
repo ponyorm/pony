@@ -29,7 +29,7 @@ except ImportError:
 
 from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
 from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions, obsolete
 from pony.orm.sqltranslation import SQLTranslator, TranslationError
 from pony.orm.sqlbuilding import Value, Param, SQLBuilder, join
 from pony.utils import throw, get_version_tuple
@@ -50,6 +50,17 @@ class MySQLForeignKey(dbschema.ForeignKey):
 
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
+    rename_sql_template = 'ALTER TABLE %(table_name)s CHANGE %(prev_name)s %(new_col_def)s'
+
+    def db_rename(column, cursor, table_name):
+        schema = column.table.schema
+        provider = schema.provider
+        quote_name = provider.quote_name
+        table_name = quote_name(table_name)
+        prev_name = quote_name(obsolete(column.name))
+        sql = column.rename_sql_template % dict(table_name=table_name, prev_name=prev_name, new_col_def=column.get_sql())
+        provider.execute(cursor, sql)
+
 
 class MySQLSchema(dbschema.DBSchema):
     inline_fk_syntax = False

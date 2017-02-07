@@ -6,6 +6,7 @@ from operator import attrgetter
 import pony
 from pony.orm import core
 from pony.orm.core import log_sql, DBSchemaError, MappingError, UpgradeError
+from pony.orm.dbapiprovider import obsolete
 from pony.utils import throw, get_version_tuple
 
 class DBSchema(object):
@@ -248,7 +249,7 @@ class Table(DBObject):
         return table.schema.fk_class(fk_name, parent_table, parent_col_names, table, child_col_names, index_name)
 
 class Column(object):
-    auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
+    rename_sql_template = 'ALTER TABLE %(table_name)s RENAME COLUMN %(prev_name)s TO %(new_name)s'
     def __init__(column, name, table, sql_type, converter, is_not_null=None, sql_default=None):
         if name in table.column_dict:
             throw(DBSchemaError, "Column %r already exists in table %r" % (name, table.name))
@@ -265,6 +266,15 @@ class Column(object):
         column.is_unique = False
     def __repr__(column):
         return '<Column(%s.%s)>' % (column.table.name, column.name)
+    def db_rename(column, cursor, table_name):
+        schema = column.table.schema
+        provider = schema.provider
+        quote_name = provider.quote_name
+        table_name = quote_name(table_name)
+        prev_name = quote_name(obsolete(column.name))
+        new_name = quote_name(column.name)
+        sql = column.rename_sql_template % dict(table_name=table_name, prev_name=prev_name, new_name=new_name)
+        provider.execute(cursor, sql)
     def get_sql(column):
         table = column.table
         schema = table.schema
@@ -490,5 +500,10 @@ class RenameM2MTables(DbUpgrade):
 
         for table in ordered_rename_list:
             table.db_rename(cursor)
+
+        for table_name, table in sorted(schema.tables.items()):
+            for column in table.column_list:
+                if column.name != obsolete(column.name):
+                    column.db_rename(cursor, table_name)
 
 DBSchema.upgrades.extend([RenameM2MTables])
