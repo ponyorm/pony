@@ -84,6 +84,7 @@ def cut_traceback(func, *args, **kwargs):
     except AssertionError: raise
     except Exception:
         exc_type, exc, tb = sys.exc_info()
+        full_tb = tb
         last_pony_tb = None
         try:
             while tb.tb_next:
@@ -93,11 +94,11 @@ def cut_traceback(func, *args, **kwargs):
                     last_pony_tb = tb
                 tb = tb.tb_next
             if last_pony_tb is None: raise
-            if tb.tb_frame.f_globals.get('__name__') == 'pony.utils' and tb.tb_frame.f_code.co_name == 'throw':
+            if tb.tb_frame.f_globals.get('__name__').startswith('pony.utils') and tb.tb_frame.f_code.co_name == 'throw':
                 reraise(exc_type, exc, last_pony_tb)
-            raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+            reraise(exc_type, exc, full_tb)
         finally:
-            del exc, tb, last_pony_tb
+            del exc, full_tb, tb, last_pony_tb
 
 if PY2:
     exec('''def reraise(exc_type, exc, tb):
