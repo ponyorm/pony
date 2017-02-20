@@ -45,7 +45,7 @@ sql_debug(True)  # Output all SQL queries to stdout
 db.bind('sqlite', 'university1.sqlite', create_db=True)
 #db.bind('mysql', host="localhost", user="pony", passwd="pony", db="university1")
 #db.bind('postgres', user='pony', password='pony', host='localhost', database='university1')
-#db.bind('oracle', 'university1/pony@localhost')
+#db.bind('oracle', 'c##pony/pony@localhost/orcl')
 
 db.generate_mapping(create_tables=True)
 
