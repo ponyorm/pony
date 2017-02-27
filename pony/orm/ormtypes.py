@@ -60,7 +60,7 @@ class MethodType(object):
     def __eq__(self, other):
         return type(other) is MethodType and self.obj == other.obj and self.func == other.func
     def __ne__(self, other):
-        return type(other) is not SetType or self.obj != other.obj or self.func != other.func
+        return type(other) is not MethodType or self.obj != other.obj or self.func != other.func
     def __hash__(self):
         return hash(self.obj) ^ hash(self.func)
 
