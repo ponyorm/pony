@@ -2096,7 +2096,7 @@ class Attribute(object):
         wbit = bool(obj._wbits_ & bit)
         if not wbit:
             old_val = obj._vals_.get(attr, NOT_LOADED)
-            assert old_val == old_dbval
+            assert old_val == old_dbval, (old_val, old_dbval)
             if attr.is_part_of_unique_index:
                 cache = obj._session_cache_
                 if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
@@ -4390,9 +4390,13 @@ class Entity(with_metaclass(EntityMeta)):
                     continue
 
             bit = obj._bits_except_volatile_[attr]
-            if rbits & bit: throw(UnrepeatableReadError,
-                'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
-                % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
+            if rbits & bit:
+                errormsg = 'Please contact PonyORM developers so they can ' \
+                           'reproduce your error and fix a bug: support@ponyorm.com'
+                assert old_dbval is not NOT_LOADED, errormsg
+                throw(UnrepeatableReadError,
+                      'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
+                      % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
 
             if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
             obj._dbvals_[attr] = new_dbval
