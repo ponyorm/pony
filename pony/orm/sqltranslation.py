@@ -1275,7 +1275,11 @@ class NumericMixin(MonadMixin):
         return translator.CmpMonad('!=', monad, translator.ConstMonad.new(translator, 0))
     def negate(monad):
         translator = monad.translator
-        return translator.CmpMonad('==', monad, translator.ConstMonad.new(translator, 0))
+        result = translator.CmpMonad('==', monad, translator.ConstMonad.new(translator, 0))
+        if isinstance(monad, translator.AttrMonad) and not monad.attr.nullable:
+            return result
+        sql = [ 'OR', result.getsql()[0], [ 'IS_NULL', monad.getsql()[0] ] ]
+        return translator.BoolExprMonad(translator, sql)
 
 def numeric_attr_factory(name):
     def attr_func(monad):
