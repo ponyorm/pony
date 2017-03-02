@@ -132,7 +132,12 @@ class SQLiteBuilder(SQLBuilder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
     PY_UPPER = make_unary_func('py_upper')
     PY_LOWER = make_unary_func('py_lower')
-
+    def FLOAT_EQ(builder, a, b):
+        a, b = builder(a), builder(b)
+        return 'abs(', a, ' - ', b, ') / coalesce(nullif(max(abs(', a, '), abs(', b, ')), 0), 1) <= 1e-14'
+    def FLOAT_NE(builder, a, b):
+        a, b = builder(a), builder(b)
+        return 'abs(', a, ' - ', b, ') / coalesce(nullif(max(abs(', a, '), abs(', b, ')), 0), 1) > 1e-14'
     def JSON_QUERY(builder, expr, path):
         fname = 'json_extract' if builder.json1_available else 'py_json_extract'
         path_sql, has_params, has_wildcards = builder.build_json_path(path)

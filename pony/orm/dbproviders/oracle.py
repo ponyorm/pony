@@ -475,12 +475,16 @@ class OraProvider(DBAPIProvider):
         elif len(args) == 2: user, password = args
         elif len(args) == 3: user, password, dsn = args
         elif args: throw(ValueError, 'Invalid number of positional arguments')
-        if user != kwargs.setdefault('user', user):
-            throw(ValueError, 'Ambiguous value for user')
-        if password != kwargs.setdefault('password', password):
-            throw(ValueError, 'Ambiguous value for password')
-        if dsn != kwargs.setdefault('dsn', dsn):
-            throw(ValueError, 'Ambiguous value for dsn')
+
+        def setdefault(kwargs, key, value):
+            kwargs_value = kwargs.setdefault(key, value)
+            if value is not None and value != kwargs_value:
+                throw(ValueError, 'Ambiguous value for ' + key)
+
+        setdefault(kwargs, 'user', user)
+        setdefault(kwargs, 'password', password)
+        setdefault(kwargs, 'dsn', dsn)
+
         kwargs.setdefault('threaded', True)
         kwargs.setdefault('min', 1)
         kwargs.setdefault('max', 10)

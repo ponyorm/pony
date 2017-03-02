@@ -42,10 +42,13 @@ class Student(db.Entity):
 
 sql_debug(True)  # Output all SQL queries to stdout
 
-db.bind('sqlite', 'university1.sqlite', create_db=True)
-#db.bind('mysql', host="localhost", user="pony", passwd="pony", db="university1")
-#db.bind('postgres', user='pony', password='pony', host='localhost', database='university1')
-#db.bind('oracle', 'university1/pony@localhost')
+params = dict(
+    sqlite=dict(provider='sqlite', filename='university1.sqlite', create_db=True),
+    mysql=dict(provider='mysql', host="localhost", user="pony", passwd="pony", db="pony"),
+    postgres=dict(provider='postgres', user='pony', password='pony', host='localhost', database='pony'),
+    oracle=dict(provider='oracle', user='c##pony', password='pony', dsn='localhost/orcl')
+)
+db.bind(**params['sqlite'])
 
 db.generate_mapping(create_tables=True)
 

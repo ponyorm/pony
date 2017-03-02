@@ -506,10 +506,13 @@ class IntConverter(Converter):
         return converter.unsigned_types.get(converter.size)
 
 class RealConverter(Converter):
+    EQ = 'FLOAT_EQ'
+    NE = 'FLOAT_NE'
     # The tolerance is necessary for Oracle, because it has different representation of float numbers.
     # For other databases the default tolerance is set because the precision can be lost during
     # Python -> JavaScript -> Python conversion
     default_tolerance = 1e-14
+    optimistic = False
     def init(converter, kwargs):
         Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
