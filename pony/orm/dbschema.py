@@ -181,10 +181,10 @@ class Table(DBObject):
         if isinstance(provided_name, basestring): return provided_name
         return table.schema.provider.get_default_index_name(
                 table.name, col_names, is_pk=is_pk, is_unique=is_unique, m2m=m2m)
-    def add_index(table, col_names, is_pk=False, is_unique=None, m2m=False, index_name=None):
+    def add_index(table, col_names, is_pk=False, is_unique=None, m2m=False, provided_name=None):
         assert type(col_names) is tuple
-        assert index_name is not False
-        index_name = table.make_index_name(col_names, is_pk, is_unique, m2m, provided_name=index_name)
+        assert provided_name is not False
+        index_name = table.make_index_name(col_names, is_pk, is_unique, m2m, provided_name=provided_name)
         index = table.indexes.get(col_names)
         if index:
             if index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
@@ -367,7 +367,7 @@ class ForeignKey(Constraint):
             for col_names in child_table.indexes:
                 if col_names[:child_columns_len] == child_col_names: break
             else: child_table.add_index(child_col_names, is_pk=False, is_unique=False,
-                                        m2m=bool(child_table.m2m), index_name=index_name)
+                                        m2m=bool(child_table.m2m), provided_name=index_name)
     def exists(fk, provider, cursor, case_sensitive=True):
         return provider.fk_exists(cursor, fk.child_table.name, fk.name, case_sensitive)
     def get_sql(fk):

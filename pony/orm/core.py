@@ -848,8 +848,8 @@ class Database(object):
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_ if attr.columns and not attr.is_collection ]
             entity._init_bits_()
 
-            for index in entity._indexes_:
-                table.add_index(index.get_columns(), is_pk=index.is_pk, is_unique=index.is_unique, index_name=index.name)
+            for index in entity._indexes_: table.add_index(
+                index.get_columns(), is_pk=index.is_pk, is_unique=index.is_unique, provided_name=index.name)
 
         for entity in entities:
             table = schema.tables[entity._table_]
