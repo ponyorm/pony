@@ -824,11 +824,15 @@ class Database(object):
         return new_id
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
-        provider = database.provider
-        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
-        schema = database.schema = provider.dbschema_cls(provider)
+        database.schema = database.generate_schema()
+        if create_tables: database.create_tables(check_tables)
+        elif check_tables: database.check_tables()
+    def generate_schema(database):
+        provider = database.provider
+        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
+        schema = provider.dbschema_cls(provider)
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             for attr in entity._new_attrs_:
@@ -856,8 +860,7 @@ class Database(object):
             for attr in entity._new_attrs_:
                 attr._add_foreign_key_(table)
 
-        if create_tables: database.create_tables(check_tables)
-        elif check_tables: database.check_tables()
+        return schema
     @cut_traceback
     @db_session(ddl=True)
     def create_tables(database, check_tables=False):
