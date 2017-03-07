@@ -2309,6 +2309,8 @@ class Attribute(object):
             rentity = attr.reverse.entity
             parent_table = table.schema.tables[rentity._table_]
             table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_, child_col_names=attr.columns)
+    def _modify_relation_(attr, new_name, new_attr, reverse_name, reverse_attr):
+        throw(NotImplementedError)  # todo
     @property
     def asc(attr):
         return attr
