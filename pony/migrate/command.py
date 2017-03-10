@@ -21,7 +21,6 @@ CLI_DOC = '''
 Pony migration tool.
 
 Usage:
-    %(cli)s [--verbose | -v] [--fake]
     %(cli)s [--verbose | -v] [--empty --custom] make [<name>]
     %(cli)s [--verbose | -v] [--fake --dry] apply [[<start>] <end>]
     %(cli)s sql <name>

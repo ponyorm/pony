@@ -109,10 +109,6 @@ def patches(test):
             TestQuestioner
         ))
         stack.enter_context(patch(
-            'pony.migrate.migration.InteractiveMigrationQuestioner',
-            TestQuestioner
-        ))
-        stack.enter_context(patch(
             'pony.migrate.command.InteractiveMigrationQuestioner',
             TestQuestioner
         ))
