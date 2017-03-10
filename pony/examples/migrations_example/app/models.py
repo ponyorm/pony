@@ -22,7 +22,3 @@ class Picture(StoredItem):
     width = Optional(int)
     height = Optional(int)
     f = Optional(str)
-
-db.bind(**settings.DB)
-
-db.generate_mapping()

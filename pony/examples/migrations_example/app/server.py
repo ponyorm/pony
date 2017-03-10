@@ -74,4 +74,5 @@ def _(response):
 
 
 if __name__ == '__main__':
+    db.connect(**settings.db_params)
     app.run()

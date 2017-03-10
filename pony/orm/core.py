@@ -659,6 +659,30 @@ class Database(object):
         self.provider = None
         if args or kwargs: self._bind(*args, **kwargs)
     @cut_traceback
+    def connect(self, *args, **kwargs):
+        check_tables = kwargs.pop('check_tables', True)
+        create_tables = kwargs.pop('create_tables', False)
+        auto_upgrade = kwargs.pop('allow_auto_upgrade', False)
+        kwargs.pop('migration_dir', None)
+        self._bind(*args, **kwargs)
+        self.generate_mapping(check_tables=check_tables, create_tables=create_tables, allow_auto_upgrade=auto_upgrade)
+    @cut_traceback
+    def migrate(self, *args, **kwargs):
+        kwargs.pop('check_tables', True)
+        kwargs.pop('create_tables', False)
+        auto_upgrade = kwargs.pop('allow_auto_upgrade', False)
+        migration_dir = kwargs.pop('migration_dir', None)
+        self._bind(*args, **kwargs)
+        self.generate_mapping(check_tables=False, allow_auto_upgrade=auto_upgrade)
+
+        from pony.migrate.command import migrate, CLI_DOC
+        from docopt import docopt
+        if migration_dir is not None:
+            os.environ['MIGRATIONS_DIR'] = migration_dir
+        doc = CLI_DOC % {'cli': 'migrate'}
+        opts = docopt(doc)
+        migrate(self, opts)
+    @cut_traceback
     def bind(self, *args, **kwargs):
         self._bind(*args, **kwargs)
     def _bind(self, *args, **kwargs):
@@ -1254,15 +1278,6 @@ class Database(object):
             return x
 
         return deserialize(changes['data'])
-
-    def migrate(database, migration_dir=None):
-        from pony.migrate.command import migrate, CLI_DOC
-        from docopt import docopt
-        if migration_dir is not None:
-            os.environ['MIGRATIONS_DIR'] = migration_dir
-        doc = CLI_DOC % {'cli': 'migrate'}
-        opts = docopt(doc)
-        migrate(database, opts)
 
 def basic_converter(x):
     if isinstance(x, (datetime.datetime, datetime.date, Decimal)):
