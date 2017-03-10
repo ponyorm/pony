@@ -4420,8 +4420,10 @@ class Entity(with_metaclass(EntityMeta)):
             cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
 
         for attr, new_val in iteritems(avdict):
-            converter = attr.converters[0]
-            new_val = converter.dbval2val(new_val, obj)
+            if not attr.reverse:
+                assert len(attr.converters) == 1, attr
+                converter = attr.converters[0]
+                new_val = converter.dbval2val(new_val, obj)
             obj._vals_[attr] = new_val
     def _delete_(obj, undo_funcs=None):
         status = obj._status_
