@@ -12,6 +12,7 @@ from uuid import UUID
 from binascii import hexlify
 from functools import wraps
 
+from pony import orm
 from pony.orm import core, dbschema, sqltranslation, dbapiprovider
 from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json
@@ -70,6 +71,11 @@ class SQLiteTable(dbschema.Table):
         name__new = quote_name(''.join((table.name, '__new')))
 
         batch = OperationBatch(type='rename')
+
+        batch.append(
+            Op('PRAGMA foreign_keys = false', None, 'pragma_foreign_keys')
+        )
+
         table_columns = table.column_list
         table_name = table.name
         try:
@@ -89,15 +95,22 @@ class SQLiteTable(dbschema.Table):
         op = Op(insert_sql, table, type='insert')
         batch.append(op)
 
-        batch.append(
-            Op('PRAGMA defer_foreign_keys = true', None, 'pragma')
-        )
         drop_sql = 'DROP TABLE {}'.format(name)
         op = Op(drop_sql, table, type='drop')
         batch.append(op)
         rename_sql = 'ALTER TABLE {} RENAME TO {}'.format(name__new, name)
         op = Op(rename_sql, table, type='rename')
         batch.append(op)
+
+        for entity in table.entities:
+            break
+        with orm.db_session:
+            cache = entity._database_._get_cache()
+        if cache.saved_fk_state:
+            batch.append(
+                Op('PRAGMA foreign_keys = true', None, 'pragma_foreign_keys')
+            )
+
         yield batch
 
 class SQLiteIndex(dbschema.DBIndex):

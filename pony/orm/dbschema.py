@@ -4,7 +4,7 @@ from pony.py23compat import iteritems, itervalues, basestring, imap
 from operator import attrgetter
 
 import pony
-from pony.orm import core
+from pony import orm
 from pony.orm.core import log_sql, DBSchemaError, MappingError, UpgradeError
 from pony.orm.dbapiprovider import obsolete
 from pony.utils import throw, get_version_tuple
@@ -253,9 +253,14 @@ class Table(DBObject):
         new_name = quote_name(table.name)
         sql = case('RENAME TO {}').format(new_name)
         op = Op(sql, table, 'rename', prefix=alter_table(prev_name))
-        if schema.provider.dialect == 'SQLite':
-            op1 = Op('PRAGMA foreign_keys = true', None, 'pragma')
-            op2 = Op('PRAGMA foreign_keys = false', None, 'pragma')
+
+        for entity in table.entities:
+            break
+        with orm.db_session:
+            cache = entity._database_._get_cache()
+        if schema.provider.dialect == 'SQLite' and not cache.saved_fk_state:
+            op1 = Op('PRAGMA foreign_keys = true', None, 'pragma_foreign_keys')
+            op2 = Op('PRAGMA foreign_keys = false', None, 'pragma_foreign_keys')
             yield OperationBatch([op1, op, op2], type='rename')
             raise StopIteration
         yield op

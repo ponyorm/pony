@@ -355,7 +355,17 @@ class Migration(object):
             return
         if sql:
             if not dry_run:
-                db.execute(sql)
+                if op.type == 'pragma_foreign_keys':
+                    orm.commit()
+                    cache = db._get_cache()
+                    immediate = cache.immediate
+                    cache.immediate = False
+                    try:
+                        db._exec_sql(sql)
+                    finally:
+                        cache.immediate = immediate
+                else:
+                    db.execute(sql)
             else:
                 print(sql)
 
