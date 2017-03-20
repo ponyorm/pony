@@ -76,6 +76,8 @@ class SQLiteTable(dbschema.Table):
             Op('PRAGMA foreign_keys = false', None, 'pragma_foreign_keys')
         )
 
+        index_ops = []
+
         table_columns = table.column_list
         table_name = table.name
         try:
@@ -83,6 +85,15 @@ class SQLiteTable(dbschema.Table):
             table.name = ''.join((table.name, '__new'))
             for op in table.get_create_ops():
                 batch.append(op)
+
+            # Got to copy all indices to the fresh created table
+            for index in prev.indexes.values():
+                if index.is_pk or index.is_unique:
+                    continue
+                sql = index.get_create_command()
+                index_ops.append(
+                    Op(sql, index, type='create')
+                )
         finally:
             table.column_list = table_columns
             table.name = table_name
@@ -98,9 +109,12 @@ class SQLiteTable(dbschema.Table):
         drop_sql = 'DROP TABLE {}'.format(name)
         op = Op(drop_sql, table, type='drop')
         batch.append(op)
+
         rename_sql = 'ALTER TABLE {} RENAME TO {}'.format(name__new, name)
         op = Op(rename_sql, table, type='rename')
         batch.append(op)
+
+        batch.extend(index_ops)
 
         for entity in table.entities:
             break
