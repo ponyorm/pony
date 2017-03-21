@@ -278,8 +278,6 @@ class TestJson(TestCase):
             p = get(p for p in self.Product)
             self.assertDictEqual(p.info['os'], {'type': 'iOS', 'version': '9'})
 
-    # JSON length
-
     @db_session
     def test_len(self):
         with raises_if(self, self.db.provider.dialect == 'Oracle',
@@ -289,11 +287,14 @@ class TestJson(TestCase):
             val = select(len(p.info['colors']) for p in self.Product).first()
             self.assertEqual(val, 3)
 
-    # # Json equality
-
     @db_session
     def test_equal_str(self):
         p = get(p for p in self.Product if p.info['name'] == 'Apple iPad Air 2')
+        self.assertTrue(p)
+
+    @db_session
+    def test_unicode_key(self):
+        p = get(p for p in self.Product if p.info[u'name'] == 'Apple iPad Air 2')
         self.assertTrue(p)
 
     @db_session
