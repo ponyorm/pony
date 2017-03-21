@@ -293,6 +293,11 @@ class TestJson(TestCase):
         self.assertTrue(p)
 
     @db_session
+    def test_unicode_key(self):
+        p = get(p for p in self.Product if p.info[u'name'] == 'Apple iPad Air 2')
+        self.assertTrue(p)
+
+    @db_session
     def test_equal_string_attr(self):
         p = get(p for p in self.Product if p.info['name'] == p.name)
         self.assertTrue(p)

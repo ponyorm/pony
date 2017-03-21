@@ -555,7 +555,7 @@ class SQLBuilder(object):
         empty_slice = slice(None, None, None)
         for value in values:
             if isinstance(value, int): append('[%d]' % value)
-            elif isinstance(value, str):
+            elif isinstance(value, basestring):
                 append('.' + value if is_ident(value) else '."%s"' % value.replace('"', '\\"'))
             elif value is Ellipsis: append('.*')
             elif value == empty_slice: append('[*]')
