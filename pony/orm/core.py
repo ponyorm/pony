@@ -3881,19 +3881,24 @@ class EntityMeta(type):
             obj._rbits_ |= rbits & ~wbits
     def _parse_row_(entity, row, attr_offsets):
         discr_attr = entity._discriminator_attr_
-        if not discr_attr: real_entity_subclass = entity
+        if not discr_attr:
+            discr_value = None
+            real_entity_subclass = entity
         else:
             discr_offset = attr_offsets[discr_attr][0]
             discr_value = discr_attr.validate(row[discr_offset], None, entity, from_db=True)
             real_entity_subclass = discr_attr.code2cls[discr_value]
+            discr_value = real_entity_subclass._discriminator_  # To convert unicode to str in Python 2.x
 
         avdict = {}
         for attr in real_entity_subclass._attrs_:
             offsets = attr_offsets.get(attr)
             if offsets is None or attr.is_discriminator: continue
             avdict[attr] = attr.parse_value(row, offsets)
-        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_attrs_[0], None)
-        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
+
+        pkval = tuple(avdict.pop(attr, discr_value) for attr in entity._pk_attrs_)
+        assert None not in pkval
+        if not entity._pk_is_composite_: pkval = pkval[0]
         return real_entity_subclass, pkval, avdict
     def _load_many_(entity, objects):
         database = entity._database_

@@ -257,5 +257,29 @@ class TestInheritance(unittest.TestCase):
             result = select(e for e in Entity1 if e.b == 30 or e.c == 50)
             self.assertEqual([ e.id for e in result ], [ 2, 3 ])
 
+    def test_discriminator_1(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Discriminator(str)
+            b = Required(int)
+            PrimaryKey(a, b)
+        class Entity2(db.Entity1):
+            c = Required(int)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            x = Entity1(b=10)
+            y = Entity2(b=20, c=30)
+        with db_session:
+            obj = Entity1.get(b=20)
+            self.assertEqual(obj.a, 'Entity2')
+            self.assertEqual(obj.b, 20)
+            self.assertEqual(obj._pkval_, ('Entity2', 20))
+        with db_session:
+            obj = Entity1['Entity2', 20]
+            self.assertEqual(obj.a, 'Entity2')
+            self.assertEqual(obj.b, 20)
+            self.assertEqual(obj._pkval_, ('Entity2', 20))
+
+
 if __name__ == '__main__':
     unittest.main()
