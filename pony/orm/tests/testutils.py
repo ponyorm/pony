@@ -7,38 +7,42 @@ from contextlib import contextmanager
 from pony.orm.core import Database
 from pony.utils import import_module
 
-def raises_exception(exc_class, msg=None):
+def test_exception_msg(test_case, exc_msg, test_msg=None):
+    if test_msg is None: return
+    error_template = "incorrect exception message. expected '%s', got '%s'"
+    assert test_msg not in ('...', '....', '.....', '......')
+    if test_msg.startswith('...'):
+        if test_msg.endswith('...'):
+            test_case.assertIn(test_msg[3:-3], exc_msg, error_template % (test_msg, exc_msg))
+        else:
+            test_case.assertTrue(exc_msg.endswith(test_msg[3:]), error_template % (test_msg, exc_msg))
+    elif test_msg.endswith('...'):
+        test_case.assertTrue(exc_msg.startswith(test_msg[:-3]), error_template % (test_msg, exc_msg))
+    else:
+        test_case.assertEqual(exc_msg, test_msg, error_template % (test_msg, exc_msg))
+
+def raises_exception(exc_class, test_msg=None):
     def decorator(func):
-        def wrapper(self, *args, **kwargs):
+        def wrapper(test_case, *args, **kwargs):
             try:
-                func(self, *args, **kwargs)
-                self.fail("expected exception %s wasn't raised" % exc_class.__name__)
+                func(test_case, *args, **kwargs)
+                test_case.fail("Expected exception %s wasn't raised" % exc_class.__name__)
             except exc_class as e:
-                if not e.args: self.assertEqual(msg, None)
-                elif msg is not None:
-                    self.assertEqual(e.args[0], msg, "incorrect exception message. expected '%s', got '%s'" % (msg, e.args[0]))
+                if not e.args: test_case.assertEqual(test_msg, None)
+                else: test_exception_msg(test_case, str(e), test_msg)
         wrapper.__name__ = func.__name__
         return wrapper
     return decorator
 
 @contextmanager
-def raises_if(test, cond, exc_class, exc_msg=None):
+def raises_if(test_case, cond, exc_class, test_msg=None):
     try:
         yield
     except exc_class as e:
-        test.assertTrue(cond)
-        if exc_msg is None: pass
-        elif exc_msg.startswith('...') and exc_msg != '...':
-            if exc_msg.endswith('...'):
-                test.assertIn(exc_msg[3:-3], str(e))
-            else:
-                test.assertTrue(str(e).endswith(exc_msg[3:]))
-        elif exc_msg.endswith('...'):
-            test.assertTrue(str(e).startswith(exc_msg[:-3]))
-        else:
-            test.assertEqual(str(e), exc_msg)
+        test_case.assertTrue(cond)
+        test_exception_msg(test_case, str(e), test_msg)
     else:
-        test.assertFalse(cond)
+        test_case.assertFalse(cond, "Expected exception %s wasn't raised" % exc_class.__name__)
 
 def flatten(x):
     result = []
