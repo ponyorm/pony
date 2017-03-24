@@ -3062,7 +3062,6 @@ class SetInstance(object):
         kwargs[reverse.name] = wrapper._obj_
         item_type = attr.py_type
         item = item_type(**kwargs)
-        wrapper.add(item)
         return item
     @cut_traceback
     def add(wrapper, new_items):
