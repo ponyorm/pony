@@ -269,8 +269,6 @@ class Migration(object):
         applied_names = []
 
         def generate(new_db, prev_db, entity_ops, current_schema=db.schema):
-            # mig = loader.disk_migrations[name] # global state?
-            # mig.entity_ops = entity_ops #
             current_schema = db.schema
             schema = new_db.generate_schema()
             prev_schema = prev_db and prev_db.generate_schema()
@@ -299,7 +297,6 @@ class Migration(object):
             if group:
                 yield group
 
-        @orm.db_session
         def execute(ops, db):
             if len(ops) == 1 and isinstance(ops[0], CustomOp):
                 with orm.db_session:
@@ -332,13 +329,18 @@ class Migration(object):
                     to_execute = generate(new_db, prev_db, dic.get('operations'))
 
                 if not (is_fake and name == '0001_initial'):
-                    try:
+                    # execute in transaction
+                    @orm.db_session(ddl=True)
+                    def run():
                         prev_db_schema = prev_db.schema
                         # FIXME is generated 2nd time
                         prev_db.schema = prev_db.generate_schema()
-                        execute(to_execute, prev_db) # ??
-                    finally:
-                        prev_db.schema = prev_db_schema
+                        try:
+                            execute(to_execute, prev_db)
+                        finally:
+                            prev_db.schema = prev_db_schema
+
+                    run()
 
             applied_names.append(name)
 
@@ -353,21 +355,10 @@ class Migration(object):
         sql = op.get_sql().strip()
         if not sql:
             return
-        if sql:
-            if not dry_run:
-                if op.type == 'pragma_foreign_keys':
-                    orm.commit()
-                    cache = db._get_cache()
-                    immediate = cache.immediate
-                    cache.immediate = False
-                    try:
-                        db._exec_sql(sql)
-                    finally:
-                        cache.immediate = immediate
-                else:
-                    db.execute(sql)
-            else:
-                print(sql)
+        if not dry_run:
+            db.execute(sql)
+        else:
+            print(sql)
 
 
 class MigrationLoader(object):
