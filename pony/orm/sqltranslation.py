@@ -1708,7 +1708,7 @@ class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
 class DateParamMonad(DateMixin, ParamMonad): pass
 class TimeParamMonad(TimeMixin, ParamMonad): pass
-class TimedeltaParamMonad(TimeMixin, ParamMonad): pass
+class TimedeltaParamMonad(TimedeltaMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
