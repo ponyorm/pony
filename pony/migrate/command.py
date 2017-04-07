@@ -22,7 +22,7 @@ Pony migration tool.
 
 Usage:
     %(cli)s [--verbose | -v] [--empty --custom] make [<name>]
-    %(cli)s [--verbose | -v] [--fake --dry] apply [[<start>] <end>]
+    %(cli)s [--verbose | -v] [--fake-initial --dry] apply [[<start>] <end>]
     %(cli)s sql <name>
     %(cli)s list
 
@@ -35,7 +35,7 @@ Subcommands:
 
 Options:
     --empty       Generate a template for data migration
-    --fake        Consider migrations applied
+    --fake-initial  Fake the first migration
     --dry         Just print sql instead without executing it
     -v --verbose  Set sql_debug(True)
     -h --help     Show this screen
@@ -80,7 +80,7 @@ def cli(db, argv=None):
 def migrate(db, opts):
     debug = os.environ.get('PONY_DEBUG')
     verbose = opts['--verbose'] or opts.get('-v')
-    fake = opts['--fake']
+    fake = opts['--fake-initial']
 
     for cmd in ('make', 'apply', 'sql', 'list'):
         if opts.get(cmd):

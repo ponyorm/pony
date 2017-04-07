@@ -1260,7 +1260,7 @@ class Database(object):
         from docopt import docopt
         if migration_dir is not None:
             os.environ['MIGRATIONS_DIR'] = migration_dir
-        doc = CLI_DOC % {'cli': 'cli'}
+        doc = CLI_DOC % {'cli': 'migrate'}
         opts = docopt(doc)
         migrate(database, opts)
 

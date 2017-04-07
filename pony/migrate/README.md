@@ -55,10 +55,10 @@ Suppose the first command produced you `0001_initial.py` file. If you open it, y
 migrate apply
 ```
 
-If you already have the tables created in your database, you should use the `--fake` option:
+If you already have the tables created in your database, you should use the `--fake-initial` option:
 
  ```bash
-migrate apply --fake
+migrate apply --fake-initial
 ```
 
 Now suppose you did some changes to `entities.py` file. Do the procedure again: `migrate make`.

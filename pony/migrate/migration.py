@@ -83,6 +83,7 @@ class Migration(object):
             p = os.path.join(migrations, '{}.py'.format(name))
             with open(p, 'w') as f:
                 f.write(generated)
+            print('Written: %s' % os.path.relpath(p))
             return
 
         [leaf] = leaves
@@ -146,6 +147,7 @@ class Migration(object):
             p = os.path.join(migrations, '{}.py'.format(name))
             with open(p, 'w') as f:
                 f.write(generated)
+            print('Written: %s' % os.path.relpath(p))
             return
 
         writer = MigrationWriter(leaves, prev_db, db)
@@ -157,6 +159,7 @@ class Migration(object):
         p = os.path.join(migrations, '{}.py'.format(name))
         with open(p, 'w') as f:
             f.write(generated)
+        print('Written: %s' % os.path.relpath(p))
 
 
     @classmethod
@@ -348,6 +351,10 @@ class Migration(object):
             if not dry_run:
                 for name in applied_names:
                     migration_db.Migration(name=name, applied=datetime.now())
+
+        print('Applied:')
+        for name in applied_names:
+            print('  - %s' % name)
 
 
     @classmethod
