@@ -2408,8 +2408,15 @@ class Attribute(object):
         assert len(columns) == len(attr.converters)
         if len(columns) == 1:
             converter = attr.converters[0]
+            default = attr.sql_default
+            if attr.default and not callable(attr.default) and default is None:
+                provider = attr.entity._database_.provider
+                value_class = provider.sqlbuilder_cls.value_class
+                value = converter.py2sql(attr.default)
+                value = value_class(provider.paramstyle, value)
+                default = str(value)
             table.add_column(columns[0], converter.get_sql_type(attr),
-                             converter, not attr.nullable, attr.sql_default)
+                             converter, not attr.nullable, default)
         elif columns:
             if attr.sql_type is not None:
                 throw(NotImplementedError, 'sql_type cannot be specified for composite attribute %s' % attr)
