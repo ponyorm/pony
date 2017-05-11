@@ -295,21 +295,30 @@ class SQLiteProvider(DBAPIProvider):
 
     def commit(provider, connection, cache=None):
         in_transaction = cache is not None and cache.in_transaction
-        DBAPIProvider.commit(provider, connection, cache)
-        if in_transaction:
-            provider.transaction_lock.release()
+        try:
+            DBAPIProvider.commit(provider, connection, cache)
+        finally:
+            if in_transaction:
+                cache.in_transaction = False
+                provider.transaction_lock.release()
 
     def rollback(provider, connection, cache=None):
         in_transaction = cache is not None and cache.in_transaction
-        DBAPIProvider.rollback(provider, connection, cache)
-        if in_transaction:
-            provider.transaction_lock.release()
+        try:
+            DBAPIProvider.rollback(provider, connection, cache)
+        finally:
+            if in_transaction:
+                cache.in_transaction = False
+                provider.transaction_lock.release()
 
     def drop(provider, connection, cache=None):
         in_transaction = cache is not None and cache.in_transaction
-        DBAPIProvider.drop(provider, connection, cache)
-        if in_transaction:
-            provider.transaction_lock.release()
+        try:
+            DBAPIProvider.drop(provider, connection, cache)
+        finally:
+            if in_transaction:
+                cache.in_transaction = False
+                provider.transaction_lock.release()
 
     @wrap_dbapi_exceptions
     def release(provider, connection, cache=None):
