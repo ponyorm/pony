@@ -672,15 +672,19 @@ class Database(object):
         kwargs.pop('create_tables', False)
         auto_upgrade = kwargs.pop('allow_auto_upgrade', False)
         migration_dir = kwargs.pop('migration_dir', None)
+        command = kwargs.pop('command', None)
         self._bind(*args, **kwargs)
         self.generate_mapping(check_tables=False, allow_auto_upgrade=auto_upgrade)
 
-        from pony.migrate.command import migrate, CLI_DOC
-        from docopt import docopt
         if migration_dir is not None:
             os.environ['MIGRATIONS_DIR'] = migration_dir
+        if isinstance(command, basestring):
+            import shlex
+            command = shlex.split(command)
+        from pony.migrate.command import migrate, CLI_DOC
         doc = CLI_DOC % {'cli': 'migrate'}
-        opts = docopt(doc)
+        from docopt import docopt
+        opts = docopt(doc, argv=command)
         migrate(self, opts)
     @cut_traceback
     def bind(self, *args, **kwargs):
