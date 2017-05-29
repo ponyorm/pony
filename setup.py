@@ -3,6 +3,8 @@ from __future__ import print_function
 from distutils.core import setup
 import sys
 
+from setuptools import find_packages
+
 name = "pony"
 version = __import__('pony').__version__
 description = "Pony Object-Relational Mapper"
@@ -73,18 +75,19 @@ author_email = "team@ponyorm.com"
 url = "https://ponyorm.com"
 licence = "Apache License Version 2.0"
 
-packages = [
-    "pony",
-    "pony.migrate",
-    "pony.orm",
-    "pony.orm.dbproviders",
-    "pony.orm.examples",
-    "pony.orm.integration",
-    "pony.orm.tests",
-    "pony.thirdparty",
-    "pony.thirdparty.compiler",
-    "pony.utils"
-]
+# packages = [
+#     "pony",
+#     "pony.migrate",
+#     "pony.orm",
+#     "pony.orm.dbproviders",
+#     "pony.orm.examples",
+#     "pony.orm.integration",
+#     "pony.orm.tests",
+#     "pony.editor",
+#     "pony.thirdparty",
+#     "pony.thirdparty.compiler",
+#     "pony.utils"
+# ]
 
 download_url = "http://pypi.python.org/pypi/pony/"
 
@@ -113,7 +116,7 @@ if __name__ == "__main__":
         author_email=author_email,
         url=url,
         license=licence,
-        packages=packages,
+        packages=find_packages(),
         download_url=download_url,
         install_requires=REQUIRES,
     )
