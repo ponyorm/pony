@@ -29,45 +29,43 @@ from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
      deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
 
-__all__ = '''
-    pony
+__all__ = [
+    'pony',
 
-    DBException RowNotFound MultipleRowsFound TooManyRowsFound
+    'DBException', 'RowNotFound', 'MultipleRowsFound', 'TooManyRowsFound',
 
-    Warning Error InterfaceError DatabaseError DataError OperationalError
-    IntegrityError InternalError ProgrammingError NotSupportedError
+    'Warning', 'Error', 'InterfaceError', 'DatabaseError', 'DataError', 'OperationalError',
+    'IntegrityError', 'InternalError', 'ProgrammingError', 'NotSupportedError',
 
-    OrmError ERDiagramError DBSchemaError MappingError
-    TableDoesNotExist TableIsNotEmpty ConstraintError CacheIndexError PermissionError
-    ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
-    TransactionError ConnectionClosedError TransactionIntegrityError IsolationError CommitException RollbackException
-    UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError DatabaseSessionIsOver
-    DatabaseContainsIncorrectValue DatabaseContainsIncorrectEmptyValue
+    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError',
+    'TableDoesNotExist', 'TableIsNotEmpty', 'ConstraintError', 'CacheIndexError',
+    'ObjectNotFound', 'MultipleObjectsFoundError', 'TooManyObjectsFoundError', 'OperationWithDeletedObjectError',
+    'TransactionError', 'ConnectionClosedError', 'TransactionIntegrityError', 'IsolationError',
+    'CommitException', 'RollbackException', 'UnrepeatableReadError', 'OptimisticCheckError',
+    'UnresolvableCyclicDependency', 'UnexpectedError', 'DatabaseSessionIsOver',
+    'DatabaseContainsIncorrectValue', 'DatabaseContainsIncorrectEmptyValue',
+    'TranslationError', 'ExprEvalError', 'PermissionError',
 
-    TranslationError ExprEvalError
+    'Database', 'sql_debug', 'show',
 
-    RowNotFound MultipleRowsFound TooManyRowsFound
+    'PrimaryKey', 'Required', 'Optional', 'Set', 'Discriminator',
+    'composite_key', 'composite_index',
+    'flush', 'commit', 'rollback', 'db_session', 'with_transaction',
 
-    Database sql_debug show
+    'LongStr', 'LongUnicode', 'Json',
 
-    PrimaryKey Required Optional Set Discriminator
-    composite_key composite_index
-    flush commit rollback db_session with_transaction
+    'select', 'left_join', 'get', 'exists', 'delete',
 
-    LongStr LongUnicode Json
+    'count', 'sum', 'min', 'max', 'avg', 'distinct',
 
-    select left_join get exists delete
+    'JOIN', 'desc', 'concat', 'raw_sql',
 
-    count sum min max avg distinct
+    'buffer', 'unicode',
 
-    JOIN desc concat raw_sql
-
-    buffer unicode
-
-    get_current_user set_current_user perm has_perm
-    get_user_groups get_user_roles get_object_labels
-    user_groups_getter user_roles_getter obj_labels_getter
-    '''.split()
+    'get_current_user', 'set_current_user', 'perm', 'has_perm',
+    'get_user_groups', 'get_user_roles', 'get_object_labels',
+    'user_groups_getter', 'user_roles_getter', 'obj_labels_getter'
+]
 
 debug = False
 suppress_debug_change = False
