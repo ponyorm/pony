@@ -6,6 +6,7 @@ from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from functools import wraps, WRAPPER_ASSIGNMENTS
 from uuid import UUID
+from enum import Enum
 
 from pony.utils import throw, parse_expr
 
@@ -156,6 +157,7 @@ def normalize_type(t):
     if t in (slice, type(Ellipsis)): return t
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
+    if issubclass(t, Enum): return t
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
@@ -205,6 +207,7 @@ def are_comparable_types(t1, t2, op='=='):
         return True
     if tt1 is RawSQLType or tt2 is RawSQLType: return True
     if op in ('==', '<>', '!='):
+        if t1 is t2: return True
         if t1 is NoneType and t2 is NoneType: return False
         if t1 is NoneType or t2 is NoneType: return True
         if t1 in primitive_types:

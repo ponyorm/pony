@@ -203,7 +203,7 @@ class Column(object):
         if column.is_pk == 'auto' and column.auto_template:
             append(case(column.auto_template % dict(type=column.sql_type)))
         else:
-            append(case(column.sql_type))
+            append(column.sql_type)
             if column.is_pk:
                 if schema.dialect == 'SQLite': append(case('NOT NULL'))
                 append(case('PRIMARY KEY'))

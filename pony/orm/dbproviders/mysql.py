@@ -5,6 +5,7 @@ import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
+from enum import Enum
 
 NoneType = type(None)
 
@@ -134,6 +135,19 @@ class MySQLStrConverter(dbapiprovider.StrConverter):
         if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
         return result
 
+class EnumConverter(dbapiprovider.Converter):
+    def py2sql(self, val):
+        return val.value
+    def sql2py(self, val):
+        for enum_item in self.py_type:
+            if val == enum_item.value:
+                return enum_item
+        raise ValueError(val)
+    def sql_type(self):
+        return "ENUM(%s) character set ascii collate ascii_bin" % ', '.join(
+            "'%s'" % enum_item.value for enum_item in self.py_type
+        )
+
 class MySQLRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
         return 'DOUBLE'
@@ -203,6 +217,7 @@ class MySQLProvider(DBAPIProvider):
         (UUID, MySQLUuidConverter),
         (buffer, MySQLBlobConverter),
         (ormtypes.Json, MySQLJsonConverter),
+        (Enum, EnumConverter)
     ]
 
     def normalize_name(provider, name):

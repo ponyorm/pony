@@ -8,6 +8,7 @@ from random import random
 from copy import deepcopy
 from functools import update_wrapper
 from uuid import UUID
+from enum import Enum
 
 from pony.thirdparty.compiler import ast
 
@@ -1578,6 +1579,7 @@ class AttrMonad(Monad):
         elif type is UUID: cls = translator.UuidAttrMonad
         elif type is Json: cls = translator.JsonAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
+        elif issubclass(type, Enum): cls = EnumAttrMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
@@ -1631,6 +1633,7 @@ class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 class UuidAttrMonad(UuidMixin, AttrMonad): pass
 class JsonAttrMonad(JsonMixin, AttrMonad): pass
+class EnumAttrMonad(AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
@@ -1646,6 +1649,7 @@ class ParamMonad(Monad):
         elif type is UUID: cls = translator.UuidParamMonad
         elif type is Json: cls = translator.JsonParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
+        elif issubclass(type, Enum): cls = translator.EnumParamMonad
         else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type))
         result = cls(translator, type, paramkey)
         result.aggregated = False
@@ -1686,6 +1690,7 @@ class TimedeltaParamMonad(TimeMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
+class EnumParamMonad(ParamMonad): pass
 
 class JsonParamMonad(JsonMixin, ParamMonad):
     def getsql(monad, subquery=None):
