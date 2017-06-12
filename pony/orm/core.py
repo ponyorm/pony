@@ -71,6 +71,22 @@ debug = False
 suppress_debug_change = False
 
 def sql_debug(value):
+    """Prints SQL statements being sent to the database to the console or
+    to a log file.
+
+    By default Pony sends debug information to stdout. If you have the
+    standard Python logging configured, Pony will use it instead. Here is
+    how you can store debug information in a file:
+
+    >>> import logging
+    >>> logging.basicConfig(filename='pony.log', level=logging.INFO)
+
+    Note, that we had to specify the level=logging.INFO because the default
+    standard logging level is WARNING and Pony uses the INFO level for its
+    messages by default. Pony uses two loggers: pony.orm.sql for SQL
+    statements that it sends to the database and pony.orm for all other
+    messages.
+    """
     global debug
     if not suppress_debug_change: debug = value
 
@@ -268,6 +284,14 @@ def _get_caches():
 
 @cut_traceback
 def flush():
+    """Save the changes accumulated in the db_session() cache to the
+    database. You may never have a need to call this method manually,
+    because it will be done on leaving the db_session() automatically.
+
+    Pony always saves the changes accumulated in the cache automatically
+    before executing the following methods: get(), exists(), execute(),
+    commit(), select().
+    """
     for cache in _get_caches(): cache.flush()
 
 def transact_reraise(exc_class, exceptions):
@@ -289,6 +313,10 @@ def rollback_and_reraise(exc_info):
 
 @cut_traceback
 def commit():
+    """Save all changes which were made within the current db_session()
+    using the flush() function and commits the transaction to the database.
+    This top level commit() function calls the commit() method of each
+    database object which was used in current transaction."""
     caches = _get_caches()
     if not caches: return
 
@@ -320,6 +348,10 @@ def commit():
 
 @cut_traceback
 def rollback():
+    """Roll back the current transaction.
+
+    This top level rollback() function calls the rollback() method of each
+    database object which was used in current transaction."""
     exceptions = []
     try:
         for cache in _get_caches():
@@ -515,6 +547,15 @@ def db_decorator(func, *args, **kwargs):
         raise
 
 class Database(object):
+    """The Database object manages database connections using a connection
+    pool. It is thread safe and can be shared between all threads in your
+    application. The Database object allows working with the database
+    directly using SQL, but most of the time you will work with entities
+    and let Pony generate SQL statements for makeing the corresponding
+    changes in the database. You can work with several databases at the
+    same time, having a separate Database object for each database, but
+    each entity always belongs to one database.
+    """
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
@@ -540,8 +581,28 @@ class Database(object):
         if args or kwargs: self._bind(*args, **kwargs)
     @cut_traceback
     def bind(self, *args, **kwargs):
+        """Bind entities to a database.
+
+        During the bind() call, Pony tries to establish a test connection to
+        the database. If the specified parameters are not correct or the
+        database is not available, an exception will be raised. After the
+        connection to the database was established, Pony retrieves the version
+        of the database and returns the connection to the connection pool.
+
+        The method can be called only once for a database object. All
+        consequent calls of this method on the same database will raise the
+        TypeError('Database object was already bound to ... provider')
+        exception.
+
+        >>> db.bind('sqlite', ':memory:') # doctest +SKIP
+        >>> db.bind('sqlite', 'filename', create_db=True) # doctest +SKIP
+        >>> db.bind('postgres', user='', password='', host='', database='') # doctest +SKIP
+        >>> db.bind('mysql', host='', user='', passwd='', db='') # doctest +SKIP
+        >>> db.bind('oracle', 'user/password@dsn') # doctest +SKIP
+        """
         self._bind(*args, **kwargs)
     def _bind(self, *args, **kwargs):
+        """Bind entities to a database."""
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
             throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
@@ -559,9 +620,15 @@ class Database(object):
         self.provider = provider_cls(*args, **kwargs)
     @property
     def last_sql(database):
+        """Read-only attribute which keeps the text of the last SQL statement.
+        It can be useful for debugging."""
         return database._dblocal.last_sql
     @property
     def local_stats(database):
+        """This is a dictionary which keeps the SQL query statistics for the
+        current thread. The key of this dictionary is the SQL statement and
+        the value is an object of the QueryStat class.
+        """
         return database._dblocal.stats
     def _update_local_stat(database, sql, query_start_time):
         dblocal = database._dblocal
@@ -571,6 +638,16 @@ class Database(object):
         if stat is not None: stat.query_executed(query_start_time)
         else: stats[sql] = QueryStat(sql, query_start_time)
     def merge_local_stats(database):
+        """Merge the statistics from the current thread into the global
+        statistics. You can call this method at the end of the HTTP request
+        processing.
+
+        When you call this method, the value of local_stats will be merged to
+        global_stats, and local_stats will be cleared.
+
+        In a web application, you can call this method on finishing processing
+        an HTTP request. This way the global_stats attribute will contain the
+        statistics for the whole application."""
         setdefault = database._global_stats.setdefault
         with database._global_stats_lock:
             for sql, stat in iteritems(database._dblocal.stats):
@@ -579,6 +656,10 @@ class Database(object):
         database._dblocal.stats.clear()
     @property
     def global_stats(database):
+        """This attribute keeps the dictionary where the statistics for
+        executed SQL queries is aggregated from all threads. The key of this
+        dictionary is the SQL statement and the value is an object of the
+        QueryStat class."""
         with database._global_stats_lock:
             return {sql: stat.copy() for sql, stat in iteritems(database._global_stats)}
     @property
@@ -587,6 +668,13 @@ class Database(object):
         return database._global_stats_lock
     @cut_traceback
     def get_connection(database):
+        """Return the active database connection. It can be useful if you
+        want to work with the DBAPI interface directly. This is the same
+        connection which is used by the ORM itself. The connection will be
+        reset and returned to the connection pool on leaving the db_session()
+        context or when the database transaction rolls back. This connection
+        can be used only within the db_session() scope where the connection
+        was obtained."""
         cache = database._get_cache()
         if not cache.in_transaction:
             cache.immediate = True
@@ -597,6 +685,8 @@ class Database(object):
         return connection
     @cut_traceback
     def disconnect(database):
+        """Close the database connection for the current thread if it
+        was opened."""
         provider = database.provider
         if provider is None: return
         if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
@@ -614,20 +704,51 @@ class Database(object):
         return cache
     @cut_traceback
     def flush(database):
+        """Save the changes accumulated in the db_session() cache to the
+        database. You may never have a need to call this method manually,
+        because it will be done on leaving the db_session() automatically.
+
+        Pony always saves the changes accumulated in the cache automatically
+        before executing the following methods: get(), exists(), execute(),
+        commit(), select().
+        """
         database._get_cache().flush()
     @cut_traceback
     def commit(database):
+        """Save all changes made within the current db_session() using
+        the flush() method and commits the transaction to the database.
+
+        You can call commit() more than once within the same db_session().
+        In this case the db_session() cache keeps the cached objects after
+        commits. The cache will be cleaned up when the db_session() is over or
+        if the transaction will be rolled back."""
         cache = local.db2cache.get(database)
         if cache is not None:
             cache.flush_and_commit()
     @cut_traceback
     def rollback(database):
+        """Rolls back the current transaction and clears the db_session() cache."""
         cache = local.db2cache.get(database)
         if cache is not None:
             try: cache.rollback()
             except: transact_reraise(RollbackException, [sys.exc_info()])
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
+        """Execute SQL statement.
+
+        Before executing the provided SQL, Pony
+        flushes all changes made within the current db_session() using the
+        flush() method.
+
+        >>> cursor = db.execute('''create table Person ( # doctest +SKIP
+        ...             id integer primary key autoincrement,
+        ...             name text,
+        ...             age integer
+        ...     )''')
+
+        >>> name, age = "Ben", 33
+        >>> cursor = db.execute("insert into Person (name, age) values ($name, $age)") # doctest +SKIP
+        """
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth, start_transaction=False):
         provider = database.provider
@@ -643,6 +764,17 @@ class Database(object):
         return database._exec_sql(adapted_sql, arguments, False, start_transaction)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
+        """Execute the SQL statement in the database and returns a list of tuples.
+
+        >>> result = select("select * from Person") # doctest +SKIP
+
+        If a query returns more than one column and the names of table
+        columns are valid Python identifiers, then you can access them as
+        attributes:
+
+        >>> for row in db.select("name, age from Person"): # doctest +SKIP
+        ...    print row.name, row.age
+        """
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 3)
         max_fetch_count = options.MAX_FETCH_COUNT
@@ -660,6 +792,21 @@ class Database(object):
         return [ row_class(row) for row in result ]
     @cut_traceback
     def get(database, sql, globals=None, locals=None):
+        """Select one row or just one value from the database.
+
+        The get() method assumes that the query returns exactly one row. If
+        the query returns nothing then Pony raises RowNotFound exception. If
+        the query returns more than one row, the exception MultipleRowsFound
+        will be raised.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> id = 1
+        >>> age = db.get("select age from Person where id = $id")
+
+        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        """
         rows = database.select(sql, globals, locals, frame_depth=3)
         if not rows: throw(RowNotFound)
         if len(rows) > 1: throw(MultipleRowsFound)
@@ -667,12 +814,33 @@ class Database(object):
         return row
     @cut_traceback
     def exists(database, sql, globals=None, locals=None):
+        """Check if the database has at least one row which satisfies
+        the query. Before executing the provided SQL, Pony flushes all
+        changes made within the current db_session() using the flush() method.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> name = 'John'
+        >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
+        ...     print "Person exists in the database"
+        """
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=3)
         result = cursor.fetchone()
         return bool(result)
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
+        """Insert new rows into a table. This command bypasses the identity map
+        cache and can be used in order to increase the performance when you
+        need to create lots of objects and not going to read them in the same
+        transaction. Also you can use the execute() method for this purpose. If
+        you need to work with those objects in the same transaction it is
+        better to create instances of entities and have Pony to save them in
+        the database.
+
+        >>> new_id = db.insert("Person", name="Ben", age=33, returning='id') # doctest +SKIP
+        """
         table_name = database._get_table_name(table_name)
         if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
@@ -715,6 +883,8 @@ class Database(object):
         return new_id
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
+        """Map declared entities to the corresponding tables in the database.
+        Creates tables, foreign key references and indexes if necessary."""
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         if database.schema: throw(MappingError, 'Mapping was already generated')
@@ -887,6 +1057,10 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
+        """Drop the table_name table.
+
+        If you need to delete a table which is mapped to an entity, you can
+        use the class method drop_table() of an entity."""
         table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     def _get_table_name(database, table_name):
@@ -908,9 +1082,13 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_all_tables(database, with_all_data=False):
+        """Drop all tables which are related to the current mapping."""
         if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         database._drop_tables(database.schema.tables, True, with_all_data)
     def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
+        """Drop the table_name table. If you need to delete a table which is
+        mapped to an entity, you can use the class method drop_table() of an
+        entity."""
         cache = database._get_cache()
         connection = cache.prepare_connection_for_query_execution()
         provider = database.provider
@@ -937,6 +1115,14 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def create_tables(database, check_tables=False):
+        """Check the existing mapping and create tables for entities if they
+        don’t exist. Also, Pony checks if foreign keys and indexes exist and
+        create them if they are missing.
+
+        This method can be useful if you need to create tables after they were
+        deleted using the drop_all_tables() method. If you don’t delete
+        tables, you probably don’t need this method, because Pony checks and
+        creates tables during generate_mapping() call."""
         cache = database._get_cache()
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
@@ -1440,6 +1626,8 @@ class QueryStat(object):
             stat.cache_count = 1
         stat.sql = sql
     def copy(stat):
+        """Return a Python set object which contains the same items as the
+        given collection."""
         result = object.__new__(QueryStat)
         result.__dict__.update(stat.__dict__)
         return result
@@ -1547,6 +1735,13 @@ class SessionCache(object):
         try: cache.commit()
         except: transact_reraise(CommitException, [sys.exc_info()])
     def commit(cache):
+        """Save all changes made within the current db_session() using
+        the flush() method and commits the transaction to the database.
+
+        You can call commit() more than once within the same db_session().
+        In this case the db_session() cache keeps the cached objects after
+        commits. The cache will be cleaned up when the db_session() is over or
+        if the transaction will be rolled back."""
         assert cache.is_alive
         try:
             if cache.modified: cache.flush()
@@ -1559,6 +1754,7 @@ class SessionCache(object):
             cache.rollback()
             raise
     def rollback(cache):
+        """Rolls back the current transaction and clears the db_session() cache."""
         cache.close(rollback=True)
     def release(cache):
         cache.close(rollback=False)
@@ -1582,6 +1778,8 @@ class SessionCache(object):
         if db_session and db_session.strict:
             cache.clear()
     def clear(cache):
+        """Remove all items from the collection which means breaking
+        relationships between entity instances."""
         for obj in cache.objects:
             obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
         cache.objects = cache.indexes = cache.seeds = cache.for_update = cache.modified_collections \
@@ -1593,6 +1791,14 @@ class SessionCache(object):
         try: yield
         finally: cache.noflush_counter -= 1
     def flush(cache):
+        """Save the changes accumulated in the db_session() cache to the
+        database. You may never have a need to call this method manually,
+        because it will be done on leaving the db_session() automatically.
+
+        Pony always saves the changes accumulated in the cache automatically
+        before executing the following methods: get(), exists(), execute(),
+        commit(), select().
+        """
         if cache.noflush_counter: return
         assert cache.is_alive
         assert not cache.saved_objects
@@ -1931,6 +2137,7 @@ class Attribute(object):
             else: val = attr.py_type._get_by_raw_pkval_(vals)
         return val
     def load(attr, obj):
+        """Load all related objects from the database."""
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
             'Cannot load attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
         if not attr.columns:
@@ -1973,6 +2180,21 @@ class Attribute(object):
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return value
     def get(attr, obj):
+        """Select one row or just one value from the database.
+
+        The get() method assumes that the query returns exactly one row. If
+        the query returns nothing then Pony raises RowNotFound exception. If
+        the query returns more than one row, the exception MultipleRowsFound
+        will be raised.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> id = 1
+        >>> age = db.get("select age from Person where id = $id")
+
+        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        """
         if attr.pk_offset is None and obj._status_ in ('deleted', 'cancelled'):
             throw_object_was_deleted(obj)
         vals = obj._vals_
@@ -2198,6 +2420,11 @@ class Attribute(object):
         return attr
     @property
     def desc(attr):
+        """This function is used inside order_by() for ordering in
+        descending order.
+
+        >>> select(o for o in Order).order_by(desc(Order.date_shipped)) # doctest +SKIP
+        """
         return DescWrapper(attr)
     def describe(attr):
         t = attr.py_type
@@ -2273,6 +2500,7 @@ class Discriminator(Required):
             return entity._discriminator_
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
+        """Load all related objects from the database."""
         assert False  # pragma: no cover
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
@@ -2423,6 +2651,7 @@ class Collection(Attribute):
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def load(attr, obj):
+        """Load all related objects from the database."""
         assert False, 'Abstract method'  # pragma: no cover
     def __get__(attr, obj, cls=None):
         assert False, 'Abstract method'  # pragma: no cover
@@ -2499,6 +2728,7 @@ class Set(Collection):
                 throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
         return items
     def load(attr, obj, items=None):
+        """Load all related objects from the database."""
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot load collection %s.%s: the database session is over' % (safe_repr(obj), attr.name))
@@ -2637,6 +2867,8 @@ class Set(Collection):
         sql, adapter = attr.cached_load_sql[cache_key] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
+        """Return a Python set object which contains the same items as the
+        given collection."""
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         setdata = obj._vals_.get(attr)
@@ -2866,6 +3098,20 @@ class Set(Collection):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(attr, with_all_data=False):
+        """Drop the intermediate table which is created for establishing
+        many-to-many relationship. If the table is not empty and
+        with_all_data=False, the method raises the TableIsNotEmpty exception
+        and doesn’t delete anything. Setting the with_all_data=True allows
+        you to delete the table even if it is not empty.
+
+        >>> class Product(db.Entity):
+        ...    tags = Set('Tag')
+
+        >>> class Tag(db.Entity):
+        ...    products = Set(Product)
+
+        >>> Product.tags.drop_table(with_all_data=True) # doctest +SKIP
+        """
         if attr.reverse.is_collection: table_name = attr.table
         else: table_name = attr.entity._table_
         attr.entity._database_._drop_tables([ table_name ], True, with_all_data)
@@ -2892,6 +3138,8 @@ class SetInstance(object):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
+        """Return a Python set object which contains the same items as the
+        given collection."""
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -2914,6 +3162,8 @@ class SetInstance(object):
         return bool(setdata)
     @cut_traceback
     def is_empty(wrapper):
+        """Check if the collection is empty. Returns False if there is at
+        least one relationship and True if this attribute has no relationships."""
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -2960,6 +3210,12 @@ class SetInstance(object):
         return True
     @cut_traceback
     def __len__(wrapper):
+        """Return the number of objects in the collection. If the collection is
+        not loaded into cache, this methods loads all the collection instances
+        into the cache first, and then returns the number of objects. Use this
+        method if you are going to iterate over the objects and you need them
+        loaded into the cache. If you don’t need the collection to be loaded
+        into the memory, you can use the count() method."""
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -2969,6 +3225,12 @@ class SetInstance(object):
         return len(setdata)
     @cut_traceback
     def count(wrapper):
+        """Return the number of objects in the collection. This method doesn’t
+        load the collection instances into the cache, but generates an SQL
+        query which returns the number of objects from the database. If you
+        are going to work with the collection objects (iterate over the
+        collection or change the object attributes), you might want to use
+        the __len__() method."""
         attr = wrapper._attr_
         obj = wrapper._obj_
         cache = obj._session_cache_
@@ -3052,6 +3314,16 @@ class SetInstance(object):
         return False
     @cut_traceback
     def create(wrapper, **kwargs):
+        """Create an return an instance of the related entity and establishes
+        a relationship with it:
+
+        >>> new_tag = Photo[123].tags.create(name='New tag') # doctest +SKIP
+
+        is an equilvalent of the following:
+
+        >>> new_tag = Tag(name='New tag')
+        >>> Photo[123].tags.add(new_tag)
+        """
         attr = wrapper._attr_
         reverse = attr.reverse
         if reverse.name in kwargs: throw(TypeError,
@@ -3063,6 +3335,22 @@ class SetInstance(object):
         return item
     @cut_traceback
     def add(wrapper, new_items):
+        """Add instances to a collection and establish a two-way relationship
+        between entity instances:
+
+        >>> photo = Photo[123]
+        >>> photo.tags.add(Tag['Outdoors']) # doctest +SKIP
+
+        Now the instance of the Photo entity with the primary key 123 has a
+        relationship with the Tag['Outdoors'] instance. The attribute photos
+        of the Tag['Outdoors'] instance contains the reference to the
+        Photo[123] as well.
+
+        You can also establish several relationships at once passing the
+        list of tags to the add() method:
+
+        >>> photo.tags.add([Tag['Party'], Tag['New Year']]) # doctest +SKIP
+        """
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
@@ -3103,6 +3391,8 @@ class SetInstance(object):
         return wrapper
     @cut_traceback
     def remove(wrapper, items):
+        """Remove an item or items from the collection and thus break the
+        relationship between entity instances."""
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
@@ -3147,6 +3437,8 @@ class SetInstance(object):
         return wrapper
     @cut_traceback
     def clear(wrapper):
+        """Remove all items from the collection which means breaking
+        relationships between entity instances."""
         obj = wrapper._obj_
         attr = wrapper._attr_
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
@@ -3155,9 +3447,16 @@ class SetInstance(object):
         attr.__set__(obj, ())
     @cut_traceback
     def load(wrapper):
+        """Load all related objects from the database."""
         wrapper._attr_.load(wrapper._obj_)
     @cut_traceback
     def select(wrapper, *args):
+        """Select objects from a collection. The method names select() and
+        filter() are synonyms.
+
+        >>> g = Group[101] # doctest: +SKIP
+        >>> g.students.select(lambda student: student.gpa > 3) # doctest: +SKIP
+        """
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
@@ -3173,10 +3472,26 @@ class SetInstance(object):
     def limit(wrapper, limit, offset=None):
         return wrapper.select().limit(limit, offset)
     def page(wrapper, pagenum, pagesize=10):
+        """This query can be used for displaying the second page of group 101
+        student’s list ordered by the name attribute:
+
+        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest: +SKIP
+        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest: +SKIP
+        """
         return wrapper.select().page(pagenum, pagesize)
     def order_by(wrapper, *args):
+        """Return an ordered collection.
+
+        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
+        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
+        """
         return wrapper.select().order_by(*args)
     def random(wrapper, limit):
+        """Return a number of random objects from a collection.
+
+        >>> g = Group[101] # doctest: +SKIP
+        >>> g.students.random(2) # doctest: +SKIP
+        """
         return wrapper.select().random(limit)
 
 def unpickle_multiset(obj, attrnames, items):
@@ -3222,6 +3537,19 @@ class Multiset(object):
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
+        """Return the number of objects in the collection. If the collection is
+        not loaded into cache, this methods loads all the collection instances
+        into the cache first, and then returns the number of objects. Use this
+        method if you are going to iterate over the objects and you need them
+        loaded into the cache. If you don’t need the collection to be loaded
+        into the memory, you can use the count() method.
+
+        >>> p1 = Person[1]
+        >>> Car[1] in p1.cars
+        True
+        >>> len(p1.cars) # doctest +SKIP
+        2
+        """
         return builtins.sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
@@ -3563,6 +3891,20 @@ class EntityMeta(type):
         return pkval, avdict
     @cut_traceback
     def __getitem__(entity, key):
+        """Return an entity instance selected by its primary key. Raises
+        the ObjectNotFound exception if there is no such object. Example:
+
+        >>> p = Product[123] # doctest +SKIP
+
+        For entities with a composite primary key, use a comma between the
+        primary key values:
+
+        >>> item = OrderItem[123, 456]
+
+        If object with the specified primary key was already loaded into
+        the db_session() cache, Pony returns the object from the cache
+        without sending a query to the database.
+        """
         if type(key) is not tuple: key = (key,)
         if len(key) != len(entity._pk_attrs_):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
@@ -3571,6 +3913,12 @@ class EntityMeta(type):
         return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
+        """Returns True if an instance with the specified condition or
+        attribute values exists and False otherwise.
+
+        >>> Product.exists(price=1000) # doctest +SKIP
+        >>> Product.exists(lambda p: p.price > 1000) # doctest +SKIP
+        """
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
         try: obj = entity._find_one_(kwargs)
         except ObjectNotFound: return False
@@ -3578,29 +3926,99 @@ class EntityMeta(type):
         return True
     @cut_traceback
     def get(entity, *args, **kwargs):
+        """Extract one entity instance from the database.
+
+        If the object with the specified parameters exists, then returns
+        the object. Returns None if there is no such object. If there are
+        more than one objects with the specified parameters, raises the
+        MultipleObjectsFoundError: Multiple objects were found.
+        Use select(...) to retrieve them exception. Examples:
+
+        >>> Product.get(price=1000) # doctest +SKIP
+        >>> Product.get(lambda p: p.name.startswith('A')) # doctest +SKIP
+        """
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
         try: return entity._find_one_(kwargs)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_for_update(entity, *args, **kwargs):
+        """Locks the row in the database using the SELECT ... FOR UPDATE
+        SQL query. If nowait=True, then the method will throw an exception
+        if this row is already blocked. If nowait=False, then it will wait
+        if the row is already blocked.
+
+        If you need to use SELECT ... FOR UPDATE for multiple rows
+        then you should use the for_update() method.
+        """
         nowait = kwargs.pop('nowait', False)
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).for_update(nowait).get()
         try: return entity._find_one_(kwargs, True, nowait)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
+        """Select entity instance by raw SQL.
+
+        If you find that you cannot express a query using the standard
+        Pony queries, you always can write your own SQL query and Pony
+        will build an entity instance(s) based on the query results. When
+        Pony gets the result of the SQL query, it analyzes the column names
+        which it receives from the database cursor. If your query uses
+        SELECT * ... from the entity table, that would be enough for getting
+        the necessary attribute values for constructing entity instances.
+        You can pass parameters into the query, see Using the select_by_sql()
+        and get_by_sql() methods for more information.
+        """
         objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
     def select(entity, *args):
+        """Select objects from the database in accordance with the condition
+        specified in lambda, or all objects if lambda function is not
+        specified.
+
+        The select() method returns an instance of the Query class. Entity
+        instances will be retrieved from the database once you start iterating
+        over the Query object.
+
+        This query example returns all products with the price greater than
+        100 and which were ordered more than once:
+
+        >>> Product.select(lambda p: p.price > 100 and count(p.order_items) > 1)[:] # doctest +SKIP
+        """
         return entity._query_from_args_(args, kwargs=None, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
+        """Select entity instances by raw SQL. See Using the select_by_sql()
+        and get_by_sql() methods for more information.
+        """
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
     @cut_traceback
     def select_random(entity, limit):
+        """Select limit random objects. This method uses the algorithm that
+        can be much more effective than using ORDER BY RANDOM() SQL construct.
+        The method uses the following algorithm:
+
+        1) Determine max id from the table.
+        2) Generate random ids in the range (0, max_id]
+        3) Retrieve objects by those random ids. If an object with generated
+           id does not exist (e.g. it was deleted), then select another random
+           id and retry.
+        Repeat the steps 2-3 as many times as necessary to retrieve the
+        specified amount of objects.
+
+        This algorithm doesn’t affect performance even when working with a
+        large number of table rows. However this method also has some
+        limitations:
+
+        The primary key must be a sequential id of an integer type.
+        The number of “gaps” between existing ids (the count of deleted
+        objects) should be relatively small.
+        The select_random() method can be used if your query does not have
+        any criteria to select specific objects. If such criteria is
+        necessary, then you can use the Query.random() method.
+        """
         if entity._pk_is_composite_: return entity.select().random(limit)
         pk = entity._pk_attrs_[0]
         if not issubclass(pk.py_type, int) or entity._discriminator_ is not None and entity._root_ is not entity:
@@ -4073,6 +4491,17 @@ class EntityMeta(type):
         return result_cls
     @cut_traceback
     def describe(entity):
+        """Return a string with the entity declaration.
+
+        >>> print(OrderItem.describe()) # doctest +SKIP
+
+        class OrderItem(Entity):
+            quantity = Required(int)
+            price = Required(Decimal)
+            order = Required(Order)
+            product = Required(Product)
+            PrimaryKey(order, product)
+        """
         result = []
         parents = ','.join(cls.__name__ for cls in entity.__bases__)
         result.append('class %s(%s):' % (entity.__name__, parents))
@@ -4087,6 +4516,15 @@ class EntityMeta(type):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(entity, with_all_data=False):
+        """Drops the table which is associated with the entity in the
+        database. If the table is not empty and with_all_data=False, the
+        method raises the TableIsNotEmpty exception and doesn’t delete
+        anything. Setting the with_all_data=True allows you to delete the
+        table even if it is not empty.
+
+        If you need to delete an intermediate table created for many-to-many
+        relationship, you have to call the method select() of the relationship
+        attribute."""
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
     def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
         if only and not isinstance(only, basestring): only = tuple(only)
@@ -4162,6 +4600,16 @@ def safe_repr(obj):
     return Entity.__repr__(obj)
 
 class Entity(with_metaclass(EntityMeta)):
+    """This attribute represents the base class which should be inherited by
+    all entities which are mapped to the particular database.
+
+    Example:
+    >>> db = Database()
+
+    >>> class Person(db.Entity): # doctest +SKIP
+    ...     name = Required(str)
+    ...     age = Required(int)
+    """
     __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
@@ -4220,6 +4668,19 @@ class Entity(with_metaclass(EntityMeta)):
         objects_to_save.append(obj)
         cache.modified = True
     def get_pk(obj):
+        """Get the value of the primary key of the object.
+
+        >>> c = Customer[1]
+        >>> c.get_pk() # doctest +SKIP
+        1
+
+        If the primary key is composite, then this method returns a
+        tuple consisting of primary key column values.
+
+        >>> oi = OrderItem[1,4]
+        >>> oi.get_pk() # doctest +SKIP
+        (1, 4)
+        """
         pkval = obj._get_raw_pkval_()
         if len(pkval) == 1: return pkval[0]
         return pkval
@@ -4289,6 +4750,15 @@ class Entity(with_metaclass(EntityMeta)):
                                      'Phantom object %s disappeared' % safe_repr(obj))
     @cut_traceback
     def load(obj, *attrs):
+        """Load all lazy and non-lazy attributes, but not collection
+        attributes, which were not retrieved from the database yet. If an
+        attribute was already loaded, it won’t be loaded again. You can
+        specify the list of the attributes which need to be loaded, or its
+        names. In this case Pony will load only them:
+
+        >>> obj.load(Person.biography, Person.some_other_field) # doctest +SKIP
+        >>> obj.load('biography', 'some_other_field') # doctest +SKIP
+        """
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot load object %s: the database session is over' % safe_repr(obj))
@@ -4524,11 +4994,29 @@ class Entity(with_metaclass(EntityMeta)):
                 raise
     @cut_traceback
     def delete(obj):
+        """Delete the entity instance. The instance will be marked as
+        deleted and then will be deleted from the database during the
+        flush() function, which is issued automatically on committing
+        the current transaction when exiting from the most outer db_session()
+        or before sending the next query to the database.
+
+        >>> Order[123].delete() # doctest +SKIP
+        """
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
             'Cannot delete object %s: the database session is over' % safe_repr(obj))
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
+        """Assign new values to several object attributes at once:
+
+        >>> Customer[123].set(email='new@example.com', address='New address') # doctest +SKIP
+
+        This method also can be convenient when you want to assign new
+        values from a dictionary:
+
+        >>> d = {'email': 'new@example.com', 'address': 'New address'}
+        >>> Customer[123].set(**d) # doctest +SKIP
+        """
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot change object %s: the database session is over' % safe_repr(obj))
@@ -4834,6 +5322,12 @@ class Entity(with_metaclass(EntityMeta)):
             objects_to_save[save_pos] = None
         obj._save_pos_ = None
     def flush(obj):
+        """Save the changes made to this object to the database. Usually
+        Pony saves changes automatically and you don’t need to call this
+        method yourself. One of the use cases when it might be needed is
+        when you want to get the primary key value of a newly created object
+        which has autoincremented primary key before commit.
+        """
         if obj._status_ not in ('created', 'modified', 'marked_to_delete'):
             return
 
@@ -4851,23 +5345,47 @@ class Entity(with_metaclass(EntityMeta)):
         elif status == 'modified': obj.before_update()
         elif status == 'marked_to_delete': obj.before_delete()
     def before_insert(obj):
+        """Called only for newly created objects before it is inserted
+        into the database."""
         pass
     def before_update(obj):
+        """Called for entity instances before updating the instance in
+        the database."""
         pass
     def before_delete(obj):
+        """Called before deletion the entity instance in the database."""
         pass
     def _after_save_(obj, status):
         if status == 'inserted': obj.after_insert()
         elif status == 'updated': obj.after_update()
         elif status == 'deleted': obj.after_delete()
     def after_insert(obj):
+        """Called after the row is inserted into the database."""
         pass
     def after_update(obj):
+        """Called after the instance updated in the database."""
         pass
     def after_delete(obj):
+        """Called after the entity instance is deleted in the database."""
         pass
     @cut_traceback
     def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
+        """Return a dictionary with attribute names and its values. This
+        method can be used when you need to serialize an object to JSON or
+        other format.
+
+        By default this method doesn’t include collections (to-many
+        relationships) and lazy attributes. If an attribute’s values is an
+        entity instance then only the primary key of this object will be
+        added to the dictionary.
+
+        >>> c1.to_dict(exclude='password') # doctest +SKIP
+        {'address': u'address 1',
+        'country': u'USA',
+        'email': u'john@example.com',
+        'id': 1,
+        'name': u'John Smith'}
+        """
         if obj._session_cache_.modified: obj._session_cache_.flush()
         attrs = obj.__class__._get_attrs_(only, exclude, with_collections, with_lazy)
         result = {}
@@ -4957,22 +5475,66 @@ def make_query(args, frame_depth, left_join=False):
 
 @cut_traceback
 def select(*args):
+    """Translates the generator expression into SQL query and returns an
+    instance of the Query class.
+
+    You can iterate over the result:
+
+    >>> for p in select(p for p in Product): # doctest +SKIP
+    ...     print p.name, p.price
+    """
     return make_query(args, frame_depth=3)
 
 @cut_traceback
 def left_join(*args):
+    """The results of a left join always contain the result from the
+    ‘left’ table, even if the join condition doesn’t find any matching
+    record in the ‘right’ table.
+
+    >>> left_join((c, count(o)) for c in Customer for o in c.orders)[:] # doctest +SKIP
+    """
     return make_query(args, frame_depth=3, left_join=True)
 
 @cut_traceback
 def get(*args):
+    """Select one row or just one value from the database.
+
+    The get() method assumes that the query returns exactly one row. If
+    the query returns nothing then Pony raises RowNotFound exception. If
+    the query returns more than one row, the exception MultipleRowsFound
+    will be raised.
+
+    Before executing the provided SQL, Pony flushes all changes made
+    within the current db_session() using the flush() method.
+
+    >>> id = 1
+    >>> age = db.get("select age from Person where id = $id")
+
+    >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+    """
     return make_query(args, frame_depth=3).get()
 
 @cut_traceback
 def exists(*args):
+    """Returns True if at least one instance with the specified condition
+    exists and False otherwise.
+
+    >>> exists(o for o in Order if o.date_delivered is None) # doctest +SKIP
+    """
     return make_query(args, frame_depth=3).exists()
 
 @cut_traceback
 def delete(*args):
+    """Delete objects from the database. Pony loads objects into the
+    memory and will delete them one by one. If you have before_delete()
+    or after_delete() defined, Pony will call each of them.
+
+    >>> delete(o for o in Order if o.status == 'CANCELLED') # doctest +SKIP
+
+    If you need to delete objects without loading them into memory, you
+    should use the delete() method with the parameter bulk=True. In this
+    case no hooks will be called, even if they are defined for the entity.
+    """
     return make_query(args, frame_depth=3).delete()
 
 def make_aggrfunc(std_func):
@@ -4998,6 +5560,13 @@ avg = make_aggrfunc(utils.avg)
 distinct = make_aggrfunc(utils.distinct)
 
 def JOIN(expr):
+    """Used for query optimization in cases when Pony doesn’t provide this
+    optimization automatically. Serves as a hint saying Pony that we want
+    to use SQL JOIN, instead of generating a subquery inside the SQL query.
+
+    >>> select(g for g in Group if max(g.students.gpa) < 4) # doctest +SKIP
+    >>> select(g for g in Group if JOIN(max(g.students.gpa) < 4)) # doctest +SKIP
+    """
     return expr
 
 def desc(expr):
@@ -5010,6 +5579,17 @@ def desc(expr):
     return expr
 
 def raw_sql(sql, result_type=None):
+    """This function encapsulates a part of a query expressed in a raw SQL
+    format. If the result_type is specified, Pony converts the result of
+    raw SQL fragment to the specified format.
+
+    >>> q = Person.select(lambda x: raw_sql('abs("x"."age")') > 25) # doctest +SKIP
+    >>> print(q.get_sql())
+
+    SELECT "x"."id", "x"."name", "x"."age", "x"."dob"
+    FROM "Person" "x"
+    WHERE abs("x"."age") > 25
+    """
     globals = sys._getframe(1).f_globals
     locals = sys._getframe(1).f_locals
     return RawSQL(sql, globals, locals, result_type)
@@ -5151,6 +5731,15 @@ class Query(object):
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
     def get_sql(query):
+        """Return SQL statement as a string:
+
+        >>> sql = select(c for c in Category if c.name.startswith('a')).get_sql() # doctest +SKIP
+        >>> print(sql)
+
+        SELECT "c"."id", "c"."name"
+        FROM "category" "c"
+        WHERE "c"."name" LIKE 'a%%'
+        """
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments()
         return sql
     def _fetch(query, range=None):
@@ -5187,6 +5776,22 @@ class Query(object):
         return QueryResult(result, query, translator.expr_type, translator.col_names)
     @cut_traceback
     def prefetch(query, *args):
+        """Allows specifying which related objects or attributes should be
+        loaded from the database along with the query result.
+
+        Usually there is no need to prefetch related objects. When you work
+        with the query result within the @db_session, Pony gets all related
+        objects once you need them. Pony uses the most effective way for
+        loading related objects from the database, avoiding the N+1 Query
+        problem.
+
+        >>> students = select(s for s in Student).prefetch(Student.courses) # doctest +SKIP
+        >>> for s in students:
+        ...     print s.name
+        ...     for c in s.courses: # no additional query to the DB will be sent
+        ...         print c.name
+
+        """
         query = query._clone(_entities_to_prefetch=query._entities_to_prefetch.copy(),
                              _attrs_to_prefetch_dict=query._attrs_to_prefetch_dict.copy())
         query._prefetch = True
@@ -5267,9 +5872,33 @@ class Query(object):
                 else: assert False  # pragma: no cover
     @cut_traceback
     def show(query, width=None):
+        """Prints out the entity definition or the value of attributes for
+        an entity instance in the interactive mode.
+
+        >>> show(Person) # doctest +SKIP
+        class Person(Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            age = Required(int)
+            cars = Set(Car)
+
+        >>> show(mary) # doctest +SKIP
+        instance of Person
+        id|name|age
+        --+----+---
+        2 |Mary|22
+        """
         query._fetch().show(width)
     @cut_traceback
     def get(query):
+        """Extracts one entity instance from the database.
+
+        If there are more than one objects with the specified parameters,
+        the function raises the MultipleObjectsFoundError: Multiple objects
+        were found. Use select(...) to retrieve them exception.
+
+        >>> get(o for o in Order if o.id == 123) # doctest +SKIP
+        """
         objects = query[:2]
         if not objects: return None
         if len(objects) > 1: throw(MultipleObjectsFoundError,
@@ -5277,6 +5906,11 @@ class Query(object):
         return objects[0]
     @cut_traceback
     def first(query):
+        """Return the first element from the selected results or None if no
+        objects were found:
+
+        >>> select(p for p in Product if p.price > 100).first() # doctest +SKIP
+        """
         translator = query._translator
         if translator.order: pass
         elif type(translator.expr_type) is tuple:
@@ -5288,16 +5922,54 @@ class Query(object):
         return objects[0]
     @cut_traceback
     def without_distinct(query):
+        """By default Pony tries to avoid duplicates in the query result and
+        intellectually adds the DISTINCT SQL keyword to a query where it
+        thinks it necessary. If you don’t want Pony to add DISTINCT and get
+        possible duplicates, you can use this method. This method returns a
+        new instance of the Query object, so you can chain it with other query
+        methods:
+
+        >>> select(p.name for p in Person).without_distinct().order_by(Person.name) # doctest +SKIP
+        """
         return query._clone(_distinct=False)
     @cut_traceback
     def distinct(query):
+        """ When you need to force DISTINCT in a query, it can be done
+        using the distinct() function. But usually this is not necessary,
+        because Pony adds DISTINCT keyword automatically in an intelligent
+        way. See more information about it in the TODO chapter.
+
+        >>> distinct(o.date_shipped for o in Order) # doctest +SKIP
+        """
         return query._clone(_distinct=True)
     @cut_traceback
     def exists(query):
+        """Returns True if at least one instance with the specified condition
+        exists and False otherwise.
+
+        >>> select(c for c in Customer if len(c.cart_items) > 10).exists() # doctest +SKIP
+
+        This query generates the following SQL:
+
+        SELECT "c"."id"
+        FROM "Customer" "c"
+          LEFT JOIN "CartItem" "cartitem-1"
+            ON "c"."id" = "cartitem-1"."customer"
+        GROUP BY "c"."id"
+        HAVING COUNT(DISTINCT "cartitem-1"."id") > 20
+        LIMIT 1
+        """
         objects = query[:1]
         return bool(objects)
     @cut_traceback
     def delete(query, bulk=None):
+        """Delete instances selected by a query. When bulk=False Pony loads
+        each instance into memory and call the Entity.delete() method on each
+        instance (calling before_delete() and after_delete() hooks if they
+        are defined). If bulk=True Pony doesn’t load instances, it just
+        generates the SQL DELETE statement which deletes objects in the
+        database.
+        """
         if not bulk:
             if not isinstance(query._translator.expr_type, EntityMeta): throw(TypeError,
                 'Delete query should be applied to a single entity. Got: %s'
@@ -5322,12 +5994,22 @@ class Query(object):
         return cursor.rowcount
     @cut_traceback
     def __len__(query):
+        """Return the number of objects selected from the database.
+
+        >>> len(select(c for c in Customer)) # doctest +SKIP
+        """
         return len(query._fetch())
     @cut_traceback
     def __iter__(query):
         return iter(query._fetch())
     @cut_traceback
     def order_by(query, *args):
+        """Order the results of a query.
+
+        >>> select(o for o in Order).order_by(Order.customer, Order.date_created) # doctest +SKIP
+
+        >>> select(o for o in Order).order_by(lambda o: (o.customer.name, o.date_shipped)) # doctest +SKIP
+        """
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
@@ -5437,6 +6119,20 @@ class Query(object):
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
+        """Filter the result of a query. The conditions which are passed
+        as parameters to the filter() method will be translated into the
+        WHERE section of the resulting SQL query.
+
+        The number of filter() arguments should correspond to the query
+        result. The filter() method can receive a lambda expression with
+        a condition:
+
+        >>> q = select(p for p in Product) # doctest +SKIP
+        >>> q2 = q.filter(lambda x: x.price > 100) # doctest +SKIP
+
+        >>> q = select((p.name, p.price) for p in Product) # doctest +SKIP
+        >>> q2 = q.filter(lambda n, p: n.name.startswith("A") and p > 100) # doctest +SKIP
+        """
         if args:
             if isinstance(args[0], RawSQL):
                 raw = args[0]
@@ -5479,6 +6175,20 @@ class Query(object):
         return new_query
     @cut_traceback
     def __getitem__(query, key):
+        """Return an entity instance selected by its primary key. Raises
+        the ObjectNotFound exception if there is no such object. Example:
+
+        >>> p = Product[123] # doctest +SKIP
+
+        For entities with a composite primary key, use a comma between the
+        primary key values:
+
+        >>> item = OrderItem[123, 456]
+
+        If object with the specified primary key was already loaded into
+        the db_session() cache, Pony returns the object from the cache
+        without sending a query to the database.
+        """
         if isinstance(key, slice):
             step = key.step
             if step is not None and step != 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
@@ -5494,11 +6204,23 @@ class Query(object):
         return query._fetch(range=(start, stop))
     @cut_traceback
     def limit(query, limit, offset=None):
+        """Limit the number of instances to be selected from the database.
+
+        >>> select(c for c in Customer).order_by(Customer.name)[20:30] #doctest +SKIP
+
+        Also you can use the [start:end]() or page() methods for the
+        same purpose.
+        """
         start = offset or 0
         stop = start + limit
         return query[start:stop]
     @cut_traceback
     def page(query, pagenum, pagesize=10):
+        """Pagination is used when you need to display results of a query
+        divided into multiple pages. The page numbering starts with page 1.
+        This method returns a slice [start:end] where
+        start = (pagenum - 1) * pagesize, end = pagenum * pagesize.
+        """
         start = (pagenum - 1) * pagesize
         stop = pagenum * pagesize
         return query[start:stop]
@@ -5524,26 +6246,85 @@ class Query(object):
         return result
     @cut_traceback
     def sum(query):
+        """Return the sum of all selected items. Can be applied to the
+        queries which return a single numeric expression only.
+
+        >>> select(o.total_price for o in Order).sum() # doctest +SKIP
+
+        If the query returns no items, the query result will be 0.
+        """
         return query._aggregate('SUM')
     @cut_traceback
     def avg(query):
+        """Return the average value for all selected attributes.
+
+        >>> avg(o.total_price for o in Order) # doctest +SKIP
+
+        The equivalent query can be generated using the avg() method.
+        """
         return query._aggregate('AVG')
     @cut_traceback
     def min(query):
+        """Return the minimum value from the database. The query should
+        return a single attribute.
+
+        >>> min(p.price for p in Product) # doctest +SKIP
+        """
         return query._aggregate('MIN')
     @cut_traceback
     def max(query):
+        """Return the maximum value from the database. The query should
+        return a single attribute.
+
+        >>> max(o.date_shipped for o in Order) # doctest +SKIP
+        """
         return query._aggregate('MAX')
     @cut_traceback
     def count(query):
+        """Return the number of objects that match the query condition.
+
+        >>> count(c for c in Customer if len(c.orders) > 2) #doctest +SKIP
+
+        This query will be translated to the following SQL:
+
+        SELECT COUNT(*)
+        FROM "Customer" "c"
+        LEFT JOIN "Order" "order-1"
+          ON "c"."id" = "order-1"."customer"
+        GROUP BY "c"."id"
+        HAVING COUNT(DISTINCT "order-1"."id") > 2
+
+        The equivalent query can be generated using the count() method.
+        """
         return query._aggregate('COUNT')
     @cut_traceback
     def for_update(query, nowait=False):
+        """Sometimes there is a need to lock objects in the database in
+        order to prevent other transactions from modifying the same instances
+        simultaneously. Within the database such lock should be done using
+        the SELECT FOR UPDATE query. In order to generate such a lock using
+        Pony you can call the for_update method:
+
+        >>> select(p for p in Product if p.picture is None).for_update() # doctest +SKIP
+
+        This query selects all instances of Product without a picture and
+        locks the corresponding rows in the database. The lock will be
+        released upon commit or rollback of current transaction.
+        """
         provider = query._database.provider
         if nowait and not provider.select_for_update_nowait_syntax: throw(TranslationError,
             '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
         return query._clone(_for_update=True, _nowait=nowait)
     def random(query, limit):
+        """Select limit random objects from the database. This method will
+        be translated using the ORDER BY RANDOM() SQL expression. The entity
+        class method select_random() provides better performance, although
+        doesn’t allow to specify query conditions.
+
+        For example, select ten random persons older than 20 years old:
+
+        >>> select(p for p in Person if p.age > 20).random()[:10] # doctest +SKIP
+        """
         return query.order_by('random()')[:limit]
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return query._database.to_json(query[:], include, exclude, converter, with_schema, schema_hash)
@@ -5569,6 +6350,29 @@ class QueryResult(list):
         result._col_names = state[2]
     @cut_traceback
     def show(result, width=None):
+        """Prints the results of a query to the console. The result is
+        formatted in the form of a table. This method doesn’t display
+        “to-many” attributes because it would require additional query to
+        the database and could be bulky. But if an instance has a “to-one”
+        relationship, then it will be displayed.
+
+        >>> select(p for p in Person).order_by(Person.name)[:2].show() # doctest +SKIP
+
+        SELECT "p"."id", "p"."name", "p"."age"
+        FROM "Person" "p"
+        ORDER BY "p"."name"
+        LIMIT 2
+
+        id|name|age
+        --+----+---
+        3 |Bob |30
+
+        >>> Car.select().show() # doctest +SKIP
+        id|make  |model   |owner
+        --+------+--------+---------
+        1 |Toyota|Prius   |Person[2]
+        2 |Ford  |Explorer|Person[3]
+        """
         if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
         expr_type = result._expr_type
@@ -5623,6 +6427,22 @@ class QueryResult(list):
 
 @cut_traceback
 def show(entity):
+    """Prints out the entity definition or the value of attributes for
+    an entity instance in the interactive mode.
+
+    >>> show(Person) # doctest +SKIP
+    class Person(Entity):
+        id = PrimaryKey(int, auto=True)
+        name = Required(str)
+        age = Required(int)
+        cars = Set(Car)
+
+    >>> show(mary) # doctest +SKIP
+    instance of Person
+    id|name|age
+    --+----+---
+    2 |Mary|22
+    """
     x = entity
     if isinstance(x, EntityMeta):
         print(x.describe())
