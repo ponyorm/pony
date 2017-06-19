@@ -11,9 +11,11 @@ from uuid import UUID
 
 import cx_Oracle
 
+from pony.migrate.operations import Op, alter_table
+
 from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
-from pony.orm.dbschema import DBSchema, DBObject, Table, Column
+from pony.orm.dbschema import DBSchema, DBObject, Table, Column, ForeignKey, DBIndex
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, Value
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
@@ -27,7 +29,8 @@ class OraTable(Table):
         result = Table.get_objects_to_create(table, created_tables)
         for column in table.column_list:
             if column.is_pk == 'auto':
-                sequence_name = column.converter.attr.kwargs.get('sequence_name')
+                if column.converter is None: sequence_name = None
+                else: sequence_name = column.converter.attr.kwargs.get('sequence_name')
                 sequence = OraSequence(table, sequence_name)
                 trigger = OraTrigger(table, column, sequence)
                 result.extend((sequence, trigger))
@@ -55,6 +58,14 @@ class OraSequence(DBObject):
         schema = sequence.table.schema
         seq_name = schema.provider.quote_name(sequence.name)
         return schema.case('CREATE SEQUENCE %s NOCACHE') % seq_name
+
+    def get_drop_ops(sequence, **kw):
+        schema = sequence.table.schema
+        quote_name = schema.provider.quote_name
+        sql = schema.case('DROP SEQUENCE {}').format(
+            quote_name(sequence.name)
+        )
+        yield Op(sql, sequence, type='drop')
 
 trigger_template = """
 CREATE TRIGGER %s
@@ -94,13 +105,70 @@ class OraTrigger(DBObject):
         column_name = quote_name(trigger.column.name)
         seq_name = quote_name(trigger.sequence.name)
         return schema.case(trigger_template) % (trigger_name, table_name, column_name, seq_name, column_name)
+    def get_drop_ops(trigger, inside_table=False, **kw):
+        schema = trigger.table.schema
+        quote_name = schema.provider.quote_name
+        sql = schema.case('DROP TRIGGER {}').format(
+            quote_name(trigger.name)
+        )
+        yield Op(sql, trigger, type='drop')
 
 class OraColumn(Column):
     auto_template = None
 
+    def _get_identity(column):
+        return (
+            column.name, column.sql_type, column.is_not_null, column.sql_default,
+            column.is_pk, column.is_unique
+        )
+
+    def get_alter_ops(column, prev_column, **kwargs):
+        if column._get_identity() == prev_column._get_identity():
+            raise StopIteration
+        for op in DBIndex.get_alter_ops(column, prev_column, **kwargs):
+            yield op
+
+    def get_rename_ops(column, old_name):
+        table = column.table
+        schema = table.schema
+        case = schema.case
+        quote_name = schema.provider.quote_name
+        old_name = quote_name(old_name)
+        name = quote_name(column.name)
+        op = case('RENAME COLUMN {} TO {}').format(old_name, name)
+        yield Op(op, column, type='rename', prefix=alter_table(table))
+
+
+class OraForeignKey(ForeignKey):
+    def get_drop_ops(foreign_key, table=None, **kw):
+        # assert table is not None
+        table = foreign_key.child_table
+        schema = foreign_key.schema
+        case = schema.case
+        quote_name = schema.provider.quote_name
+        cmd = [
+            case('DROP CONSTRAINT'),
+            quote_name(foreign_key.name),
+        ]
+        cmd = ' '.join(cmd)
+        yield Op(cmd, foreign_key, type='drop', prefix=alter_table(table))
+
+class OraDBIndex(DBIndex):
+
+    def get_pk_alter_ops(index, prev):
+        table_name = index.table.name
+        sql = index.rename_sql_template % dict(
+                    table_name=table_name, prev_name=prev.name, new_name=index.name)
+        yield Op(sql, index, type='rename')
+
+
 class OraSchema(DBSchema):
     table_class = OraTable
     column_class = OraColumn
+    fk_class = OraForeignKey
+    index_class = OraDBIndex
+    MODIFY_COLUMN = 'MODIFY'
+    ADD_COLUMN = 'ADD'
 
 class OraNoneMonad(sqltranslation.NoneMonad):
     def __init__(monad, translator, value=None):

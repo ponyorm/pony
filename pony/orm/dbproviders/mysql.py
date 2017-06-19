@@ -35,9 +35,23 @@ from pony.orm.sqlbuilding import Value, Param, SQLBuilder, join
 from pony.utils import throw, get_version_tuple
 from pony.converting import str2timedelta, timedelta2str
 
+from pony.migrate.operations import Op, alter_table
+
 class MySQLIndex(dbschema.DBIndex):
     rename_sql_template = 'ALTER TABLE %(table_name)s RENAME INDEX %(prev_name)s TO %(new_name)s'
     drop_sql_template = 'DROP INDEX %(name)s ON %(table_name)s'
+
+    def get_pk_alter_ops(index, prev):
+        return ()
+
+    def get_drop_ops(index, inside_table=True, **kw):
+        inside_table = True
+        if not index.is_pk or not inside_table:
+            for op in super(MySQLIndex, index).get_drop_ops(inside_table=inside_table):
+                yield op
+            raise StopIteration
+        case = index.schema.case
+        yield Op(case('DROP PRIMARY KEY'), index, 'drop', prefix=alter_table(index.table))
 
     def can_be_renamed(index):
         return index.schema.provider.server_version >= (5, 7)
@@ -49,8 +63,18 @@ class MySQLForeignKey(dbschema.ForeignKey):
         return False
 
 class MySQLColumn(dbschema.Column):
+    pk_constraint_template = ''
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
     rename_sql_template = 'ALTER TABLE %(table_name)s CHANGE %(prev_name)s %(new_col_def)s'
+
+    def get_rename_ops(column, old_name):
+        table = column.table
+        schema = table.schema
+        case = schema.case
+        quote_name = schema.provider.quote_name
+        old_name = quote_name(old_name)
+        op = case('CHANGE {} {}').format(old_name, column.get_sql())
+        yield Op(op, column, type='rename', prefix=alter_table(table))
 
     def db_rename(column, cursor, table_name):
         schema = column.table.schema
@@ -61,12 +85,14 @@ class MySQLColumn(dbschema.Column):
         sql = column.rename_sql_template % dict(table_name=table_name, prev_name=prev_name, new_col_def=column.get_sql())
         provider.execute(cursor, sql)
 
-
 class MySQLSchema(dbschema.DBSchema):
     inline_fk_syntax = False
     column_class = MySQLColumn
     index_class = MySQLIndex
     fk_class = MySQLForeignKey
+
+    MODIFY_COLUMN = 'ALTER COLUMN'
+    MODIFY_COLUMN_DEF = 'MODIFY COLUMN'
 
 class MySQLTranslator(SQLTranslator):
     json_path_wildcard_syntax = True

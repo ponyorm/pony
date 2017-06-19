@@ -13,6 +13,7 @@ if PY2:
     buffer = buffer
     int_types = (int, long)
     cmp = cmp
+    raw_input = raw_input
 
     def iteritems(dict):
         return dict.iteritems()
@@ -26,6 +27,8 @@ if PY2:
     def values_list(dict):
         return dict.values()
 
+    from contextlib2 import ExitStack, ContextDecorator, suppress
+
 else:
     import builtins, pickle
     from io import StringIO
@@ -34,6 +37,7 @@ else:
     unicode = str
     buffer = bytes
     int_types = (int,)
+    raw_input = input
 
     def cmp(a, b):
         return (a > b) - (a < b)
@@ -49,6 +53,8 @@ else:
 
     def values_list(dict):
         return list(dict.values())
+
+    from contextlib import ExitStack, ContextDecorator, suppress
 
 # Armin's recipe from http://lucumr.pocoo.org/2013/5/21/porting-to-python-3-redux/
 def with_metaclass(meta, *bases):

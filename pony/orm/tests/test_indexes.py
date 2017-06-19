@@ -16,7 +16,7 @@ class TestIndexes(unittest.TestCase):
 
         i1, i2 = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
-        self.assertEqual(i1.is_pk, True)
+        self.assertEqual(i1.is_pk, 'auto')
         self.assertEqual(i1.is_unique, True)
         self.assertEqual(i2.attrs, (Person.name, Person.age))
         self.assertEqual(i2.is_pk, False)

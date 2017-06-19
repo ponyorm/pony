@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
+from pony.py23compat import imap, basestring, buffer, int_types, unicode
 
 import os.path, sys, re, json
 import sqlite3 as sqlite
@@ -17,7 +17,10 @@ from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
+from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, inline_list
+
+from pony.migrate.operations import Op, OperationBatch
+
 
 class SqliteExtensionUnavailable(Exception):
     pass
@@ -28,16 +31,94 @@ class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(fk):
         assert False  # pragma: no cover
 
+class SQLiteTable(dbschema.Table):
+    def get_alter_ops(table, prev, new_tables, executor, renamed_cols=None):
+        current_schema = executor.schema
+        operations = executor.operations
+
+        # table name before possible rename
+        table_name_before = executor.renames['tables'].get(table.name)
+        if not table_name_before:
+            table_name_before = table.name
+
+        if not current_schema.tables.get(table_name_before):
+            raise StopIteration
+
+        def is_deleted(col_name):
+            for op in operations:
+                if op.type != 'drop' or not isinstance(op.obj, table.schema.column_class):
+                    continue
+                col = op.obj
+                if col.name == col_name:
+                    return True
+            if col_name in prev.column_dict and col_name not in table.column_dict:
+                return True
+
+        @inline_list
+        def cols_to_create():
+            for col in table.column_list:
+                yield col
+            actual_table = current_schema.tables[table_name_before]
+            for col in actual_table.column_list:
+                if col.name not in table.column_dict:
+                    yield col
+
+        cols_to_create = [c for c in cols_to_create if not is_deleted(c.name)]
+
+        quote_name = table.schema.provider.quote_name
+        name = quote_name(table.name)
+        name__new = quote_name(''.join((table.name, '__new')))
+
+        batch = OperationBatch(type='rename')
+        table_columns = table.column_list
+        table_name = table.name
+        try:
+            table.column_list = cols_to_create
+            table.name = ''.join((table.name, '__new'))
+            for op in table.get_create_ops():
+                batch.append(op)
+        finally:
+            table.column_list = table_columns
+            table.name = table_name
+
+        copy_cols = [quote_name(c.name) for c in cols_to_create]
+
+        cols = ', '.join(copy_cols)
+        insert_sql = 'INSERT INTO {} ({}) SELECT {} FROM {}'.format(name__new, cols, cols, name)
+
+        op = Op(insert_sql, table, type='insert')
+        batch.append(op)
+
+        batch.append(
+            Op('PRAGMA defer_foreign_keys = true', None, 'pragma')
+        )
+        drop_sql = 'DROP TABLE {}'.format(name)
+        op = Op(drop_sql, table, type='drop')
+        batch.append(op)
+        rename_sql = 'ALTER TABLE {} RENAME TO {}'.format(name__new, name)
+        op = Op(rename_sql, table, type='rename')
+        batch.append(op)
+        yield batch
+
 class SQLiteIndex(dbschema.DBIndex):
+    def get_drop_ops(index, inside_table=True, **kw):
+        if index.name not in index.table.indexes:
+            return ()
+        return dbschema.DBIndex.get_drop_ops(index, inside_table)
+
     def can_be_renamed(index):
         return False
 
 class SQLiteColumn(dbschema.Column):
+    def get_rename_ops(column, *args, **kw):
+        raise NotImplementedError
+
     def db_rename(column, cursor, table_name):
         throw(NotImplementedError)
 
 class SQLiteSchema(dbschema.DBSchema):
     named_foreign_keys = False
+    table_class = SQLiteTable
     column_class = SQLiteColumn
     index_class = SQLiteIndex
     fk_class = SQLiteForeignKey

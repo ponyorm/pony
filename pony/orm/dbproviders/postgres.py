@@ -31,13 +31,98 @@ from pony.orm.sqlbuilding import Value, SQLBuilder
 from pony.converting import timedelta2str
 from pony.utils import is_ident
 
+from pony.migrate.operations import Op, alter_table
+
 NoneType = type(None)
 
 class PGColumn(dbschema.Column):
-    auto_template = 'SERIAL PRIMARY KEY'
+    auto_template = 'SERIAL %(pk_constraint_template)s PRIMARY KEY'
+
+    def get_alter_ops(column, prev_column, db=None, **kw):
+        provider = column.table.schema.provider
+        quote_name = provider.quote_name
+        table = column.table
+        # pre = schema.case('ALTER TABLE %s') % quote_name(table.name)
+        schema = table.schema
+        sql = '{} {}'.format(schema.MODIFY_COLUMN_DEF, quote_name(column.name))
+        if column.sql_type != prev_column.sql_type:
+            op = '{} TYPE {}'.format(sql, column.sql_type)
+            yield Op(op, column, type='alter', prefix=alter_table(table))
+        if column.is_not_null and not prev_column.is_not_null:
+            op = '{} SET NOT NULL'.format(sql)
+            yield Op(op, column, type='alter', prefix=alter_table(table))
+        elif not column.is_not_null and prev_column.is_not_null:
+            op = '{} DROP NOT NULL'.format(sql)
+            yield Op(op, column, type='alter', prefix=alter_table(table))
+        if column.sql_default is None and prev_column.sql_default is not None:
+            op = '{} DROP DEFAULT'.format(sql)
+            yield Op(op, column, type='alter', prefix=alter_table(table))
+        elif column.sql_default is not None and prev_column.sql_default != column.sql_default:
+            value_class = provider.sqlbuilder_cls.value_class
+            value = value_class(provider.paramstyle, column.sql_default)
+            op = '{} SET DEFAULT {}'.format(sql, value)
+            yield Op(op, column, type='alter', prefix=alter_table(table))
+
+    def get_rename_ops(column, old_name):
+        table = column.table
+        schema = table.schema
+        case = schema.case
+        quote_name = schema.provider.quote_name
+        old_name = quote_name(old_name)
+        name = quote_name(column.name)
+        op = case('RENAME {} TO {}').format(old_name, name)
+        yield Op(op, column, type='rename', prefix=alter_table(table))
+
+
+class PGTable(dbschema.Table):
+    MODIFY_COLUMN = 'ALTER COLUMN'
+
+
+class PGDBIndex(dbschema.DBIndex):
+
+    def __init__(index, name, *args, **kw):
+        super(PGDBIndex, index).__init__(name, *args, **kw)
+        if index.is_pk and not index.name:
+            index.name = '{}_pkey'.format(index.table.name)
+
+    def get_drop_ops(index, inside_table=True, **kw):
+        schema = index.schema
+        case = schema.case
+        quote_name = schema.provider.quote_name
+        cmd = []
+        # if inside_table:
+        #     cmd.extend((case('ALTER TABLE'), quote_name(index.table.name)))
+        kw = {'prefix': alter_table(index.table)} if inside_table else {}
+        if index.is_pk:
+            cmd.extend(('DROP CONSTRAINT', index.name))
+            yield Op(' '.join(cmd), index, type='drop', **kw)
+            raise StopIteration
+        for item in super(PGDBIndex, index).get_drop_ops(inside_table=inside_table):
+            yield item
+
+class PGForeignKey(dbschema.ForeignKey):
+
+    def get_drop_ops(foreign_key, inside_table=True,**kw):
+        schema = foreign_key.schema
+        case = schema.case
+        quote_name = schema.provider.quote_name
+        cmd = [
+            # case('ALTER TABLE'),
+            # quote_name(foreign_key.child_table.name),
+            case('DROP CONSTRAINT'),
+            quote_name(foreign_key.name),
+        ]
+        cmd = ' '.join(cmd)
+        table = foreign_key.child_table
+        yield Op(cmd, foreign_key, type='drop', prefix=alter_table(table))
+
+
 
 class PGSchema(dbschema.DBSchema):
     column_class = PGColumn
+    table_class = PGTable
+    index_class = PGDBIndex
+    fk_class = PGForeignKey
 
 class PGTranslator(SQLTranslator):
     pass

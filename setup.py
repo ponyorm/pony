@@ -75,6 +75,7 @@ licence = "Apache License Version 2.0"
 
 packages = [
     "pony",
+    "pony.migrate",
     "pony.orm",
     "pony.orm.dbproviders",
     "pony.orm.examples",
@@ -95,6 +96,13 @@ if __name__ == "__main__":
         print(s % (name, version, sys.version.split(' ', 1)[0]))
         sys.exit(1)
 
+    REQUIRES = ['docopt']
+
+    if pv[0] == 2:
+        REQUIRES.extend([
+            'contextlib2'
+        ])
+
     setup(
         name=name,
         version=version,
@@ -106,5 +114,6 @@ if __name__ == "__main__":
         url=url,
         license=licence,
         packages=packages,
-        download_url=download_url
+        download_url=download_url,
+        install_requires=REQUIRES,
     )
