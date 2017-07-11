@@ -807,7 +807,14 @@ DBSchema.index_class = DBIndex
 DBSchema.fk_class = ForeignKey
 
 class DbUpgrade(object):
-    pass
+    @classmethod
+    def get_description(cls, schema, connection):
+        assert False, 'abstract method'
+
+    @classmethod
+    def apply(cls, schema, connection):
+        assert False, 'abstract method'
+
 
 class RenameM2MTables(DbUpgrade):
     version = '0.8'
@@ -859,6 +866,13 @@ class RenameM2MTables(DbUpgrade):
 
         return ordered_rename_list
 
+    @classmethod
+    def get_description(cls, schema, connection):
+        result = []
+        rename_list = cls.prepare_rename_list(schema)
+        for obj in rename_list:
+            result.append("\trename %s %s -> %s" % (obj.typename.lower(), obsolete(obj.name), obj.name))
+        return '\n'.join(result)
 
     @classmethod
     def apply(cls, schema, connection):

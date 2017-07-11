@@ -932,11 +932,17 @@ class Database(object):
                     for upgrade in upgrades:
                         upgrade.apply(schema, connection)
                         provider.update_pony_version(connection, upgrade.version)
-                else: throw(UpgradeError, 'The database tables are compatible with Pony %s, '
-                                          'and the current version of Pony is %s. '
-                                          'To upgrade tables to current Pony version, '
-                                          'call generate_mapping with flag allow_auto_upgrade=True'
-                                          % (db_version, pony.__version__))
+                else:
+                    upgrade_info = '\n\n'.join(
+                        '* upgrade to ver. %s:\n%s' % (upgrade.version, upgrade.get_description(schema, connection))
+                        for upgrade in upgrades
+                    )
+                    throw(UpgradeError, 'The database tables are compatible with Pony %s, '
+                                        'and the current version of Pony is %s. '
+                                        'To upgrade tables to current Pony version, '
+                                        'call generate_mapping with flag allow_auto_upgrade=True.\n'
+                                        'Following changes will be applied:\n%s'
+                                        % (db_version, pony.__version__, upgrade_info))
             if can_alter_tables and get_version_tuple(db_version) < get_version_tuple(pony.__version__):
                 database.provider.update_pony_version(connection)
             if create_tables: schema.create_tables(connection)
