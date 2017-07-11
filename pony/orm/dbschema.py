@@ -165,32 +165,8 @@ class Table(DBObject):
     def exists(table, provider, cursor, case_sensitive=True):
         return provider.table_exists(cursor, table.name, case_sensitive)
     def db_rename(table, cursor):
-        schema = table.schema
-        provider = schema.provider
-        provider.rename_table(cursor, table.name.obsolete_name, table.name)
-
-        constraints = [ index for key, index in sorted(table.indexes.items()) if not index.is_pk ]
-        if schema.named_foreign_keys:
-            constraints.extend(fk for key, fk in sorted(table.foreign_keys.items()))
-
-        quote_name = provider.quote_name
-        table_name = quote_name(table.name)
-
-        for constraint in constraints:
-            name = constraint.name
-            assert name.obsolete_name
-            if name == name.obsolete_name: continue
-            prev_name = quote_name(name.obsolete_name)
-            new_name = quote_name(name)
-            if constraint.can_be_renamed():
-                sql = constraint.rename_sql_template % dict(
-                    table_name=table_name, prev_name=prev_name, new_name=new_name)
-                provider.execute(cursor, sql)
-            else:
-                drop_sql = constraint.drop_sql_template % dict(
-                    table_name=table_name, name=prev_name)
-                provider.execute(cursor, drop_sql)
-                constraint.create(provider, cursor)
+        provider = table.schema.provider
+        provider.rename_table(cursor, obsolete(table.name), table.name)
     def _schema_rename(table, new_name):
         schema = table.schema
         assert new_name not in schema.tables
@@ -502,14 +478,14 @@ class Column(object):
         table.column_dict.pop(column.name)
         column.name = new_name
         table.column_dict[new_name] = column
-    def db_rename(column, cursor, table_name):
+    def db_rename(column, cursor):
         schema = column.table.schema
         provider = schema.provider
         quote_name = provider.quote_name
-        table_name = quote_name(table_name)
-        prev_name = quote_name(obsolete(column.name))
-        new_name = quote_name(column.name)
-        sql = column.rename_sql_template % dict(table_name=table_name, prev_name=prev_name, new_name=new_name)
+        sql = column.rename_sql_template % dict(
+            table_name=quote_name(column.table.name),
+            prev_name=quote_name(obsolete(column.name)),
+            new_name=quote_name(column.name))
         provider.execute(cursor, sql)
     def get_sql(column):
         table = column.table
@@ -597,6 +573,20 @@ class Constraint(DBObject):
         del schema.constraints[constraint.name]
     def can_be_renamed(constraint):
         return True
+    def db_rename(constraint, cursor):
+        provider = constraint.table.schema.provider
+        quote_name = provider.quote_name
+        prev_name = quote_name(constraint.name.obsolete_name)
+        new_name = quote_name(constraint.name)
+        if constraint.can_be_renamed():
+            sql = constraint.rename_sql_template % dict(
+                table_name=constraint.table.name, prev_name=prev_name, new_name=new_name)
+            provider.execute(cursor, sql)
+        else:
+            drop_sql = constraint.drop_sql_template % dict(
+                table_name=constraint.table.name, name=prev_name)
+            provider.execute(cursor, drop_sql)
+            constraint.create(provider, cursor)
 
 class DBIndex(Constraint):
     typename = 'Index'
@@ -822,42 +812,60 @@ class DbUpgrade(object):
 class RenameM2MTables(DbUpgrade):
     version = '0.8'
 
-    @classmethod
-    def apply(cls, schema, connection):
-        cursor = connection.cursor()
+    @staticmethod
+    def prepare_rename_list(schema):
+        ordered_rename_list = []
+        tmp_rename_list = []
         name_mapping = {}
-        rename_list = []
+
         for table in itervalues(schema.tables):
             prev_name = obsolete(table.name)
-            assert prev_name is not None
-            assert prev_name not in name_mapping
+            #
+            #
             name_mapping[prev_name] = table
             if prev_name != table.name:
-                rename_list.append(table)
-        rename_list.sort(key=attrgetter('name.obsolete_name'))
+                tmp_rename_list.append(table)
 
-        ordered_rename_list = []
-        while rename_list:
-            rest = []
-            for table in rename_list:
-                if table.name not in name_mapping:
-                    name_mapping.pop(table.name.obsolete_name)
-                    name_mapping[table.name] = table
-                    ordered_rename_list.append(table)
-                else:
-                    rest.append(table)
-            if len(rest) == len(rename_list):
-                table = rest[0]
-                throw(UpgradeError, 'Cannot rename table `%s` to `%s`: new name is already taken'
-                                    % (table.name.obsolete_name, table.name))
-            rename_list = rest
+            tmp_rename_list.sort(key=attrgetter('name.obsolete_name'))
 
-        for table in ordered_rename_list:
-            table.db_rename(cursor)
 
-        for table_name, table in sorted(schema.tables.items()):
-            for column in table.column_list:
-                if column.name != obsolete(column.name):
-                    column.db_rename(cursor, table_name)
+            while tmp_rename_list:
+                rest = []
+
+                for table in tmp_rename_list:
+                    if table.name not in name_mapping:
+                        name_mapping.pop(obsolete(table.name))
+                        name_mapping[table.name] = table
+                        ordered_rename_list.append(table)
+                    else:
+                        rest.append(table)
+
+                if len(rest) == len(tmp_rename_list):
+                    table = rest[0]
+                    throw(UpgradeError, 'Cannot rename table `%s` to `%s`: new name is already taken'
+                                        % (table.name.obsolete_name, table.name))
+                tmp_rename_list = rest
+
+        for table in ordered_rename_list[:]:
+
+            constraints = sorted(index for key, index in iteritems(table.indexes) if not index.is_pk)
+            if schema.named_foreign_keys:
+                constraints.extend(fk for key, fk in sorted(iteritems(table.foreign_keys)))
+
+            for constraint in constraints:
+                name = constraint.name
+                if name != obsolete(name):
+                    ordered_rename_list.append(constraint)
+
+        return ordered_rename_list
+
+
+    @classmethod
+    def apply(cls, schema, connection):
+        ordered_rename_list = cls.prepare_rename_list(schema)
+        cursor = connection.cursor()
+        for obj in ordered_rename_list:
+            obj.db_rename(cursor)
+
 
 DBSchema.upgrades.extend([RenameM2MTables])

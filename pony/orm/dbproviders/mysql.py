@@ -76,13 +76,14 @@ class MySQLColumn(dbschema.Column):
         op = case('CHANGE {} {}').format(old_name, column.get_sql())
         yield Op(op, column, type='rename', prefix=alter_table(table))
 
-    def db_rename(column, cursor, table_name):
+    def db_rename(column, cursor):
         schema = column.table.schema
         provider = schema.provider
         quote_name = provider.quote_name
-        table_name = quote_name(table_name)
-        prev_name = quote_name(obsolete(column.name))
-        sql = column.rename_sql_template % dict(table_name=table_name, prev_name=prev_name, new_col_def=column.get_sql())
+        sql = column.rename_sql_template % dict(
+            table_name=quote_name(column.table.name),
+            prev_name=quote_name(obsolete(column.name)),
+            new_col_def=column.get_sql())
         provider.execute(cursor, sql)
 
 class MySQLSchema(dbschema.DBSchema):
