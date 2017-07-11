@@ -423,13 +423,13 @@ class Table(DBObject):
             # is_pk == True
             del table.indexes[col_names]
         return table.schema.index_class(index_name, table, col_names, is_pk, is_unique)
-    def add_foreign_key(table, fk_name, parent_table, parent_col_names, child_col_names, index_name=None):
+    def add_foreign_key(table, fk_name, col_names, parent_table, parent_col_names, index_name=None):
         assert type(parent_col_names) is tuple
-        assert type(child_col_names) is tuple
+        assert type(col_names) is tuple
         if fk_name is None:
             provider = table.schema.provider
-            fk_name = provider.get_default_fk_name(table.name, parent_table.name, child_col_names)
-        return table.schema.fk_class(fk_name, parent_table, parent_col_names, table, child_col_names, index_name)
+            fk_name = provider.get_default_fk_name(table.name, parent_table.name, col_names)
+        return table.schema.fk_class(fk_name, parent_table, parent_col_names, table, col_names, index_name)
     def rename_column(table, prev_name, new_name, with_constraints=True):
         assert new_name not in table.column_dict
         column = table.column_dict.pop(prev_name)

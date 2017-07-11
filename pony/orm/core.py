@@ -2450,15 +2450,16 @@ class Attribute(object):
             if not isinstance(reverse, Set): throw(NotImplementedError)
             entity = attr.entity
             m2m_table = table.schema.tables[attr.table]
-            m2m_table.add_foreign_key(reverse.fk_name, table, parent_col_names=entity._pk_columns_,
-                                      child_col_names=reverse.columns, index_name=attr.index)
+            m2m_table.add_foreign_key(reverse.fk_name, col_names=reverse.columns,
+                                      parent_table=table, parent_col_names=entity._pk_columns_, index_name=attr.index)
             if attr.symmetric:
-                m2m_table.add_foreign_key(attr.reverse_fk_name, table, parent_col_names=entity._pk_columns_,
-                                          child_col_names=attr.reverse_columns)
+                m2m_table.add_foreign_key(attr.reverse_fk_name, col_names=attr.reverse_columns,
+                                          parent_table=table, parent_col_names=entity._pk_columns_)
         elif attr.reverse and attr.columns:
             rentity = attr.reverse.entity
             parent_table = table.schema.tables[rentity._table_]
-            table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_, child_col_names=attr.columns)
+            table.add_foreign_key(attr.reverse.fk_name, col_names=attr.columns,
+                                  parent_table=parent_table, parent_col_names=rentity._pk_columns_)
     def _modify_relation_(attr, new_name, new_attr, reverse_name, reverse_attr):
         throw(NotImplementedError)  # todo
     @property
