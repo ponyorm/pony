@@ -229,7 +229,7 @@ class Table(DBObject):
         for index in indexes: cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
             for fk in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
-                if schema.inline_fk_syntax and len(fk.child_col_names) == 1: continue
+                if schema.inline_fk_syntax and len(fk.col_names) == 1: continue
                 cmd.append(schema.indent + fk.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.extend(table.extra_create_cmd)
@@ -450,8 +450,8 @@ class Table(DBObject):
                 if new_index_name != index.name: index.rename(new_index_name)
 
         for fk in itervalues(table.foreign_keys):
-            if any(name in renamed_columns for name in fk.child_col_names):
-                new_fk_col_names = tuple(renamed_columns.get(name, name) for name in fk.child_col_names)
+            if any(name in renamed_columns for name in fk.col_names):
+                new_fk_col_names = tuple(renamed_columns.get(name, name) for name in fk.col_names)
                 new_fk_name = provider.get_default_fk_name(table.name, fk.parent_table.name, new_fk_col_names)
                 if new_fk_name != fk.name: fk.rename(new_fk_name)
     def remove_column(table, column_name, constraints_only=False):
@@ -460,7 +460,7 @@ class Table(DBObject):
                 assert not index.is_pk
                 index.remove()
         for fk in list(itervalues(table.foreign_keys)):
-            if column_name in fk.child_col_names:
+            if column_name in fk.col_names:
                 fk.remove()
         if not constraints_only:
             column = table.column_dict.pop(column_name)
@@ -720,9 +720,9 @@ class DBIndex(Constraint):
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(fk, name, parent_table, parent_col_names, table, child_col_names, index_name):
+    def __init__(fk, name, parent_table, parent_col_names, table, col_names, index_name):
         assert type(parent_col_names) is tuple
-        assert type(child_col_names) is tuple
+        assert type(col_names) is tuple
         schema = parent_table.schema
         if schema is not table.schema: throw(DBSchemaError,
             'Parent and child tables of foreign_key cannot belong to different schemata')
@@ -730,37 +730,37 @@ class ForeignKey(Constraint):
             column = parent_table.column_dict[col_name]
             if column.table is not parent_table: throw(DBSchemaError,
                 'Column `%s` does not belong to table `%s`' % (col_name, parent_table.name))
-        for col_name in child_col_names:
+        for col_name in col_names:
             column = table.column_dict[col_name]
             if column.table is not table: throw(DBSchemaError,
                 'Column `%s` does not belong to table `%s`' % (col_name, table.name))
-        if len(parent_col_names) != len(child_col_names): throw(DBSchemaError,
+        if len(parent_col_names) != len(col_names): throw(DBSchemaError,
             'Foreign key columns count do not match')
-        if child_col_names in table.foreign_keys:
-            if len(child_col_names) == 1: throw(DBSchemaError, 'Foreign key for column `%s` already defined'
-                                                               % child_col_names[0])
+        if col_names in table.foreign_keys:
+            if len(col_names) == 1: throw(DBSchemaError, 'Foreign key for column `%s` already defined'
+                                                               % col_names[0])
             else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined'
-                                       % ', '.join('`%s`' % col_name for col_name in child_col_names))
+                                       % ', '.join('`%s`' % col_name for col_name in col_names))
         if name is not None and name in schema.names:
             throw(DBSchemaError, 'Foreign key `%s` cannot be created, name is already in use' % name)
         Constraint.__init__(fk, name, schema)
-        table.foreign_keys[child_col_names] = fk
+        table.foreign_keys[col_names] = fk
         if table is not parent_table:
             table.parent_tables.add(parent_table)
             parent_table.child_tables.add(table)
         fk.parent_table = parent_table
         fk.parent_col_names = parent_col_names
         fk.table = table
-        fk.child_col_names = child_col_names
+        fk.col_names = col_names
 
         if index_name is not False:
-            child_columns_len = len(child_col_names)
-            for col_names in table.indexes:
-                if col_names[:child_columns_len] == child_col_names: break
-            else: table.add_index(child_col_names, is_pk=False, is_unique=False,
+            child_columns_len = len(col_names)
+            for index_col_names in table.indexes:
+                if index_col_names[:child_columns_len] == col_names: break
+            else: table.add_index(col_names, is_pk=False, is_unique=False,
                                         m2m=bool(table.m2m), provided_name=index_name)
     def remove(fk):
-        del fk.table.foreign_keys[fk.child_col_names]
+        del fk.table.foreign_keys[fk.col_names]
         if not any(fk2.parent_table is fk.parent_table
                    for fk2 in itervalues(fk.table.foreign_keys)):
             fk.parent_table.child_tables.remove(fk.table)
@@ -806,7 +806,7 @@ class ForeignKey(Constraint):
             append(case('CONSTRAINT'))
             append(quote_name(fk.name))
         append(case('FOREIGN KEY'))
-        append(schema.names_row(fk.child_col_names))
+        append(schema.names_row(fk.col_names))
         append(case('REFERENCES'))
         append(quote_name(fk.parent_table.name))
         append(schema.names_row(fk.parent_col_names))
