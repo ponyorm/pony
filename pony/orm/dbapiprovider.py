@@ -210,14 +210,13 @@ class DBAPIProvider(object):
                                          cnames='_'.join(name for name in column_names))
         return index_name
 
-    def get_default_fk_name(provider, table_name, parent_table_name, col_names):
-        fk_name = provider._get_default_fk_name(table_name, parent_table_name, col_names)
+    def get_default_fk_name(provider, table_name, col_names):
+        fk_name = provider._get_default_fk_name(table_name, col_names)
         obsolete_fk_name = provider._get_default_fk_name(
-            obsolete(table_name), obsolete(parent_table_name),
-            [ obsolete(col_name) for col_name in col_names ])
+            obsolete(table_name), [obsolete(col_name) for col_name in col_names])
         return provider.normalize_name(fk_name, obsolete_fk_name)
 
-    def _get_default_fk_name(provider, table_name, parent_table_name, col_names):
+    def _get_default_fk_name(provider, table_name, col_names):
         return 'fk_%s__%s' % (provider.base_name(table_name), '__'.join(col_names))
 
     def split_table_name(provider, table_name):

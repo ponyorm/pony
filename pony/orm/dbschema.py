@@ -428,7 +428,7 @@ class Table(DBObject):
         assert type(col_names) is tuple
         if fk_name is None:
             provider = table.schema.provider
-            fk_name = provider.get_default_fk_name(table.name, parent_table.name, col_names)
+            fk_name = provider.get_default_fk_name(table.name, col_names)
         return table.schema.fk_class(fk_name, parent_table, parent_col_names, table, col_names, index_name)
     def rename_column(table, prev_name, new_name, with_constraints=True):
         assert new_name not in table.column_dict
@@ -452,7 +452,7 @@ class Table(DBObject):
         for fk in itervalues(table.foreign_keys):
             if any(name in renamed_columns for name in fk.col_names):
                 new_fk_col_names = tuple(renamed_columns.get(name, name) for name in fk.col_names)
-                new_fk_name = provider.get_default_fk_name(table.name, fk.parent_table.name, new_fk_col_names)
+                new_fk_name = provider.get_default_fk_name(table.name, new_fk_col_names)
                 if new_fk_name != fk.name: fk.rename(new_fk_name)
     def remove_column(table, column_name, constraints_only=False):
         for index in list(itervalues(table.indexes)):
