@@ -429,7 +429,7 @@ class Table(DBObject):
         if fk_name is None:
             provider = table.schema.provider
             fk_name = provider.get_default_fk_name(table.name, col_names)
-        return table.schema.fk_class(fk_name, parent_table, parent_col_names, table, col_names, index_name)
+        return table.schema.fk_class(fk_name, table, col_names, parent_table, parent_col_names, index_name)
     def rename_column(table, prev_name, new_name, with_constraints=True):
         assert new_name not in table.column_dict
         column = table.column_dict.pop(prev_name)
@@ -720,7 +720,7 @@ class DBIndex(Constraint):
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(fk, name, parent_table, parent_col_names, table, col_names, index_name):
+    def __init__(fk, name, table, col_names, parent_table, parent_col_names, index_name):
         assert type(parent_col_names) is tuple
         assert type(col_names) is tuple
         schema = parent_table.schema
@@ -748,10 +748,10 @@ class ForeignKey(Constraint):
         if table is not parent_table:
             table.parent_tables.add(parent_table)
             parent_table.child_tables.add(table)
-        fk.parent_table = parent_table
-        fk.parent_col_names = parent_col_names
         fk.table = table
         fk.col_names = col_names
+        fk.parent_table = parent_table
+        fk.parent_col_names = parent_col_names
 
         if index_name is not False:
             child_columns_len = len(col_names)
