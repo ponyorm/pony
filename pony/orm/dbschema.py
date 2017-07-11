@@ -720,23 +720,23 @@ class DBIndex(Constraint):
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(fk, name, parent_table, parent_col_names, child_table, child_col_names, index_name):
+    def __init__(fk, name, parent_table, parent_col_names, table, child_col_names, index_name):
         assert type(parent_col_names) is tuple
         assert type(child_col_names) is tuple
         schema = parent_table.schema
-        if schema is not child_table.schema: throw(DBSchemaError,
+        if schema is not table.schema: throw(DBSchemaError,
             'Parent and child tables of foreign_key cannot belong to different schemata')
         for col_name in parent_col_names:
             column = parent_table.column_dict[col_name]
             if column.table is not parent_table: throw(DBSchemaError,
                 'Column `%s` does not belong to table `%s`' % (col_name, parent_table.name))
         for col_name in child_col_names:
-            column = child_table.column_dict[col_name]
-            if column.table is not child_table: throw(DBSchemaError,
-                'Column `%s` does not belong to table `%s`' % (col_name, child_table.name))
+            column = table.column_dict[col_name]
+            if column.table is not table: throw(DBSchemaError,
+                'Column `%s` does not belong to table `%s`' % (col_name, table.name))
         if len(parent_col_names) != len(child_col_names): throw(DBSchemaError,
             'Foreign key columns count do not match')
-        if child_col_names in child_table.foreign_keys:
+        if child_col_names in table.foreign_keys:
             if len(child_col_names) == 1: throw(DBSchemaError, 'Foreign key for column `%s` already defined'
                                                                % child_col_names[0])
             else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined'
@@ -744,30 +744,30 @@ class ForeignKey(Constraint):
         if name is not None and name in schema.names:
             throw(DBSchemaError, 'Foreign key `%s` cannot be created, name is already in use' % name)
         Constraint.__init__(fk, name, schema)
-        child_table.foreign_keys[child_col_names] = fk
-        if child_table is not parent_table:
-            child_table.parent_tables.add(parent_table)
-            parent_table.child_tables.add(child_table)
+        table.foreign_keys[child_col_names] = fk
+        if table is not parent_table:
+            table.parent_tables.add(parent_table)
+            parent_table.child_tables.add(table)
         fk.parent_table = parent_table
         fk.parent_col_names = parent_col_names
-        fk.child_table = child_table
+        fk.table = table
         fk.child_col_names = child_col_names
 
         if index_name is not False:
             child_columns_len = len(child_col_names)
-            for col_names in child_table.indexes:
+            for col_names in table.indexes:
                 if col_names[:child_columns_len] == child_col_names: break
-            else: child_table.add_index(child_col_names, is_pk=False, is_unique=False,
-                                        m2m=bool(child_table.m2m), provided_name=index_name)
+            else: table.add_index(child_col_names, is_pk=False, is_unique=False,
+                                        m2m=bool(table.m2m), provided_name=index_name)
     def remove(fk):
-        del fk.child_table.foreign_keys[fk.child_col_names]
+        del fk.table.foreign_keys[fk.child_col_names]
         if not any(fk2.parent_table is fk.parent_table
-                   for fk2 in itervalues(fk.child_table.foreign_keys)):
-            fk.parent_table.child_tables.remove(fk.child_table)
-            fk.child_table.parent_tables.remove(fk.parent_table)
+                   for fk2 in itervalues(fk.table.foreign_keys)):
+            fk.parent_table.child_tables.remove(fk.table)
+            fk.table.parent_tables.remove(fk.parent_table)
         Constraint.remove(fk)
     def exists(fk, provider, cursor, case_sensitive=True):
-        return provider.fk_exists(cursor, fk.child_table.name, fk.name, case_sensitive)
+        return provider.fk_exists(cursor, fk.table.name, fk.name, case_sensitive)
     def get_sql(fk):
         return fk._get_create_sql(inside_table=True)
     def get_create_command(fk):
@@ -778,12 +778,12 @@ class ForeignKey(Constraint):
         quote_name = schema.provider.quote_name
         cmd = [
             # case('ALTER TABLE'),
-            # quote_name(foreign_key.child_table.name),
+            # quote_name(foreign_key.table.name),
             case('DROP FOREIGN KEY'),
             quote_name(foreign_key.name),
         ]
         cmd = ' '.join(cmd)
-        table = foreign_key.child_table
+        table = foreign_key.table
         yield Op(cmd, foreign_key, type='drop', prefix=alter_table(table))
 
     def get_alter_ops(foreign_key, prev, new_tables, **kwargs):
@@ -800,7 +800,7 @@ class ForeignKey(Constraint):
         append = cmd.append
         if not inside_table:
             append(case('ALTER TABLE'))
-            append(quote_name(fk.child_table.name))
+            append(quote_name(fk.table.name))
             append(case('ADD'))
         if schema.named_foreign_keys and fk.name:
             append(case('CONSTRAINT'))

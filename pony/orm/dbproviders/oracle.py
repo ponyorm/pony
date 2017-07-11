@@ -142,7 +142,7 @@ class OraColumn(Column):
 class OraForeignKey(ForeignKey):
     def get_drop_ops(foreign_key, table=None, **kw):
         # assert table is not None
-        table = foreign_key.child_table
+        table = foreign_key.table
         schema = foreign_key.schema
         case = schema.case
         quote_name = schema.provider.quote_name

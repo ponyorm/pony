@@ -108,12 +108,12 @@ class PGForeignKey(dbschema.ForeignKey):
         quote_name = schema.provider.quote_name
         cmd = [
             # case('ALTER TABLE'),
-            # quote_name(foreign_key.child_table.name),
+            # quote_name(foreign_key.table.name),
             case('DROP CONSTRAINT'),
             quote_name(foreign_key.name),
         ]
         cmd = ' '.join(cmd)
-        table = foreign_key.child_table
+        table = foreign_key.table
         yield Op(cmd, foreign_key, type='drop', prefix=alter_table(table))
 
 
