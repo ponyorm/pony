@@ -50,11 +50,11 @@ class MySQLIndex(dbschema.DBIndex):
             for op in super(MySQLIndex, index).get_drop_ops(inside_table=inside_table):
                 yield op
             raise StopIteration
-        case = index.schema.case
+        case = index.table.schema.case
         yield Op(case('DROP PRIMARY KEY'), index, 'drop', prefix=alter_table(index.table))
 
     def can_be_renamed(index):
-        return index.schema.provider.server_version >= (5, 7)
+        return index.table.schema.provider.server_version >= (5, 7)
 
 class MySQLForeignKey(dbschema.ForeignKey):
     drop_sql_template = 'ALTER TABLE %(table_name)s DROP FOREIGN KEY %(name)s'

@@ -86,7 +86,7 @@ class PGDBIndex(dbschema.DBIndex):
             index.name = '{}_pkey'.format(index.table.name)
 
     def get_drop_ops(index, inside_table=True, **kw):
-        schema = index.schema
+        schema = index.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
         cmd = []
@@ -103,7 +103,7 @@ class PGDBIndex(dbschema.DBIndex):
 class PGForeignKey(dbschema.ForeignKey):
 
     def get_drop_ops(foreign_key, inside_table=True,**kw):
-        schema = foreign_key.schema
+        schema = foreign_key.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
         cmd = [

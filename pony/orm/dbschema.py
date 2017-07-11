@@ -573,17 +573,18 @@ class Column(object):
 class Constraint(DBObject):
     rename_sql_template = 'ALTER TABLE %(table_name)s RENAME CONSTRAINT %(prev_name)s TO %(new_name)s'
     drop_sql_template = 'ALTER TABLE %(table_name)s DROP CONSTRAINT %(name)s'
-    def __init__(constraint, name, schema):
+    def __init__(constraint, name, table):
+        schema = table.schema
         if name is not None:
             assert name not in schema.names
             if name in schema.constraints: throw(DBSchemaError,
                 "Constraint with name `%s` already exists" % name)
             schema.names[name] = constraint
             schema.constraints[name] = constraint
-        constraint.schema = schema
         constraint.name = name
+        constraint.table = table
     def rename(constraint, new_name):
-        schema = constraint.schema
+        schema = constraint.table.schema
         assert new_name not in schema.names
         del schema.names[constraint.name]
         del schema.constraints[constraint.name]
@@ -591,7 +592,7 @@ class Constraint(DBObject):
         schema.names[new_name] = constraint
         schema.constraints[new_name] = constraint
     def remove(constraint):
-        schema = constraint.schema
+        schema = constraint.table.schema
         del schema.names[constraint.name]
         del schema.constraints[constraint.name]
     def can_be_renamed(constraint):
@@ -625,7 +626,7 @@ class DBIndex(Constraint):
         schema = table.schema
         if name is not None and name in schema.names:
             throw(DBSchemaError, 'Index `%s` cannot be created, name is already in use' % name)
-        Constraint.__init__(index, name, schema)
+        Constraint.__init__(index, name, table)
 
         if len(col_names) == 1:
             column = columns[0]
@@ -636,7 +637,6 @@ class DBIndex(Constraint):
                 column.is_pk_part = True
 
         table.indexes[col_names] = index
-        index.table = table
         index.col_names = col_names
         index.is_pk = is_pk
         index.is_unique = is_unique
@@ -652,7 +652,7 @@ class DBIndex(Constraint):
     def get_create_command(index):
         return index._get_create_sql(inside_table=False)
     def get_drop_ops(index, inside_table=True, table=None):
-        schema = index.schema
+        schema = index.table.schema
         if table is None:
             table = index.table
         quote_name = schema.provider.quote_name
@@ -664,7 +664,7 @@ class DBIndex(Constraint):
         cmd.extend(('DROP INDEX', quote_name(index.name)))
         yield Op(' '.join(cmd), index, type='drop', **kw)
     def _get_create_sql(index, inside_table):
-        schema = index.schema
+        schema = index.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
         cmd = []
@@ -743,12 +743,11 @@ class ForeignKey(Constraint):
                                        % ', '.join('`%s`' % col_name for col_name in col_names))
         if name is not None and name in schema.names:
             throw(DBSchemaError, 'Foreign key `%s` cannot be created, name is already in use' % name)
-        Constraint.__init__(fk, name, schema)
+        Constraint.__init__(fk, name, table)
         table.foreign_keys[col_names] = fk
         if table is not parent_table:
             table.parent_tables.add(parent_table)
             parent_table.child_tables.add(table)
-        fk.table = table
         fk.col_names = col_names
         fk.parent_table = parent_table
         fk.parent_col_names = parent_col_names
@@ -773,7 +772,7 @@ class ForeignKey(Constraint):
     def get_create_command(fk):
         return fk._get_create_sql(inside_table=False)
     def get_drop_ops(foreign_key, inside_table=True, **kw):
-        schema = foreign_key.schema
+        schema = foreign_key.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
         cmd = [
@@ -793,7 +792,7 @@ class ForeignKey(Constraint):
             yield op
 
     def _get_create_sql(fk, inside_table):
-        schema = fk.schema
+        schema = fk.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
         cmd = []
