@@ -829,7 +829,7 @@ class RenameM2MTables(DbUpgrade):
         name_mapping = {}
         rename_list = []
         for table in itervalues(schema.tables):
-            prev_name = getattr(table.name, 'obsolete_name', table.name)
+            prev_name = obsolete(table.name)
             assert prev_name is not None
             assert prev_name not in name_mapping
             name_mapping[prev_name] = table
