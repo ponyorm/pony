@@ -132,6 +132,8 @@ class PGValue(Value):
     def __unicode__(self):
         value = self.value
         if isinstance(value, bool): return value and 'true' or 'false'
+        if isinstance(value, datetime): return 'timestamp ' + Value.__unicode__(self)
+        if isinstance(value, date): return 'date ' + Value.__unicode__(self)
         return Value.__unicode__(self)
     if not PY2: __str__ = __unicode__
 

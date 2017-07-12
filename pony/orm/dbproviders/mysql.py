@@ -98,7 +98,17 @@ class MySQLSchema(dbschema.DBSchema):
 class MySQLTranslator(SQLTranslator):
     json_path_wildcard_syntax = True
 
+class MySQLValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, datetime): return 'datetime ' + Value.__unicode__(self)
+        if isinstance(value, date): return 'date ' + Value.__unicode__(self)
+        return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
+
 class MySQLBuilder(SQLBuilder):
+    value_class = MySQLValue
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', imap(builder, args)), ')'
     def TRIM(builder, expr, chars=None):

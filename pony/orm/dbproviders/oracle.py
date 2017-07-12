@@ -193,7 +193,17 @@ class OraTranslator(sqltranslation.SQLTranslator):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
 
+class OraValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, datetime): return 'timestamp ' + Value.__unicode__(self)
+        if isinstance(value, date): return 'date ' + Value.__unicode__(self)
+        return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
+
 class OraBuilder(SQLBuilder):
+    value_class = OraValue
     def INSERT(builder, table_name, columns, values, returning=None):
         result = SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
