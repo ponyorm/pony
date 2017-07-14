@@ -20,8 +20,8 @@ CLI_DOC = '''
 Pony migration tool.
 
 Usage:
-    {script_name} migrate [--verbose | -v] [--empty --custom] make [<name>]
-    {script_name} migrate [--verbose | -v] [--fake-initial --dry] apply [[<start>] <end>]
+    {script_name} migrate make [<name>] [--verbose | -v] [--empty --custom]
+    {script_name} migrate apply [[<start>] <end>] [--verbose | -v] [--fake-initial --dry]
     {script_name} migrate sql <name>
     {script_name} migrate list
 
