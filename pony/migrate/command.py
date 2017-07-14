@@ -12,7 +12,7 @@ import pony
 from pony import orm
 
 from . import writer, get_cmd_exitstack, get_migration_dir
-from .exceptions import MigrationFileNotFound, MultipleMigrationFilesFound, MergeAborted
+from .exceptions import MigrationCommandError, MigrationFileNotFound, MultipleMigrationFilesFound, MergeAborted
 from .migration import Migration, MigrationLoader
 from .questioner import InteractiveMigrationQuestioner
 
@@ -111,7 +111,7 @@ def migrate(db, opts):
             name = find_migration(opts['<name>'])
             Migration.apply(db=db, dry_run=True, name_exact=name)
         else:
-            raise NotImplementedError
+            raise MigrationCommandError
 
 def find_migration(prefix):
     template = prefix + '*.py'

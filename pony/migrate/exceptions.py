@@ -9,6 +9,13 @@ class MigrationException(Exception):
     pass
 
 
+class MigrationCommandError(MigrationException):
+    """
+    Raised when migration command has an error in syntax
+    """
+    pass
+
+
 class MigrationFileNotFound(MigrationException):
     """
     Raised when find_migration() couldn't find a file by prefix
