@@ -24,7 +24,7 @@ class TestApply(unittest.TestCase):
             int_f = orm.Required(int)
 
 
-        command.cli(db, 'migrate make')
+        command.migrate(db, 'make')
 
 
         # [p] = glob.glob('./migrations/0001*')
@@ -44,14 +44,14 @@ class TestApply(unittest.TestCase):
             s = orm.Required(str)
 
 
-        command.cli(db, 'migrate make -v')
+        command.migrate(db, 'make -v')
         # [p] = glob.glob('./migrations/0002*')
         # with open(p) as f:
         #     s  = f.read()
         # print(s)
 
     def test_2(self):
-        command.cli(self.DB, 'migrate apply')
+        command.migrate(self.DB, 'apply')
 
 
 class TestAddEntity(unittest.TestCase):
@@ -64,13 +64,13 @@ class TestAddEntity(unittest.TestCase):
     }
 
     def test_0(self):
-        command.cli(self.db, 'migrate make')
+        command.migrate(self.db, 'make')
         # [p] = glob.glob('./migrations/0001*')
         # with open(p) as f:
         #     s  = f.read()
 
     def test_2(self):
-        command.cli(self.db, 'migrate apply')
+        command.migrate(self.db, 'apply')
 
     def test_1(self):
         db_args, db_kwargs = self.db_params
@@ -84,7 +84,7 @@ class TestAddEntity(unittest.TestCase):
         db.generate_mapping(create_tables=False, check_tables=False)
 
 
-        command.cli(db, 'migrate make -v')
+        command.migrate(db, 'make -v')
         [p] = glob.glob('./migrations/0002*')
         with open(p) as f:
             s  = f.read()
@@ -110,8 +110,8 @@ class TestRename(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         with open('migrations/0002.py', 'w') as f:
@@ -125,7 +125,7 @@ operations = [
     op.RenameEntity('MyEntity', 'YourEntity'),
 ]
             ''')
-        command.cli(self.DB, 'migrate apply -v')
+        command.migrate(self.DB, 'apply -v')
 
 
 
@@ -146,8 +146,8 @@ class TestDefault(unittest.TestCase):
         class MyEntity(db.Entity):
             int_f = orm.Required(int)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         with open('migrations/0002.py', 'w') as f:
@@ -162,7 +162,7 @@ operations = [
 ]
             ''')
 
-        command.cli(self.DB, 'migrate apply -v')
+        command.migrate(self.DB, 'apply -v')
 
 
 class TestRenamesMixed(unittest.TestCase):
@@ -183,8 +183,8 @@ class TestRenamesMixed(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         with open('migrations/0002.py', 'w') as f:
@@ -202,7 +202,7 @@ operations = [
             ''')
 
         db = self.DB
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'apply -v')
 
 
 
@@ -225,8 +225,8 @@ class TestCustomOp(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         with open('migrations/0002.py', 'w') as f:
@@ -247,7 +247,7 @@ operations = [
             ''')
 
         db = self.DB
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'apply -v')
 
 
 
@@ -269,8 +269,8 @@ class TestCustomizeOp(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         with open('migrations/0002.py', 'w') as f:
@@ -289,7 +289,7 @@ operations = [
             ''')
 
         db = self.DB
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'apply -v')
 
 
 class TestCustomWithChanges(unittest.TestCase):
@@ -313,8 +313,8 @@ class TestCustomWithChanges(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         with open('migrations/0002.py', 'w') as f:
@@ -338,7 +338,7 @@ operations = [
             ''')
 
         db = self.DB
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'apply -v')
 
     def test_3(self):
         db_args, db_kwargs = self.db_params
@@ -378,8 +378,8 @@ class TestAskNotNull(unittest.TestCase):
 
         # db.generate_mapping()
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
         # import ipdb; ipdb.set_trace()
 
@@ -402,8 +402,8 @@ class TestAskNotNull(unittest.TestCase):
             s = orm.Required(str)
             d = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
 
 class TestAskRenameEntity(unittest.TestCase):
@@ -423,8 +423,8 @@ class TestAskRenameEntity(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         db_args, db_kwargs = self.db_params
@@ -435,8 +435,8 @@ class TestAskRenameEntity(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
         # self.assertTrue('RENAME TO' in s.upper())
 
 
@@ -459,8 +459,8 @@ class TestAskRenameAttr(unittest.TestCase):
             int_f = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_2(self):
         db_args, db_kwargs = self.db_params
@@ -471,8 +471,8 @@ class TestAskRenameAttr(unittest.TestCase):
             int_g = orm.Required(int)
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
 
 
@@ -537,8 +537,8 @@ class TestMerge(unittest.TestCase):
         class MyEntity(db.Entity):
             int_f = orm.Required(int)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_1(self):
         db_args, db_kwargs = self.db_params
@@ -574,8 +574,8 @@ operations = [
 
     def test_3(self):
         db = self.DB
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
 
 class TestLateBind(unittest.TestCase):
@@ -596,8 +596,8 @@ class TestLateBind(unittest.TestCase):
         class MyEntity(db.Entity):
             int_f = orm.Required(int)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     def test_1(self):
         db_args, db_kwargs = self.db_params
@@ -615,7 +615,7 @@ operations = [
             ''')
 
         db = self.DB
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'apply -v')
 
 
 
@@ -644,14 +644,14 @@ class TestCustomWithInheritance(unittest.TestCase):
         class MyEntity(Base):
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make')
-        command.cli(db, 'migrate apply')
+        command.migrate(db, 'make')
+        command.migrate(db, 'apply')
 
 
 
     # def test(self):
-        # command.cli(db, 'migrate make --empty')
-        # command.cli(db, 'migrate make --empty --custom')
+        # command.migrate(db, 'make --empty')
+        # command.migrate(db, 'make --empty --custom')
 
 
     def test_2(self):
@@ -678,7 +678,7 @@ operations = [
             ''')
 
         db = self.DB
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'apply -v')
 
     def test_3(self):
         db_args, db_kwargs = self.db_params

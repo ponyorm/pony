@@ -681,8 +681,8 @@ class Database(object):
         if isinstance(command, basestring):
             import shlex
             command = shlex.split(command)
-        from pony.migrate.command import cli
-        cli(self, command)
+        from pony.migrate.command import migrate
+        migrate(self, command)
     @cut_traceback
     def bind(self, *args, **kwargs):
         self._bind(*args, **kwargs)

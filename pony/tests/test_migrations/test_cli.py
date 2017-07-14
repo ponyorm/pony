@@ -34,7 +34,7 @@ class TestInitial(unittest.TestCase):
         class OtherEntity(db.Entity):
             fk = orm.PrimaryKey(MyEntity)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestChange(unittest.TestCase):
@@ -55,7 +55,7 @@ class TestChange(unittest.TestCase):
             int_f = orm.Required(int)
             str_f = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test_type(self):
         db_args, db_kwargs = self.db_params
@@ -65,7 +65,7 @@ class TestChange(unittest.TestCase):
             int_f = orm.Required(str)
             str_f = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test_nullable(self):
         db_args, db_kwargs = self.db_params
@@ -75,7 +75,7 @@ class TestChange(unittest.TestCase):
             int_f = orm.Required(int, nullable=True)
             str_f = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestDropPk(unittest.TestCase):
@@ -96,7 +96,7 @@ class TestDropPk(unittest.TestCase):
             int_f = orm.PrimaryKey(int)
             str_f = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -107,8 +107,8 @@ class TestDropPk(unittest.TestCase):
             int_f = orm.Required(int)
             str_f = orm.Required(str)
 
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply -v')
 
     # FIXME incorrect pk migration
     # def test_data(self):
@@ -148,7 +148,7 @@ class TestDropFk(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test2(self):
         db_args, db_kwargs = self.db_params
@@ -164,7 +164,7 @@ class TestDropFk(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestAddFk(unittest.TestCase):
@@ -184,7 +184,7 @@ class TestAddFk(unittest.TestCase):
         class Activity(db.Entity):
             descr = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -199,7 +199,7 @@ class TestAddFk(unittest.TestCase):
             amount = orm.Required(int)
             spent_on = orm.Required('Activity')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 
@@ -220,7 +220,7 @@ class TestDropTable(unittest.TestCase):
         class Activity(db.Entity):
             descr = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
     def test1(self):
@@ -235,7 +235,7 @@ class TestDropTable(unittest.TestCase):
             text = orm.Required(str)
             activity = orm.Required('Activity')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test2(self):
         db_args, db_kwargs = self.db_params
@@ -245,7 +245,7 @@ class TestDropTable(unittest.TestCase):
         class Activity(db.Entity):
             descr = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 
@@ -275,14 +275,14 @@ class TestDropDependent(unittest.TestCase):
             t1 = orm.Required('T1')
             t2 = orm.Optional('T2')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
 
         db = orm.Database(*db_args, **db_kwargs)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 
@@ -336,7 +336,7 @@ class TestDeps2(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -350,7 +350,7 @@ class TestDeps2(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 
@@ -435,7 +435,7 @@ class MyEntity(db.Entity):
 
             '''.format(repr(db_args), repr(db_kwargs)))
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
     def test_compound(self):
@@ -454,7 +454,7 @@ class MyEntity(db.Entity):
 
                 '''.format(repr(db_args), repr(db_kwargs)))
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test_simple(self):
         db_args, db_kwargs = self.db_params
@@ -470,7 +470,7 @@ class MyEntity(db.Entity):
 
                 '''.format(repr(db_args), repr(db_kwargs)))
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestRenameTable(unittest.TestCase):
@@ -499,7 +499,7 @@ class TestRenameTable(unittest.TestCase):
 
         db.generate_mapping(check_tables=False, create_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -515,7 +515,7 @@ class TestRenameTable(unittest.TestCase):
 
         db.generate_mapping(check_tables=False, create_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestDefaults(unittest.TestCase):
@@ -556,7 +556,7 @@ class TestDefaults(unittest.TestCase):
         class T2(db.Entity):
             peers = orm.Set('T1')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
     def test1(self):
@@ -570,7 +570,7 @@ class TestDefaults(unittest.TestCase):
         class T2(db.Entity):
             peers = orm.Set('T1')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestMerge(unittest.TestCase):
@@ -595,7 +595,7 @@ class TestMerge(unittest.TestCase):
         class T2(db.Entity):
             peers = orm.Set('T1')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
     def test1(self):
@@ -613,7 +613,7 @@ operations = [
 ]
     '''.format(db_args, db_kwargs))
 
-        command.cli(self.db, 'migrate apply -v')
+        command.migrate(self.db, 'apply -v')
 
     def test2(self):
         p = os.path.join('migrations', '0003.py')
@@ -630,7 +630,7 @@ operations = [
             ''')
 
     def test3(self):
-        command.cli(self.db, 'migrate apply -v')
+        command.migrate(self.db, 'apply -v')
 
 
 class TestSqlite(unittest.TestCase):
@@ -658,7 +658,7 @@ class TestSqlite(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
     def test1(self):
@@ -677,7 +677,7 @@ class TestSqlite(unittest.TestCase):
         class Data(db.Entity):
             created = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestSqliteAddColumn(unittest.TestCase):
@@ -696,7 +696,7 @@ class TestSqliteAddColumn(unittest.TestCase):
         class Data(db.Entity):
             pass
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -706,7 +706,7 @@ class TestSqliteAddColumn(unittest.TestCase):
             number = orm.Optional(int)
             created = orm.Optional(int)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestNoChanges(unittest.TestCase):
@@ -727,7 +727,7 @@ class TestNoChanges(unittest.TestCase):
             str_f = orm.Required(str)
 
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -737,7 +737,7 @@ class TestNoChanges(unittest.TestCase):
             int_f = orm.Required(int)
             str_f = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 
@@ -761,7 +761,7 @@ class TestGenerateMapping(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -772,7 +772,7 @@ class TestGenerateMapping(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test_2insert(self):
         db = self.DB
@@ -803,7 +803,7 @@ class TestOptional(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         with ExitStack() as stack:
@@ -822,7 +822,7 @@ class TestOptional(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestFake(unittest.TestCase):
@@ -851,8 +851,8 @@ class TestFake(unittest.TestCase):
 
     def test2(self):
         db = self.DB
-        command.cli(db, 'migrate make -v')
-        command.cli(db, 'migrate apply --fake -v')
+        command.migrate(db, 'make -v')
+        command.migrate(db, 'apply --fake -v')
 
 
 class TestUnique(unittest.TestCase):
@@ -873,7 +873,7 @@ class TestUnique(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db_args, db_kwargs = self.db_params
@@ -885,7 +885,7 @@ class TestUnique(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 
@@ -912,7 +912,7 @@ class TestSqliteForeignKey(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test1(self):
         db = self.DB
@@ -936,7 +936,7 @@ class TestSqliteForeignKey(unittest.TestCase):
 
         db.generate_mapping(create_tables=False, check_tables=False)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
     def test3(self):
         with orm.db_session:
@@ -967,7 +967,7 @@ class TestExistingDefault(unittest.TestCase):
         class T2(db.Entity):
             peers = orm.Set('T1')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
     def test1(self):
@@ -981,7 +981,7 @@ class TestExistingDefault(unittest.TestCase):
         class T2(db.Entity):
             peers = orm.Set('T1')
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
 class TestAttributeDeclarationId(unittest.TestCase):
@@ -1035,7 +1035,7 @@ class TestMakeOptional(unittest.TestCase):
         class Activity(db.Entity):
             s = orm.Required(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
 
     def test1(self):
@@ -1046,6 +1046,6 @@ class TestMakeOptional(unittest.TestCase):
         class Activity(db.Entity):
             s = orm.Optional(str)
 
-        command.cli(db, 'migrate make -v'); command.cli(db, 'migrate apply -v')
+        command.migrate(db, 'make -v'); command.migrate(db, 'apply -v')
 
         assert len(glob('migrations/*')) == 2

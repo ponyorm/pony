@@ -18,12 +18,12 @@ CLI_DOC = '''
 Pony migration tool.
 
 Usage:
-    {script_name} migrate make [<name>] [--verbose | -v] [--empty --custom]
-    {script_name} migrate apply [[<start>] <end>] [--verbose | -v] [--fake-initial --dry]
-    {script_name} migrate sql <name>
-    {script_name} migrate list
+    {script_name} make [<name>] [--verbose | -v] [--empty --custom]
+    {script_name} apply [[<start>] <end>] [--verbose | -v] [--fake-initial --dry]
+    {script_name} sql <name>
+    {script_name} list
 
-Subcommands:
+Commands:
     make          Generate the migration file
     apply         Apply all generated migrations
     merge         Merge conflicts
@@ -55,10 +55,9 @@ class drop_into_debugger(object):
         pdb.post_mortem(tb)
 
 
-def cli(db, argv=None):
-    doc = CLI_DOC.format(script_name='cli')
+def migrate(db, argv=None):
+    doc = CLI_DOC.format(script_name='migrate')
     opts = docopt(doc, argv)
-    assert 'migrate' in opts
     cmd_list=[cmd for cmd in ('make', 'apply', 'list', 'sql') if opts[cmd]]
     assert len(cmd_list) == 1
     cmd = cmd_list[0]
@@ -66,7 +65,7 @@ def cli(db, argv=None):
     if kwargs['start'] and not kwargs['end']:
         # https://github.com/docopt/docopt/issues/358
         kwargs['end'], kwargs['start'] = kwargs['start'], kwargs['end']
-    migrate(db, cmd, **kwargs)
+    _migrate(db, cmd, **kwargs)
 
 
 migrate_options = dict(
@@ -75,7 +74,7 @@ migrate_options = dict(
 )
 
 
-def migrate(db, cmd, name=None, start=None, end=None,
+def _migrate(db, cmd, name=None, start=None, end=None,
             verbose=False, custom=False, dry=False, empty=False, fake_initial=False):
     debug = os.environ.get('PONY_DEBUG')
     if debug:
@@ -194,6 +193,6 @@ def add_migrate_to_click(click_group, db, name='migrate'):
     @click.command(name, context_settings={'ignore_unknown_options': True})
     @click.argument('_arg', nargs=-1, type=click.UNPROCESSED)
     def do_migrate(_arg):
-        cli(db)
+        migrate(db)
 
     click_group.add_command(do_migrate)
