@@ -120,11 +120,11 @@ def find_migration(prefix):
     template = prefix + '*.py'
     pathname = os.path.join(get_migration_dir(), template)
     files = glob(pathname)
-    if len(files) > 1:
+    if not files:
+        raise MigrationFileNotFound('No files for {}'.format(prefix))
+    elif len(files) > 1:
         files = ', '.join(os.path.basename(filename) for filename in files)
         raise MultipleMigrationFilesFound('Multiple files found: {}'.format(files))
-    elif not files:
-        raise MigrationFileNotFound('No files for {}'.format(prefix))
     return os.path.basename(files[0])[:-3]
 
 @orm.db_session
