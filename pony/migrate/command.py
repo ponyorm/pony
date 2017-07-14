@@ -17,7 +17,6 @@ from .migration import Migration, MigrationLoader
 from .questioner import InteractiveMigrationQuestioner
 
 CLI_DOC = '''
-
 Pony migration tool.
 
 Usage:
