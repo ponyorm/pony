@@ -1,6 +1,7 @@
 from __future__ import print_function
+from pony.py23compat import basestring
 
-import os, os.path, sys
+import os, os.path, sys, shlex
 from datetime import datetime
 from glob import glob
 
@@ -56,6 +57,8 @@ class drop_into_debugger(object):
 
 
 def migrate(db, argv=None):
+    if isinstance(argv, basestring):
+        argv = shlex.split(argv)
     doc = CLI_DOC.format(script_name='migrate')
     opts = docopt(doc, argv)
     cmd_list=[cmd for cmd in ('make', 'apply', 'list', 'sql') if opts[cmd]]

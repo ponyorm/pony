@@ -678,9 +678,6 @@ class Database(object):
 
         if migration_dir is not None:
             os.environ['MIGRATIONS_DIR'] = migration_dir
-        if isinstance(command, basestring):
-            import shlex
-            command = shlex.split(command)
         from pony.migrate.command import migrate
         migrate(self, command)
     @cut_traceback
