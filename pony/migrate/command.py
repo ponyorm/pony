@@ -101,22 +101,15 @@ def migrate(db, opts):
             show_migrations(db=db)
             return
         if cmd == 'apply':
-            if opts['<start>'] and not opts['<end>']:
+            start = opts['<start>']
+            end = opts['<end>']
+            start = find_migration(start) if start else None
+            end = find_migration(end) if end else None
+            if start and not end:
                 # https://github.com/docopt/docopt/issues/358
-                kw = {
-                    'name_end': find_migration(opts['<start>']),
-                    'name_start': None,
-                }
-            elif opts['<start>'] and opts['<end>']:
-                kw = {
-                    'name_start': find_migration(opts['<start>']),
-                    'name_end': find_migration(opts['<end>']),
-                }
-            else:
-                kw = {}
-            Migration.apply(db=db, is_fake=fake, dry_run=opts['--dry'], **kw)
+                end, start = start, end
+            Migration.apply(db=db, is_fake=fake, dry_run=opts['--dry'], name_start=start, name_end=end)
             return
-
         if cmd == 'sql':
             name = find_migration(opts['<name>'])
             Migration.apply(db=db, dry_run=True, name_exact=name)
