@@ -125,9 +125,7 @@ def find_migration(prefix):
         raise Exception('Multiple files found: {}'.format(files))
     elif not files:
         raise Exception('No files for {}'.format(prefix))
-    p = files[0]
-    p = os.path.basename(p)
-    return p[:-3]
+    return os.path.basename(files[0])[:-3]
 
 @orm.db_session
 def show_migrations(db, fail_fast=False):
