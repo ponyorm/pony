@@ -57,6 +57,17 @@ class drop_into_debugger(object):
 
 
 def migrate(db, argv=None):
+    cmd, kwargs = parse_migrate_options(argv)
+    _migrate(db, cmd, **kwargs)
+
+
+migrate_options = dict(
+    name='<name>', start='<start>', end='<end>',
+    verbose='--verbose', custom='--custom', dry='--dry', empty='--empty', fake_initial='--fake-initial'
+)
+
+
+def parse_migrate_options(argv):
     if isinstance(argv, basestring):
         argv = shlex.split(argv)
     doc = CLI_DOC.format(script_name='migrate')
@@ -68,13 +79,7 @@ def migrate(db, argv=None):
     if kwargs['start'] and not kwargs['end']:
         # https://github.com/docopt/docopt/issues/358
         kwargs['end'], kwargs['start'] = kwargs['start'], kwargs['end']
-    _migrate(db, cmd, **kwargs)
-
-
-migrate_options = dict(
-    name='<name>', start='<start>', end='<end>',
-    verbose='--verbose', custom='--custom', dry='--dry', empty='--empty', fake_initial='--fake-initial'
-)
+    return cmd, kwargs
 
 
 def _migrate(db, cmd, name=None, start=None, end=None,
