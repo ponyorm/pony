@@ -12,7 +12,7 @@ import pony
 from pony import orm
 
 from . import writer, get_cmd_exitstack, get_migration_dir
-from .exceptions import MergeAborted
+from .exceptions import MigrationFileNotFound, MultipleMigrationFilesFound, MergeAborted
 from .migration import Migration, MigrationLoader
 from .questioner import InteractiveMigrationQuestioner
 
@@ -122,9 +122,9 @@ def find_migration(prefix):
     files = glob(pathname)
     if len(files) > 1:
         files = ', '.join(os.path.basename(filename) for filename in files)
-        raise Exception('Multiple files found: {}'.format(files))
+        raise MultipleMigrationFilesFound('Multiple files found: {}'.format(files))
     elif not files:
-        raise Exception('No files for {}'.format(prefix))
+        raise MigrationFileNotFound('No files for {}'.format(prefix))
     return os.path.basename(files[0])[:-3]
 
 @orm.db_session

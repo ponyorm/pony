@@ -9,6 +9,20 @@ class MigrationException(Exception):
     pass
 
 
+class MigrationFileNotFound(MigrationException):
+    """
+    Raised when find_migration() couldn't find a file by prefix
+    """
+    pass
+
+
+class MultipleMigrationFilesFound(MigrationException):
+    """
+    Raised when find_migration() found multiple file by prefix
+    """
+    pass
+
+
 class CircularDependencyError(MigrationException):
     """
     Raised when there's an impossible-to-resolve circular dependency.
