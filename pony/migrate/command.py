@@ -21,10 +21,10 @@ CLI_DOC = '''
 Pony migration tool.
 
 Usage:
-    %(cli)s [--verbose | -v] [--empty --custom] make [<name>]
-    %(cli)s [--verbose | -v] [--fake-initial --dry] apply [[<start>] <end>]
-    %(cli)s sql <name>
-    %(cli)s list
+    {script_name} migrate [--verbose | -v] [--empty --custom] make [<name>]
+    {script_name} migrate [--verbose | -v] [--fake-initial --dry] apply [[<start>] <end>]
+    {script_name} migrate sql <name>
+    {script_name} migrate list
 
 Subcommands:
     make          Generate the migration file
@@ -70,7 +70,7 @@ def cli(db, argv=None):
     with ExitStack() as stack:
         if argv:
             stack.enter_context(use_argv(argv))
-        doc = CLI_DOC % {'cli': 'cli migrate'}
+        doc = CLI_DOC.format(script_name='cli')
         opts = docopt(doc)
         if opts.get('migrate'):
             migrate(db, opts)
