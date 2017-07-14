@@ -1,14 +1,22 @@
 from __future__ import unicode_literals
 from pony.py23compat import PY2
 
-class CircularDependencyError(Exception):
+
+class MigrationException(Exception):
+    """
+    Base class for migration exceptions
+    """
+    pass
+
+
+class CircularDependencyError(MigrationException):
     """
     Raised when there's an impossible-to-resolve circular dependency.
     """
     pass
 
 
-class NodeNotFoundError(LookupError):
+class NodeNotFoundError(MigrationException):
     """
     Raised when an attempt on a node is made that is not available in the graph.
     """
@@ -26,5 +34,5 @@ class NodeNotFoundError(LookupError):
     def __repr__(self):
         return "NodeNotFoundError(%r)" % (self.node, )
 
-class MergeAborted(Exception):
+class MergeAborted(MigrationException):
     pass
