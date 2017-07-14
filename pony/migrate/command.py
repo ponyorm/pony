@@ -96,11 +96,9 @@ def migrate(db, opts):
         if cmd == 'make':
             Migration.make(db=db, empty=opts['--empty'], custom=opts['--custom'],
                            filename=opts['<name>'])
-            return
-        if cmd == 'list':
+        elif cmd == 'list':
             show_migrations(db=db)
-            return
-        if cmd == 'apply':
+        elif cmd == 'apply':
             start = opts['<start>']
             end = opts['<end>']
             start = find_migration(start) if start else None
@@ -109,12 +107,11 @@ def migrate(db, opts):
                 # https://github.com/docopt/docopt/issues/358
                 end, start = start, end
             Migration.apply(db=db, is_fake=fake, dry_run=opts['--dry'], name_start=start, name_end=end)
-            return
-        if cmd == 'sql':
+        elif cmd == 'sql':
             name = find_migration(opts['<name>'])
             Migration.apply(db=db, dry_run=True, name_exact=name)
-            return
-        raise NotImplementedError
+        else:
+            raise NotImplementedError
 
 def find_migration(prefix):
     template = prefix + '*.py'
