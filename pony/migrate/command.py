@@ -1,10 +1,8 @@
 from __future__ import print_function
-from pony.py23compat import ExitStack
 
 import os, os.path, sys
 from datetime import datetime
 from glob import glob
-from contextlib import contextmanager
 
 from docopt import docopt
 
@@ -57,29 +55,18 @@ class drop_into_debugger(object):
         pdb.post_mortem(tb)
 
 
-@contextmanager
-def use_argv(args):
-    sys_argv = sys.argv
-    sys.argv = ['cli'] + args.split()
-    yield
-    sys.argv = sys_argv
-
-
 def cli(db, argv=None):
-    with ExitStack() as stack:
-        if argv:
-            stack.enter_context(use_argv(argv))
-        doc = CLI_DOC.format(script_name='cli')
-        opts = docopt(doc)
-        assert 'migrate' in opts
-        cmd_list=[cmd for cmd in ('make', 'apply', 'list', 'sql') if opts[cmd]]
-        assert len(cmd_list) == 1
-        cmd = cmd_list[0]
-        kwargs = {kw: opts[opt] for kw, opt in migrate_options.items()}
-        if kwargs['start'] and not kwargs['end']:
-            # https://github.com/docopt/docopt/issues/358
-            kwargs['end'], kwargs['start'] = kwargs['start'], kwargs['end']
-        migrate(db, cmd, **kwargs)
+    doc = CLI_DOC.format(script_name='cli')
+    opts = docopt(doc, argv)
+    assert 'migrate' in opts
+    cmd_list=[cmd for cmd in ('make', 'apply', 'list', 'sql') if opts[cmd]]
+    assert len(cmd_list) == 1
+    cmd = cmd_list[0]
+    kwargs = {kw: opts[opt] for kw, opt in migrate_options.items()}
+    if kwargs['start'] and not kwargs['end']:
+        # https://github.com/docopt/docopt/issues/358
+        kwargs['end'], kwargs['start'] = kwargs['start'], kwargs['end']
+    migrate(db, cmd, **kwargs)
 
 
 migrate_options = dict(
