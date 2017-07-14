@@ -71,46 +71,45 @@ def cli(db, argv=None):
             stack.enter_context(use_argv(argv))
         doc = CLI_DOC.format(script_name='cli')
         opts = docopt(doc)
-        if opts.get('migrate'):
-            migrate(db, opts)
-            return
-        raise NotImplementedError
+        assert 'migrate' in opts
+        cmd_list=[cmd for cmd in ('make', 'apply', 'list', 'sql') if opts[cmd]]
+        assert len(cmd_list) == 1
+        cmd = cmd_list[0]
+        kwargs = {kw: opts[opt] for kw, opt in migrate_options.items()}
+        if kwargs['start'] and not kwargs['end']:
+            # https://github.com/docopt/docopt/issues/358
+            kwargs['end'], kwargs['start'] = kwargs['start'], kwargs['end']
+        migrate(db, cmd, **kwargs)
 
-def migrate(db, opts):
+
+migrate_options = dict(
+    name='<name>', start='<start>', end='<end>',
+    verbose='--verbose', custom='--custom', dry='--dry', empty='--empty', fake_initial='--fake-initial'
+)
+
+
+def migrate(db, cmd, name=None, start=None, end=None,
+            verbose=False, custom=False, dry=False, empty=False, fake_initial=False):
     debug = os.environ.get('PONY_DEBUG')
-    verbose = opts['--verbose'] or opts.get('-v')
-    fake = opts['--fake-initial']
-
-    for cmd in ('make', 'apply', 'sql', 'list'):
-        if opts.get(cmd):
-            break
-    else:
-        cmd = None
+    if debug:
+        cmd_exitstack.enter_context(drop_into_debugger())
     if verbose:
         orm.sql_debug(True)
 
-    if debug:
-        cmd_exitstack.enter_context(drop_into_debugger())
     with cmd_exitstack:
         if cmd == 'make':
-            Migration.make(db=db, empty=opts['--empty'], custom=opts['--custom'],
-                           filename=opts['<name>'])
+            Migration.make(db=db, empty=empty, custom=custom, filename=name)
         elif cmd == 'list':
             show_migrations(db=db)
         elif cmd == 'apply':
-            start = opts['<start>']
-            end = opts['<end>']
             start = find_migration(start) if start else None
             end = find_migration(end) if end else None
-            if start and not end:
-                # https://github.com/docopt/docopt/issues/358
-                end, start = start, end
-            Migration.apply(db=db, is_fake=fake, dry_run=opts['--dry'], name_start=start, name_end=end)
+            Migration.apply(db=db, is_fake=fake_initial, dry_run=dry, name_start=start, name_end=end)
         elif cmd == 'sql':
-            name = find_migration(opts['<name>'])
+            name = find_migration(name)
             Migration.apply(db=db, dry_run=True, name_exact=name)
         else:
-            raise MigrationCommandError
+            raise MigrationCommandError('%s is not a valid migration subcommand' % cmd)
 
 def find_migration(prefix):
     template = prefix + '*.py'

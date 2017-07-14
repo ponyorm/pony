@@ -681,11 +681,8 @@ class Database(object):
         if isinstance(command, basestring):
             import shlex
             command = shlex.split(command)
-        from pony.migrate.command import migrate, CLI_DOC
-        doc = CLI_DOC.format(script_name='cli')
-        from docopt import docopt
-        opts = docopt(doc, argv=command)
-        migrate(self, opts)
+        from pony.migrate.command import cli
+        cli(self, command)
     @cut_traceback
     def bind(self, *args, **kwargs):
         self._bind(*args, **kwargs)
