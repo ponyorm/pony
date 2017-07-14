@@ -116,17 +116,17 @@ def migrate(db, opts):
             return
         raise NotImplementedError
 
-def find_migration(name):
-    p = os.path.join(get_migration_dir(), name)
-    files = glob('{}*'.format(p))
+def find_migration(prefix):
+    template = prefix + '*.py'
+    pathname = os.path.join(get_migration_dir(), template)
+    files = glob(pathname)
     if len(files) > 1:
         files = ', '.join(files)
         raise Exception('Multiple files found: {}'.format(files))
     elif not files:
-        raise Exception('No files for {}'.format(name))
+        raise Exception('No files for {}'.format(prefix))
     p = files[0]
     p = os.path.basename(p)
-    assert p[-3:] == '.py'
     return p[:-3]
 
 @orm.db_session
