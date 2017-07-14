@@ -121,7 +121,7 @@ def find_migration(prefix):
     pathname = os.path.join(get_migration_dir(), template)
     files = glob(pathname)
     if len(files) > 1:
-        files = ', '.join(files)
+        files = ', '.join(os.path.basename(filename) for filename in files)
         raise Exception('Multiple files found: {}'.format(files))
     elif not files:
         raise Exception('No files for {}'.format(prefix))
