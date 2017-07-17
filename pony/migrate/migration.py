@@ -41,7 +41,7 @@ class Migration(object):
         highest_number = 0
         for leaf in graph.leaf_nodes():
             num = cls._parse_number(leaf)
-            if num > highest_number:
+            if num is not None and num > highest_number:
                 highest_number = num
         highest_number += 1
         if highest_number == 1:
