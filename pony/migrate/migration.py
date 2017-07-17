@@ -368,7 +368,6 @@ class Migration(object):
 
 
 class MigrationLoader(object):
-    SINGLE_APP = 'APP'
 
     def __init__(self):
         self.build_graph()
