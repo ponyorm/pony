@@ -375,14 +375,12 @@ class MigrationLoader(object):
         self.build_graph()
 
     def build_graph(self):
-        # Load disk data
         self.load_disk()
-
         self.graph = MigrationGraph()
-        for key, migration in self.disk_migrations.items():
-            self.graph.add_node(key, migration)
-            # Internal (aka same-app) dependencies.
-            self.add_internal_dependencies(key, migration)
+        for migration_name, migration in self.disk_migrations.items():
+            self.graph.add_node(migration_name, migration)
+            for parent in migration.dependencies:
+                self.graph.add_dependency(migration, migration_name, parent, skip_validation=True)
 
         self.graph.validate_consistency()
 
@@ -401,11 +399,3 @@ class MigrationLoader(object):
                 '`dependencies` list was not found in migration file %s' % migration_pathname)
             migration.dependencies = namespace['dependencies']
             self.disk_migrations[migration_name] = migration
-
-    def add_internal_dependencies(self, key, migration):
-        # TODO see what is key
-        for parent in migration.dependencies:
-            if parent[0] != key[0] or parent[1] == '__first__':
-                # Ignore __first__ references to the same app (#22325).
-                continue
-            self.graph.add_dependency(migration, key, parent, skip_validation=True)
