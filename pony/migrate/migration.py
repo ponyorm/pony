@@ -374,6 +374,18 @@ class MigrationLoader(object):
     def __init__(self):
         self.build_graph()
 
+    def build_graph(self):
+        # Load disk data
+        self.load_disk()
+
+        self.graph = MigrationGraph()
+        for key, migration in self.disk_migrations.items():
+            self.graph.add_node(key, migration)
+            # Internal (aka same-app) dependencies.
+            self.add_internal_dependencies(key, migration)
+
+        self.graph.validate_consistency()
+
     def load_disk(self):
         self.disk_migrations = {}
         directory = get_migration_dir()
@@ -397,15 +409,3 @@ class MigrationLoader(object):
                 # Ignore __first__ references to the same app (#22325).
                 continue
             self.graph.add_dependency(migration, key, parent, skip_validation=True)
-
-    def build_graph(self):
-        # Load disk data
-        self.load_disk()
-
-        self.graph = MigrationGraph()
-        for key, migration in self.disk_migrations.items():
-            self.graph.add_node(key, migration)
-            # Internal (aka same-app) dependencies.
-            self.add_internal_dependencies(key, migration)
-
-        self.graph.validate_consistency()
