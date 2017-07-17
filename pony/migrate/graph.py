@@ -26,6 +26,8 @@ class Node(object):
         self.key = key
         self.children = set()
         self.parents = set()
+        self._ancestors = None
+        self._descendants = None
 
     def __eq__(self, other):
         return self.key == other
@@ -54,25 +56,21 @@ class Node(object):
     def add_parent(self, parent):
         self.parents.add(parent)
 
-    # Use manual caching, @cached_property effectively doubles the
-    # recursion depth for each recursion.
     def ancestors(self):
-        if '_ancestors' not in self.__dict__:
+        if self._ancestors is None:
             ancestors = deque([self.key])
             for parent in sorted(self.parents):
                 ancestors.extendleft(reversed(parent.ancestors()))
-            self.__dict__['_ancestors'] = list(OrderedDict.fromkeys(ancestors).keys())
-        return self.__dict__['_ancestors']
+            self._ancestors = list(OrderedDict.fromkeys(ancestors).keys())
+        return self._ancestors
 
-    # Use manual caching, @cached_property effectively doubles the
-    # recursion depth for each recursion.
     def descendants(self):
-        if '_descendants' not in self.__dict__:
+        if self._descendants is None:
             descendants = deque([self.key])
             for child in sorted(self.children):
                 descendants.extendleft(reversed(child.descendants()))
-            self.__dict__['_descendants'] = list(OrderedDict.fromkeys(descendants).keys())
-        return self.__dict__['_descendants']
+            self._descendants = list(OrderedDict.fromkeys(descendants).keys())
+        return self._descendants
 
 
 class DummyNode(Node):
@@ -256,8 +254,8 @@ class MigrationGraph(object):
     def clear_cache(self):
         if self.cached:
             for node in self.nodes:
-                self.node_map[node].__dict__.pop('_ancestors', None)
-                self.node_map[node].__dict__.pop('_descendants', None)
+                self.node_map[node]._ancestors = None
+                self.node_map[node]._descendants = None
             self.cached = False
 
     def forwards_plan(self, target):
