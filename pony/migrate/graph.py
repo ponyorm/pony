@@ -16,43 +16,6 @@ RECURSION_DEPTH_WARNING = (
 )
 
 
-class OrderedSet(object):
-    """
-    A set which keeps the ordering of the inserted items.
-    Currently backs onto OrderedDict.
-    """
-
-    def __init__(self, iterable=None):
-        self.dict = OrderedDict(((x, None) for x in iterable) if iterable else [])
-
-    def add(self, item):
-        self.dict[item] = None
-
-    def remove(self, item):
-        del self.dict[item]
-
-    def discard(self, item):
-        try:
-            self.remove(item)
-        except KeyError:
-            pass
-
-    def __iter__(self):
-        return iter(self.dict.keys())
-
-    def __contains__(self, item):
-        return item in self.dict
-
-    def __bool__(self):
-        return bool(self.dict)
-
-    def __nonzero__(self):      # Python 2 compatibility
-        return type(self).__bool__(self)
-
-    def __len__(self):
-        return len(self.dict)
-
-
 @total_ordering
 class Node(object):
     """
@@ -94,25 +57,21 @@ class Node(object):
     # Use manual caching, @cached_property effectively doubles the
     # recursion depth for each recursion.
     def ancestors(self):
-        # Use self.key instead of self to speed up the frequent hashing
-        # when constructing an OrderedSet.
         if '_ancestors' not in self.__dict__:
             ancestors = deque([self.key])
             for parent in sorted(self.parents):
                 ancestors.extendleft(reversed(parent.ancestors()))
-            self.__dict__['_ancestors'] = list(OrderedSet(ancestors))
+            self.__dict__['_ancestors'] = list(OrderedDict.fromkeys(ancestors).keys())
         return self.__dict__['_ancestors']
 
     # Use manual caching, @cached_property effectively doubles the
     # recursion depth for each recursion.
     def descendants(self):
-        # Use self.key instead of self to speed up the frequent hashing
-        # when constructing an OrderedSet.
         if '_descendants' not in self.__dict__:
             descendants = deque([self.key])
             for child in sorted(self.children):
                 descendants.extendleft(reversed(child.descendants()))
-            self.__dict__['_descendants'] = list(OrderedSet(descendants))
+            self.__dict__['_descendants'] = list(OrderedDict.fromkeys(descendants).keys())
         return self.__dict__['_descendants']
 
 
@@ -362,7 +321,7 @@ class MigrationGraph(object):
             # also effectively reverses values
             stack.extendleft(children)
 
-        return list(OrderedSet(visited))
+        return list(OrderedDict.fromkeys(visited).keys())
 
     def root_nodes(self, app=None):
         """
