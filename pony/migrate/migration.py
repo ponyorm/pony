@@ -39,7 +39,6 @@ class Migration(object):
     def _generate_name(cls, loader, name=None):
         graph = loader.graph
         highest_number = 0
-        leaf = None
         for leaf in graph.leaf_nodes():
             num = cls._parse_number(leaf)
             if num > highest_number:
