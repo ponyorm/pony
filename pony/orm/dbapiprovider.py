@@ -399,9 +399,12 @@ class StrConverter(Converter):
         Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
-        if not attr.args: max_len = None
-        elif len(attr.args) > 1: unexpected_args(attr, attr.args[1:])
-        else: max_len = attr.args[0]
+        max_len = attr.kwargs.pop('max_len', None)
+        if len(attr.args) > 1: unexpected_args(attr, attr.args[1:])
+        elif attr.args:
+            if max_len is not None: throw(TypeError,
+                'Max length option specified twice: as a positional argument and as a `max_len` named argument')
+            max_len = attr.args[0]
         if issubclass(attr.py_type, (LongStr, LongUnicode)):
             if max_len is not None: throw(TypeError, 'Max length is not supported for CLOBs')
         elif max_len is None: max_len = converter.provider.varchar_default_max_len

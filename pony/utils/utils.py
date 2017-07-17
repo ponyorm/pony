@@ -103,11 +103,27 @@ def truncate_repr(s, max_len=100):
     s = repr(s)
     return s if len(s) <= max_len else s[:max_len-3] + '...'
 
+codeobjects = {}
+
+def get_codeobject_id(codeobject):
+    codeobject_id = id(codeobject)
+    if codeobject_id not in codeobjects:
+        codeobjects[codeobject_id] = codeobject
+    return codeobject_id
+
 lambda_args_cache = {}
 
 def get_lambda_args(func):
-    names = lambda_args_cache.get(func)
+    if type(func) is types.FunctionType:
+        codeobject = func.func_code if PY2 else func.__code__
+        cache_key = get_codeobject_id(codeobject)
+    elif isinstance(func, ast.Lambda):
+        cache_key = func
+    else: assert False  # pragma: no cover
+
+    names = lambda_args_cache.get(cache_key)
     if names is not None: return names
+
     if type(func) is types.FunctionType:
         if hasattr(inspect, 'signature'):
             names, argsname, kwname, defaults = [], None, None, None
@@ -139,7 +155,8 @@ def get_lambda_args(func):
     if argsname: throw(TypeError, '*%s is not supported' % argsname)
     if kwname: throw(TypeError, '**%s is not supported' % kwname)
     if defaults: throw(TypeError, 'Defaults are not supported')
-    lambda_args_cache[func] = names
+
+    lambda_args_cache[cache_key] = names
     return names
 
 def error_method(*args, **kwargs):

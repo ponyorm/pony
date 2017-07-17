@@ -1554,6 +1554,8 @@ class SessionCache(object):
                 assert cache.connection is not None
                 cache.database.provider.commit(cache.connection, cache)
             cache.for_update.clear()
+            cache.query_results.clear()
+            cache.max_id_cache.clear()
             cache.immediate = True
         except:
             cache.rollback()
@@ -1572,21 +1574,24 @@ class SessionCache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        if rollback:
-            try: provider.rollback(connection, cache)
-            except:
-                provider.drop(connection, cache)
-                raise
-        provider.release(connection, cache)
-        db_session = cache.db_session or local.db_session
-        if db_session and db_session.strict:
-            cache.clear()
-    def clear(cache):
-        for obj in cache.objects:
-            obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
-        cache.objects = cache.indexes = cache.seeds = cache.for_update = cache.modified_collections \
-            = cache.objects_to_save = cache.saved_objects = cache.query_results \
-            = cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
+
+        try:
+            if rollback:
+                try: provider.rollback(connection, cache)
+                except:
+                    provider.drop(connection, cache)
+                    raise
+            provider.release(connection, cache)
+        finally:
+            cache.objects = cache.objects_to_save = cache.saved_objects = cache.query_results \
+                = cache.indexes = cache.seeds = cache.for_update = cache.max_id_cache \
+                = cache.modified_collections = cache.collection_statistics = None
+
+            db_session = cache.db_session or local.db_session
+            if db_session and db_session.strict:
+                for obj in cache.objects:
+                    obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
+                cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1
