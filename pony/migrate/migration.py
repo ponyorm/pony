@@ -47,7 +47,7 @@ class Migration(object):
         if highest_number == 1:
             return "0001_initial"
         if name is None:
-            name = datetime.now().strftime("%Y%m%d_%H%M")
+            name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         return "%04i_%s" % (highest_number, name)
 
 
