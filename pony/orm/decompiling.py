@@ -7,14 +7,12 @@ from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
 from pony.thirdparty.compiler import ast, parse
 
-from pony.utils import throw
+from pony.utils import throw, get_codeobject_id
 
 ##ast.And.__repr__ = lambda self: "And(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 ##ast.Or.__repr__ = lambda self: "Or(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 
 ast_cache = {}
-
-codeobjects = {}
 
 def decompile(x):
     cells = {}
@@ -28,10 +26,9 @@ def decompile(x):
         else:
             if x.__closure__: cells = dict(izip(codeobject.co_freevars, x.__closure__))
     else: throw(TypeError)
-    key = id(codeobject)
+    key = get_codeobject_id(codeobject)
     result = ast_cache.get(key)
     if result is None:
-        codeobjects[key] = codeobject
         decompiler = Decompiler(codeobject)
         result = decompiler.ast, decompiler.external_names
         ast_cache[key] = result
