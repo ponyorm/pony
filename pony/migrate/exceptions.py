@@ -16,6 +16,20 @@ class MigrationCommandError(MigrationException):
     pass
 
 
+class MigrationDirectoryNotFound(MigrationException):
+    """
+    Raised when migration folder was not found
+    """
+    pass
+
+
+class UnmergedMigrationsDetected(MigrationException):
+    """
+    Raised when we've found some unmerged migrations
+    """
+    pass
+
+
 class MigrationFileNotFound(MigrationException):
     """
     Raised when find_migration() couldn't find a file by prefix
