@@ -4,12 +4,14 @@ from pony.py23compat import ExitStack, suppress
 import re, os, os.path
 from datetime import datetime
 from textwrap import dedent
+from glob import glob
 
 import pony
 from pony import orm
+from pony.utils import throw
 
 from . import get_cmd_exitstack, get_migration_dir
-from .exceptions import MergeAborted
+from .exceptions import MergeAborted, MigrationFileCorrupted
 from .graph import MigrationGraph
 from .operations import CustomOp
 from .serializer import serializer_factory
@@ -373,24 +375,20 @@ class MigrationLoader(object):
         self.build_graph()
 
     def load_disk(self):
-        # Discover .py files
         self.disk_migrations = {}
         directory = get_migration_dir()
         if not os.path.exists(directory):
             return
-        migration_files = {
-            name for name in os.listdir(directory)
-            if name.endswith('.py')
-        }
-        # Read them
-        for migration_name in migration_files:
-            migrations = get_migration_dir()
-            py_file = os.path.join(migrations, migration_name)
-            ns = run_path(py_file)
-            migration_name = migration_name.rsplit(".", 1)[0]
-            mig = Migration(migration_name, self)
-            mig.dependencies = ns['dependencies']
-            self.disk_migrations[migration_name] = mig
+
+        migration_files = glob(os.path.join(directory, '*.py'))
+        for migration_pathname in migration_files:
+            namespace = run_path(migration_pathname)
+            migration_name = os.path.basename(migration_pathname)[:-3]
+            migration = Migration(migration_name, self)
+            if 'dependencies' not in namespace: throw(MigrationFileCorrupted,
+                '`dependencies` list was not found in migration file %s' % migration_pathname)
+            migration.dependencies = namespace['dependencies']
+            self.disk_migrations[migration_name] = migration
 
     def add_internal_dependencies(self, key, migration):
         # TODO see what is key
@@ -411,4 +409,3 @@ class MigrationLoader(object):
             self.add_internal_dependencies(key, migration)
 
         self.graph.validate_consistency()
-

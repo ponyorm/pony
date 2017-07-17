@@ -30,6 +30,12 @@ class MultipleMigrationFilesFound(MigrationException):
     pass
 
 
+class MigrationFileCorrupted(MigrationException):
+    """
+    Raised when an error occurred during reading migration file
+    """
+    pass
+
 class CircularDependencyError(MigrationException):
     """
     Raised when there's an impossible-to-resolve circular dependency.
