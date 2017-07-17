@@ -1,3 +1,22 @@
+# Pony ORM Release 0.7.2 (2017-07-17)
+
+## New features
+
+* All arguments of db.bind() can be specified as keyword arguments. Previously Pony required the first positional argument which specified the database provider. Now you can pass all the database parameters using the dict: db.bind(**db_params). See https://docs.ponyorm.com/api_reference.html#Database.bind
+* The `optimistic` attribute option is added https://docs.ponyorm.com/api_reference.html#cmdoption-arg-optimistic
+
+## Bugfixes
+
+* Fixes #219: when a database driver raises an error, sometimes this error was masked by the 'RollbackException: InterfaceError: connection already closed' exception. This happened because on error, Pony tried to rollback transaction, but the connection to the database was already closed and it masked the initial error. Now Pony displays the original error which helps to understand the cause of the problem.
+* Fixes #276: Memory leak
+* Fixes the __all__ declaration. Previously IDEs, such as PyCharm, could not understand what is going to be imported by 'from pony.orm import *'. Now it works fine.
+* Fixes #232: negate check for numeric expressions now checks if value is zero or NULL
+* Fixes #238, fixes #133: raise TransactionIntegrityError exception instead of AssertionError if obj.collection.create(**kwargs) creates a duplicate object
+* Fixes #221: issue with unicode json path keys
+* Fixes bug when discriminator column is used as a part of a primary key
+* Handle situation when SQLite blob column contains non-binary value
+
+
 # Pony ORM Release 0.7.1 (2017-01-10)
 
 ## New features
