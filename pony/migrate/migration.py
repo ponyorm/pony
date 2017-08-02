@@ -19,6 +19,13 @@ from .utils import run_path
 from .writer import MigrationWriter, MIGRATION_TEMPLATE
 
 
+def make_migration_entity(db):
+    db.migration_in_progress = True
+    class Migration(db.Entity):
+        name = orm.Required(str)
+        applied = orm.Required(datetime)
+
+
 def parse_number(name):
     """
     Given a migration name, tries to extract a number from the
@@ -39,14 +46,6 @@ class Migration(object):
         self.loader = loader
         self.operations = []
         self.dependencies = []
-
-    @classmethod
-    def make_entity(cls, db):
-        db.migration_in_progress = True
-        class Migration(db.Entity):
-            name = orm.Required(str)
-            applied = orm.Required(datetime)
-
 
     @classmethod
     def _generate_name(cls, loader, name=None):
@@ -181,7 +180,7 @@ class Migration(object):
         define_entities = run_path(p)['define_entities']
         get_cmd_exitstack().callback(db.disconnect)
         define_entities(db)
-        Migration.make_entity(db)
+        make_migration_entity(db)
         db_cache[name] = db
         return db
 
@@ -214,7 +213,7 @@ class Migration(object):
 
         assert not 'Migration' in db.entities
         migration_db = cls._reconstruct(db)
-        Migration.make_entity(migration_db)
+        make_migration_entity(migration_db)
         migration_db.generate_mapping(create_tables=True, check_tables=True)
         get_cmd_exitstack().callback(migration_db.disconnect)
 

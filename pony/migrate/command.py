@@ -12,7 +12,7 @@ from pony import orm
 
 from . import writer, get_cmd_exitstack, get_migration_dir
 from .exceptions import MigrationCommandError, MigrationFileNotFound, MultipleMigrationFilesFound, MergeAborted
-from .migration import Migration, MigrationLoader
+from .migration import Migration, MigrationLoader, make_migration_entity
 from .questioner import InteractiveMigrationQuestioner
 
 CLI_DOC = '''
@@ -123,7 +123,7 @@ def show_migrations(db, fail_fast=False):
     if migration name is specified, print its sql.
     '''
     cmd_exitstack.callback(db.disconnect)
-    Migration.make_entity(db)
+    make_migration_entity(db)
     db.schema = db.generate_schema()
     loader = MigrationLoader()
     leaves = loader.graph.leaf_nodes()
