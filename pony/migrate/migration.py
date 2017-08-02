@@ -45,13 +45,13 @@ def run_migration_file(name):
 
 
 def upgrade_db(db, module):
-    if module.get('operations') is None:
-        module['define_entities'](db)
-        db.generate_schema() # ?
-        return
-    for op in module['operations']:
+    operations = module.get('operations', [])
+    define_entities = module.get('define_entities')
+    if define_entities:
+        define_entities(db)
+        db.generate_schema()
+    for op in operations:
         op.apply(db)
-    return module['operations']
 
 
 class Migration(object):
