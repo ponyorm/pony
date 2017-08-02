@@ -13,7 +13,8 @@ from pony import orm
 from pony.utils import throw, reraise
 
 from . import get_cmd_exitstack, get_migration_dir
-from .exceptions import MergeAborted, MigrationFileCorrupted, CircularDependencyError, NodeNotFoundError
+from .exceptions import MigrationFileCorrupted, CircularDependencyError, NodeNotFoundError, \
+    UnmergedMigrationsDetected
 from .operations import CustomOp
 from .serializer import serializer_factory
 from .utils import run_path
@@ -61,9 +62,9 @@ def reconstruct_db(db):
 
 
 class Migration(object):
-    def __init__(self, name=None, loader=None):
+    def __init__(self, name=None, graph=None):
         self.name = name
-        self.loader = loader
+        self.graph = graph
         self.operations = []
         self.dependencies = []
 
@@ -71,8 +72,7 @@ class Migration(object):
         return 'Migration(%r)' % self.name
 
     @classmethod
-    def _generate_name(cls, loader, name=None):
-        graph = loader.graph
+    def _generate_name(cls, graph, name=None):
         highest_number = 0
         for leaf in graph.leaf_nodes():
             num = parse_number(leaf)
@@ -89,11 +89,11 @@ class Migration(object):
     @classmethod
     def make(cls, db, empty=False, custom=False, filename=None):
         get_cmd_exitstack().callback(db.disconnect)
-        loader = MigrationLoader()
-        leaves = loader.graph.leaf_nodes()
+        graph = MigrationGraph()
+        leaves = graph.leaf_nodes()
         if len(leaves) > 1:
             from pony.migrate import command
-            command.merge(db, loader, leaves)
+            command.merge(db, graph, leaves)
             return
         migrations = get_migration_dir()
         if not os.path.exists(migrations):
@@ -108,7 +108,7 @@ class Migration(object):
             return
 
         [leaf] = leaves
-        plan = loader.graph.forwards_plan(leaf)
+        plan = graph.forwards_plan(leaf)
         initial = plan[0]
         namespace = run_migration_file(initial)
         define_entities = namespace['define_entities']
@@ -123,7 +123,7 @@ class Migration(object):
         db.generate_schema()
         prev_db.generate_schema()
 
-        name = cls._generate_name(loader, filename)
+        name = cls._generate_name(graph, filename)
         if empty:
             template_data = {
                 'op_kwargs': 'forward=forward',
@@ -214,20 +214,13 @@ class Migration(object):
         migration_db.generate_mapping(create_tables=True, check_tables=True)
         get_cmd_exitstack().callback(migration_db.disconnect)
 
-        loader = MigrationLoader()
-        leaves = loader.graph.leaf_nodes()
+        graph = MigrationGraph()
+        leaves = graph.leaf_nodes()
         if len(leaves) > 1:
-            try:
-                from . import command
-                command.merge(db, loader, leaves)
-            except MergeAborted:
-                return
-            loader.build_graph()
-            leaves = loader.graph.leaf_nodes()
-            assert len(leaves) == 1
+            throw(UnmergedMigrationsDetected, leaves)
         assert leaves
         leaf = leaves[0]
-        forwards_plan = loader.graph.forwards_plan(leaf)
+        forwards_plan = graph.forwards_plan(leaf)
         names = forwards_plan
         if name_exact:
             start_index = names.index(name_exact)
@@ -363,38 +356,6 @@ class Migration(object):
             print(sql)
 
 
-class MigrationLoader(object):
-
-    def __init__(self):
-        self.build_graph()
-
-    def build_graph(self):
-        self.load_disk()
-        self.graph = MigrationGraph()
-        for migration_name, migration in self.disk_migrations.items():
-            self.graph.add_node(migration_name, migration)
-            for parent in migration.dependencies:
-                self.graph.add_dependency(migration, migration_name, parent, skip_validation=True)
-
-        self.graph.validate_consistency()
-
-    def load_disk(self):
-        self.disk_migrations = {}
-        directory = get_migration_dir()
-        if not os.path.exists(directory):
-            return
-
-        migration_files = glob(os.path.join(directory, '*.py'))
-        for migration_pathname in migration_files:
-            namespace = run_path(migration_pathname)
-            migration_name = os.path.basename(migration_pathname)[:-3]
-            migration = Migration(migration_name, self)
-            if 'dependencies' not in namespace: throw(MigrationFileCorrupted,
-                '`dependencies` list was not found in migration file %s' % migration_pathname)
-            migration.dependencies = namespace['dependencies']
-            self.disk_migrations[migration_name] = migration
-
-
 RECURSION_DEPTH_WARNING = (
     "Maximum recursion depth exceeded while generating migration graph, "
     "falling back to iterative approach."
@@ -505,9 +466,35 @@ class MigrationGraph(object):
     """
 
     def __init__(self):
+        self.disk_migrations = {}
         self.node_map = {}
         self.nodes = {}
         self.cached = False
+        self.build_graph()
+
+    def build_graph(self):
+        self.load_disk()
+        for migration_name, migration in self.disk_migrations.items():
+            self.add_node(migration_name, migration)
+            for parent in migration.dependencies:
+                self.add_dependency(migration, migration_name, parent, skip_validation=True)
+        self.validate_consistency()
+
+    def load_disk(self):
+        self.disk_migrations = {}
+        directory = get_migration_dir()
+        if not os.path.exists(directory):
+            return
+
+        migration_files = glob(os.path.join(directory, '*.py'))
+        for migration_pathname in migration_files:
+            namespace = run_path(migration_pathname)
+            migration_name = os.path.basename(migration_pathname)[:-3]
+            migration = Migration(migration_name, self)
+            if 'dependencies' not in namespace: throw(MigrationFileCorrupted,
+                '`dependencies` list was not found in migration file %s' % migration_pathname)
+            migration.dependencies = namespace['dependencies']
+            self.disk_migrations[migration_name] = migration
 
     def add_node(self, key, migration):
         # If the key already exists, then it must be a dummy node.

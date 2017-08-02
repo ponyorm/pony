@@ -12,7 +12,7 @@ from pony import orm
 
 from . import writer, get_cmd_exitstack, get_migration_dir
 from .exceptions import MigrationCommandError, MigrationFileNotFound, MultipleMigrationFilesFound, MergeAborted
-from .migration import Migration, MigrationLoader, make_migration_entity
+from .migration import Migration, MigrationGraph, make_migration_entity
 from .questioner import InteractiveMigrationQuestioner
 
 CLI_DOC = '''
@@ -125,8 +125,8 @@ def show_migrations(db, fail_fast=False):
     cmd_exitstack.callback(db.disconnect)
     make_migration_entity(db)
     db.schema = db.generate_schema()
-    loader = MigrationLoader()
-    leaves = loader.graph.leaf_nodes()
+    graph = MigrationGraph()
+    leaves = graph.leaf_nodes()
     if not leaves:
         print('No migrations')
         return
@@ -135,12 +135,12 @@ def show_migrations(db, fail_fast=False):
         questioner = InteractiveMigrationQuestioner()
         if questioner.ask_merge(leaves):
             # not tested?
-            merge(loader=loader, leaves=leaves)
+            merge(graph=graph, leaves=leaves)
             show_migrations(fail_fast=True)
             return
         return
     leaf = leaves[0]
-    names = loader.graph.forwards_plan(leaf)
+    names = graph.forwards_plan(leaf)
 
     try:
         with orm.db_session:
@@ -160,11 +160,10 @@ def show_migrations(db, fail_fast=False):
             continue
         print('  {}'.format(name))
 
-def merge(db=None, loader=None, leaves=None):
-    if loader is None:
-        loader = MigrationLoader()
-        loader.build_graph()
-        leaves = loader.graph.leaf_nodes()
+def merge(db=None, graph=None, leaves=None):
+    if graph is None:
+        graph = MigrationGraph()
+        leaves = graph.leaf_nodes()
     if len(leaves) <= 1:
         print('Nothing to merge.')
         return
@@ -174,7 +173,7 @@ def merge(db=None, loader=None, leaves=None):
         raise MergeAborted
 
     cmd_exitstack.callback(db.disconnect)
-    name = Migration._generate_name(loader)
+    name = Migration._generate_name(graph)
     ctx = {
         'deps': leaves,
         'version': pony.__version__,
