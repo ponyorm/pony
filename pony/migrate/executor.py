@@ -13,20 +13,14 @@ from .diagram_ops import RenameEntity, RenameAttr, AddAttr, ModifyAttr
 
 class Executor(object):
 
-    def __init__(self, schema, prev_schema, migration=None, db=None, prev_db=None,
-                 current_schema=None, entity_ops=None, operations=None):
-        self.db = db
-        self.prev_db = prev_db
+    def __init__(self, schema, prev_schema, db=None, prev_db=None, entity_ops=None, operations=None):
         self.schema = schema
         self.prev_schema = prev_schema
-        self.current_schema = current_schema
+        self.db = db
+        self.prev_db = prev_db
         self.entity_ops = entity_ops
         self.operations = operations
-
-        if not prev_schema:
-            self.prev_objects = []
-        else:
-            self.prev_objects = prev_schema.objects_to_create()
+        self.prev_objects = prev_schema.objects_to_create()
         self.new_objects = schema.objects_to_create()
 
     def generate(self):

@@ -90,18 +90,19 @@ def _migrate(db, cmd, name=None, start=None, end=None,
     if verbose:
         orm.sql_debug(True)
 
+    graph = MigrationGraph()
     with cmd_exitstack:
         if cmd == 'make':
-            Migration.make(db=db, empty=empty, custom=custom, filename=name)
+            graph.make(db=db, empty=empty, custom=custom, description=name)
         elif cmd == 'list':
             show_migrations(db=db)
         elif cmd == 'apply':
             start = find_migration(start) if start else None
             end = find_migration(end) if end else None
-            Migration.apply(db=db, is_fake=fake_initial, dry_run=dry, name_start=start, name_end=end)
+            graph.apply(db=db, is_fake=fake_initial, dry_run=dry, name_start=start, name_end=end)
         elif cmd == 'sql':
             name = find_migration(name)
-            Migration.apply(db=db, dry_run=True, name_exact=name)
+            graph.apply(db=db, dry_run=True, name_exact=name)
         else:
             raise MigrationCommandError('%s is not a valid migration subcommand' % cmd)
 
@@ -126,7 +127,7 @@ def show_migrations(db, fail_fast=False):
     make_migration_entity(db)
     db.schema = db.generate_schema()
     graph = MigrationGraph()
-    leaves = graph.leaf_nodes()
+    leaves = graph.leaves()
     if not leaves:
         print('No migrations')
         return
@@ -140,7 +141,7 @@ def show_migrations(db, fail_fast=False):
             return
         return
     leaf = leaves[0]
-    names = graph.forwards_plan(leaf)
+    names = leaf.forwards_list()
 
     try:
         with orm.db_session:
@@ -149,8 +150,7 @@ def show_migrations(db, fail_fast=False):
         print('No Migration table. Please apply the initial migration.')
         return
 
-    saved = orm.select((m.name, m.applied) for m in db.Migration if m.name in names) \
-            .order_by(lambda: m.applied)[:]
+    saved = orm.select((m.name, m.applied) for m in db.Migration if m.name in names).order_by(2)[:]
     if saved:
         saved, _ = zip(*saved)
     for name in saved:
@@ -163,7 +163,7 @@ def show_migrations(db, fail_fast=False):
 def merge(db=None, graph=None, leaves=None):
     if graph is None:
         graph = MigrationGraph()
-        leaves = graph.leaf_nodes()
+        leaves = graph.leaves()
     if len(leaves) <= 1:
         print('Nothing to merge.')
         return
@@ -173,7 +173,7 @@ def merge(db=None, graph=None, leaves=None):
         raise MergeAborted
 
     cmd_exitstack.callback(db.disconnect)
-    name = Migration._generate_name(graph)
+    name = graph.make_next_migration_name(description='merge', with_timestamp=True)
     ctx = {
         'deps': leaves,
         'version': pony.__version__,
