@@ -105,7 +105,7 @@ def define_entities(db):
         db = run_path(p)['db']
         with ExitStack() as stack:
             stack.callback(db.disconnect)
-            db = migration.Migration._reconstruct(db)
+            db = migration.reconstruct_db(db)
             stack.callback(db.disconnect)
             define_entities(db)
             db.generate_mapping(create_tables=False)
@@ -146,7 +146,7 @@ def define_entities(db):
         db = run_path(p)['db']
         with ExitStack() as stack:
             stack.callback(db.disconnect)
-            db = migration.Migration._reconstruct(db)
+            db = migration.reconstruct_db(db)
             stack.callback(db.disconnect)
             define_entities(db)
             db.generate_mapping(create_tables=False)

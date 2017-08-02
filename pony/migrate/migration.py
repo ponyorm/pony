@@ -54,6 +54,11 @@ def upgrade_db(db, module):
         op.apply(db)
 
 
+def reconstruct_db(db):
+    args, kwargs = db._constructor_args
+    return db.__class__(*args, **kwargs)
+
+
 class Migration(object):
     def __repr__(self):
         return repr(self.operations)
@@ -106,7 +111,7 @@ class Migration(object):
         initial = plan[0]
         namespace = run_migration_file(initial)
         define_entities = namespace['define_entities']
-        prev_db = cls._reconstruct(db)
+        prev_db = reconstruct_db(db)
         get_cmd_exitstack().callback(prev_db.disconnect)
         define_entities(prev_db)
         prev_db.generate_schema()
@@ -176,12 +181,6 @@ class Migration(object):
             f.write(generated)
         print('Written: %s' % os.path.relpath(p))
 
-
-    @classmethod
-    def _reconstruct(cls, db):
-        args, kwargs = db._constructor_args
-        return db.__class__(*args, **kwargs)
-
     @classmethod
     def _read_db(cls, name, orig_db, db_cache=None):
         if db_cache is None:
@@ -190,7 +189,7 @@ class Migration(object):
         db = db_cache.get(name)
         if db:
             return db
-        db = cls._reconstruct(orig_db)
+        db = reconstruct_db(orig_db)
         namespace = run_migration_file(name)
         define_entities = namespace['define_entities']
         get_cmd_exitstack().callback(db.disconnect)
@@ -209,7 +208,7 @@ class Migration(object):
             db.schema = db.generate_schema()
 
         assert not 'Migration' in db.entities
-        migration_db = cls._reconstruct(db)
+        migration_db = reconstruct_db(db)
         make_migration_entity(migration_db)
         migration_db.generate_mapping(create_tables=True, check_tables=True)
         get_cmd_exitstack().callback(migration_db.disconnect)
@@ -248,8 +247,8 @@ class Migration(object):
             print('\nAll migrations are applied.')
             return
 
-        prev_db = cls._reconstruct(db)
-        new_db = cls._reconstruct(db)
+        prev_db = reconstruct_db(db)
+        new_db = reconstruct_db(db)
         get_cmd_exitstack().callback(prev_db.disconnect)
         get_cmd_exitstack().callback(new_db.disconnect)
 
