@@ -2094,11 +2094,15 @@ class Attribute(object):
         bit = obj._bits_except_volatile_[attr]
         if obj._rbits_ & bit:
             assert old_dbval is not NOT_LOADED
-            if new_dbval is NOT_LOADED: diff = ''
-            else: diff = ' (was: %s, now: %s)' % (old_dbval, new_dbval)
-            throw(UnrepeatableReadError,
-                'Value of %s.%s for %s was updated outside of current transaction%s'
-                % (obj.__class__.__name__, attr.name, obj, diff))
+            msg = 'Value of %s for %s was updated outside of current transaction' % (attr, obj)
+            if new_dbval is not NOT_LOADED:
+                msg = '%s (was: %s, now: %s)' % (msg, old_dbval, new_dbval)
+            elif isinstance(attr.reverse, Optional):
+                assert old_dbval is not None
+                msg = "Multiple %s objects linked with the same %s object. " \
+                      "Maybe %s attribute should be Set instead of Optional" \
+                      % (attr.entity.__name__, old_dbval, attr.reverse)
+            throw(UnrepeatableReadError, msg)
 
         if new_dbval is NOT_LOADED: obj._dbvals_.pop(attr, None)
         else: obj._dbvals_[attr] = new_dbval
