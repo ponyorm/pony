@@ -19,6 +19,17 @@ from .utils import run_path
 from .writer import MigrationWriter, MIGRATION_TEMPLATE
 
 
+def parse_number(name):
+    """
+    Given a migration name, tries to extract a number from the
+    beginning of it. If no number found, returns None.
+    """
+    match = re.match(r'^\d+', name)
+    if match:
+        return int(match.group())
+    return None
+
+
 class Migration(object):
     def __repr__(self):
         return repr(self.operations)
@@ -42,7 +53,7 @@ class Migration(object):
         graph = loader.graph
         highest_number = 0
         for leaf in graph.leaf_nodes():
-            num = cls._parse_number(leaf)
+            num = parse_number(leaf)
             if num is not None and num > highest_number:
                 highest_number = num
         highest_number += 1
@@ -51,19 +62,6 @@ class Migration(object):
         if name is None:
             name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         return "%04i_%s" % (highest_number, name)
-
-
-    @classmethod
-    def _parse_number(cls, name):
-        """
-        Given a migration name, tries to extract a number from the
-        beginning of it. If no number found, returns None.
-        """
-        match = re.match(r'^\d+', name)
-        if match:
-            return int(match.group())
-        return None
-
 
 
     @classmethod
