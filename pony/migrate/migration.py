@@ -94,8 +94,8 @@ class Migration(object):
         [leaf] = leaves
         plan = loader.graph.forwards_plan(leaf)
         initial = plan[0]
-        p = os.path.join(migrations, '{}.py'.format(initial))
-        define_entities = run_path(p)['define_entities']
+        namespace = run_migration_file(initial)
+        define_entities = namespace['define_entities']
         prev_db = cls._reconstruct(db)
         get_cmd_exitstack().callback(prev_db.disconnect)
         define_entities(prev_db)
@@ -181,10 +181,8 @@ class Migration(object):
         if db:
             return db
         db = cls._reconstruct(orig_db)
-        p = os.path.join(
-            get_migration_dir(), '{}.py'.format(name)
-        )
-        define_entities = run_path(p)['define_entities']
+        namespace = run_migration_file(name)
+        define_entities = namespace['define_entities']
         get_cmd_exitstack().callback(db.disconnect)
         define_entities(db)
         make_migration_entity(db)
