@@ -44,6 +44,16 @@ def run_migration_file(name):
     return run_path(path)
 
 
+def upgrade_db(db, module):
+    if module.get('operations') is None:
+        module['define_entities'](db)
+        db.generate_schema() # ?
+        return
+    for op in module['operations']:
+        op.apply(db)
+    return module['operations']
+
+
 class Migration(object):
     def __repr__(self):
         return repr(self.operations)
@@ -102,7 +112,7 @@ class Migration(object):
         prev_db.generate_schema()
         for name in plan[1:]:
             mod = run_migration_file(name)
-            cls._upgrade_db(prev_db, mod)
+            upgrade_db(prev_db, mod)
 
         db.generate_schema()
         prev_db.generate_schema()
@@ -190,17 +200,6 @@ class Migration(object):
         return db
 
     @classmethod
-    def _upgrade_db(cls, db, module):
-        if module.get('operations') is None:
-            module['define_entities'](db)
-            db.generate_schema() # ?
-            return
-        for op in module['operations']:
-            op.apply(db)
-        return module['operations']
-
-
-    @classmethod
     def apply(cls, db, dry_run=False, is_fake=False, name_start=None, name_end=None,
               name_exact=None):
         get_cmd_exitstack().callback(db.disconnect)
@@ -260,8 +259,8 @@ class Migration(object):
             for i, name in enumerate(applied):
                 mod = run_migration_file(name)
                 if i:
-                    cls._upgrade_db(prev_db, prev_mod)
-                cls._upgrade_db(new_db, mod)
+                    upgrade_db(prev_db, prev_mod)
+                upgrade_db(new_db, mod)
                 prev_mod = mod
 
         op_batches = []
@@ -316,8 +315,8 @@ class Migration(object):
                 ]
             for dic in batches:
                 if prev_mod is not None:
-                    cls._upgrade_db(prev_db, prev_mod)
-                cls._upgrade_db(new_db, dic)
+                    upgrade_db(prev_db, prev_mod)
+                upgrade_db(new_db, dic)
                 prev_mod = dic
 
                 if dic.get('operations') and dic['operations'][0].is_custom:
