@@ -2,9 +2,11 @@ from pony.py23compat import PY2, int_types, unicode, basestring
 
 import re, os, os.path, sys, datetime, inspect
 from decimal import Decimal
+from runpy import _run_code
 import time as _time
 
 from pony.utils import reraise
+
 
 COMPILED_REGEX_TYPE = type(re.compile(''))
 
@@ -296,10 +298,9 @@ def deconstructible(klass):
     return klass
 
 
-def run_path(p):
-    dic = {}
-    from runpy import _run_code
-    with open(p) as f:
+def run_path(path):
+    namespace = {}
+    with open(path) as f:
         text = f.read()
-        _run_code(text, dic)
-    return dic
+    _run_code(text, namespace)
+    return namespace
