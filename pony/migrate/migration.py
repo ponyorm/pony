@@ -37,6 +37,13 @@ def parse_number(name):
     return None
 
 
+def run_migration_file(name):
+    path = os.path.join(
+       get_migration_dir(), '{}.py'.format(name)
+    )
+    return run_path(path)
+
+
 class Migration(object):
     def __repr__(self):
         return repr(self.operations)
@@ -94,7 +101,7 @@ class Migration(object):
         define_entities(prev_db)
         prev_db.generate_schema()
         for name in plan[1:]:
-            mod = cls._read_file(name)
+            mod = run_migration_file(name)
             cls._upgrade_db(prev_db, mod)
 
         db.generate_schema()
@@ -185,13 +192,6 @@ class Migration(object):
         return db
 
     @classmethod
-    def _read_file(cls, name):
-        p = os.path.join(
-           get_migration_dir(), '{}.py'.format(name)
-        )
-        return run_path(p)
-
-    @classmethod
     def _upgrade_db(cls, db, module):
         if module.get('operations') is None:
             module['define_entities'](db)
@@ -260,7 +260,7 @@ class Migration(object):
 
         if applied:
             for i, name in enumerate(applied):
-                mod = cls._read_file(name)
+                mod = run_migration_file(name)
                 if i:
                     cls._upgrade_db(prev_db, prev_mod)
                 cls._upgrade_db(new_db, mod)
@@ -309,7 +309,7 @@ class Migration(object):
         for i, name in enumerate(names):
             if name in applied:
                 continue
-            mod = cls._read_file(name)
+            mod = run_migration_file(name)
             if mod.get('operations') is None:
                 batches = [mod]
             else:
