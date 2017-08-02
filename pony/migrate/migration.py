@@ -60,14 +60,14 @@ def reconstruct_db(db):
 
 
 class Migration(object):
-    def __repr__(self):
-        return repr(self.operations)
-
     def __init__(self, name=None, loader=None):
         self.name = name
         self.loader = loader
         self.operations = []
         self.dependencies = []
+
+    def __repr__(self):
+        return 'Migration(%r)' % self.name
 
     @classmethod
     def _generate_name(cls, loader, name=None):
