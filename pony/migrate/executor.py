@@ -1,7 +1,7 @@
 from __future__ import unicode_literals
 
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from copy import copy
 
 from pony.utils import cached_property
@@ -39,25 +39,30 @@ class Executor(object):
                      reverse=True)
 
         renamed_tables = {}
-        renamed_cols = {}
-        renames = {}
+        renamed_cols = defaultdict(dict)
+        renamed_entities = {}
+        renamed_attrs = {}
 
         for op in rename_ops:
             if isinstance(op, RenameEntity):
                 prev_entity = prev_db.entities[op.old_name]
                 entity = db.entities[op.new_name]
-                renames[prev_entity] = entity
+                renamed_entities[prev_entity] = entity
                 renamed_tables[entity._table_] = prev_entity._table_
             elif isinstance(op, RenameAttr):
                 prev_entity = prev_db.entities[op.entity_name]
-                if prev_entity in renames:
-                    entity = renames[prev_entity]
+
+                if prev_entity in renamed_entities:
+                    entity = renamed_entities[prev_entity]
                 else:
                     entity = db.entities[op.entity_name]
-                prev_obj = getattr(prev_entity, op.old_name)
-                obj = entity._adict_[op.new_name]
-                renames[prev_obj] = obj
-                self.rename_attr(prev_obj, obj, renamed_cols)
+
+                prev_attr = getattr(prev_entity, op.old_name)
+                new_attr = entity._adict_[op.new_name]
+                renamed_attrs[prev_attr] = new_attr
+                for prev_col, col in zip(prev_attr.columns, new_attr.columns):
+                    if prev_col != col:
+                        renamed_cols[prev_attr.entity._table_][col] = prev_col
 
         return {
             'columns': renamed_cols,
@@ -298,9 +303,3 @@ class Executor(object):
                     kw['table'] = table
                 for item in obj.get_drop_ops(inside_table=False, **kw):
                     yield item
-
-    def rename_attr(self, old_attr, attr, dic):
-        for prev_col, col in zip(old_attr.columns, attr.columns):
-            if prev_col != col:
-                dic.setdefault(old_attr.entity._table_, {})[col] = prev_col
-        return dic
