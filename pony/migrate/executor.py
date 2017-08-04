@@ -106,29 +106,6 @@ class Executor(object):
 
         return extra_ops + ops
 
-    def _get_attrs(self, columns):
-        entities = []
-        for col in columns:
-            entities.extend(col.table.entities)
-
-        result = {}
-        columns = set(columns)
-        for entity in entities:
-            for _, attr in entity._adict_.items():
-                common_cols = set(attr.columns) & set(c.name for c in columns)
-                if not common_cols:
-                    continue
-                if len(common_cols) > 1:
-                    warnings.warn('not implemented yet.')
-                    continue
-                for col in columns:
-                    if col.name in common_cols:
-                        break
-                else:
-                    assert not 'implemented'
-                result[col] = attr
-        return result
-
     def handle_defaults(self, ops):
         schema = self.schema
         provider = schema.provider
@@ -136,11 +113,16 @@ class Executor(object):
 
         extra_ops = []
 
-        cols = [
-            op.obj for op in ops
-            if isinstance(op.obj, schema.column_class)
-        ]
-        attrs = self._get_attrs(cols)
+        def find_attr(column):
+            for entity in column.table.entities:
+                for attr in entity._attrs_:
+                    if len(attr.columns) > 1: raise NotImplementedError
+                    if column.name == attr.columns[0]:
+                        return attr
+            raise NotImplementedError
+
+        columns = {op.obj for op in ops if isinstance(op.obj, schema.column_class)}
+        col2attrs = {column: find_attr(column) for column in columns}
 
         for op in ops:
             col = op.obj
@@ -148,8 +130,8 @@ class Executor(object):
             if not cond:
                 continue
             if op.type == 'alter':
-                is_required = attrs[op.obj].is_required
-                entity = attrs[col].entity
+                is_required = col2attrs[op.obj].is_required
+                entity = col2attrs[col].entity
                 entity_name = self.renames['tables'].get(entity.__name__, entity.__name__)
                 was_required = self.prev_db.entities[entity_name]
                 cond = is_required and not was_required
@@ -159,7 +141,7 @@ class Executor(object):
                 continue
             if col.is_not_null and not col.sql_default:
                 for attr, value in self.defaults.items():
-                    if attr.get_declaration_id() != attrs[col].get_declaration_id():
+                    if attr.get_declaration_id() != col2attrs[col].get_declaration_id():
                         continue
                     value_class = provider.sqlbuilder_cls.value_class
                     value = value_class(provider.paramstyle, value)
