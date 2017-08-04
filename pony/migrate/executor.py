@@ -13,7 +13,7 @@ from .diagram_ops import RenameEntity, RenameAttr, AddAttr, ModifyAttr
 
 class Executor(object):
 
-    def __init__(self, schema, prev_schema, db=None, prev_db=None, entity_ops=None, operations=None):
+    def __init__(self, schema, prev_schema, db, prev_db, entity_ops, operations):
         self.schema = schema
         self.prev_schema = prev_schema
         self.db = db
@@ -32,10 +32,8 @@ class Executor(object):
     def renames(self):
         db = self.db
         prev_db = self.prev_db
-        rename_ops = [
-            op for op in self.entity_ops or ()
-            if isinstance(op, (RenameAttr, RenameEntity))
-        ]
+
+        rename_ops = [op for op in self.entity_ops if isinstance(op, (RenameAttr, RenameEntity))]
         rename_ops = sorted(rename_ops,
                      key=lambda op: isinstance(op, RenameEntity),
                      reverse=True)
@@ -69,10 +67,8 @@ class Executor(object):
 
     @cached_property
     def defaults(self):
-        if self.db is None:
-            return {}
         attr_ops = [
-            op for op in self.entity_ops or ()
+            op for op in self.entity_ops
             if isinstance(op, (AddAttr, ModifyAttr))
         ]
         def get_attr(op):
