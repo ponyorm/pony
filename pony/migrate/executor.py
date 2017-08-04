@@ -67,24 +67,14 @@ class Executor(object):
 
     @cached_property
     def defaults(self):
-        attr_ops = [
-            op for op in self.entity_ops
-            if isinstance(op, (AddAttr, ModifyAttr))
-        ]
-        def get_attr(op):
-            entity = self.db.entities[op.entity_name]
-            return entity._adict_[op.attr_name]
-        ids = {
-            get_attr(op).id for op in attr_ops
-        }
-        df = {
-            attr: attr.initial
-            for entity in self.db.entities.values()
-            for attr in entity._attrs_
-            if attr.initial is not None
-            if attr.id in ids
-        }
-        return df
+        result = {}
+        for op in self.entity_ops:
+            if isinstance(op, (AddAttr, ModifyAttr)):
+                entity = self.db.entities[op.entity_name]
+                attr = entity._adict_[op.attr_name]
+                if attr.initial is not None:
+                    result[attr] = attr.initial
+        return result
 
     def handle_renames(self, ops):
         new_objects = self.new_objects
