@@ -55,9 +55,7 @@ class Executor(object):
                 prev_entity = prev_db.entities[op.old_name]
                 entity = db.entities[op.new_name]
                 renames[prev_entity] = entity
-                renamed_tables.update(
-                    self.rename_entity(prev_entity, entity, renames)
-                )
+                renamed_tables[entity._table_] = prev_entity._table_
             elif isinstance(op, RenameAttr):
                 prev_entity = prev_db.entities[op.entity_name]
                 if prev_entity in renames:
@@ -338,20 +336,6 @@ class Executor(object):
                     kw['table'] = table
                 for item in obj.get_drop_ops(inside_table=False, **kw):
                     yield item
-
-
-    def rename_entity(self, old_entity, entity, renamed_attrs):
-        result = {}
-        for old_a in old_entity._attrs_:
-            if old_a in renamed_attrs:
-                a = renamed_attrs[old_a]
-            else:
-                a = getattr(entity, old_a.name)
-            if a.reverse:
-                if a.reverse.entity._table_ != old_a.reverse.entity._table_:
-                    result[a.reverse.entity._table_] = old_a.reverse.entity._table_
-        result[entity._table_] = old_entity._table_
-        return result
 
     def rename_attr(self, old_attr, attr, dic):
         for prev_col, col in zip(old_attr.columns, attr.columns):

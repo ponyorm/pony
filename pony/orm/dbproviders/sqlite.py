@@ -116,10 +116,8 @@ class SQLiteTable(dbschema.Table):
 
         batch.extend(index_ops)
 
-        for entity in table.entities:
-            break
         with orm.db_session:
-            cache = entity._database_._get_cache()
+            cache = executor.db._get_cache()
         if cache.saved_fk_state:
             batch.append(
                 Op('PRAGMA foreign_keys = true', None, 'pragma_foreign_keys')
