@@ -276,11 +276,28 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
-    @raises_exception(TypeError, "@db_session can accept 'ddl' parameter "
-                      "only when used as decorator and not as context manager")
+    # restriction removed in 0.7.3:
+    # @raises_exception(TypeError, "@db_session can accept 'ddl' parameter "
+    #                   "only when used as decorator and not as context manager")
     def test_db_session_ddl_1(self):
         with db_session(ddl=True):
             pass
+
+    def test_db_session_ddl_1a(self):
+        with db_session(ddl=True):
+              with db_session(ddl=True):
+                  pass
+
+    def test_db_session_ddl_1b(self):
+        with db_session(ddl=True):
+              with db_session:
+                  pass
+
+    @raises_exception(TransactionError, 'Cannot start ddl transaction inside non-ddl transaction')
+    def test_db_session_ddl_1c(self):
+        with db_session:
+              with db_session(ddl=True):
+                  pass
 
     @raises_exception(TransactionError, "test() cannot be called inside of db_session")
     def test_db_session_ddl_2(self):

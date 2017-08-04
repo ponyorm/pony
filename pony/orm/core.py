@@ -369,13 +369,13 @@ class DBSessionContextManager(object):
     def __enter__(db_session):
         if db_session.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
-        if db_session.ddl: throw(TypeError,
-            "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
         db_session._enter()
     def _enter(db_session):
         if local.db_session is None:
             assert not local.db_context_counter
             local.db_session = db_session
+        elif db_session.ddl and not local.db_session.ddl: throw(TransactionError,
+            'Cannot start ddl transaction inside non-ddl transaction')
         elif db_session.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
