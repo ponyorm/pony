@@ -78,22 +78,6 @@ class Executor(object):
                     result[attr] = attr.initial
         return result
 
-    def handle_renames(self, ops):
-        renamed_tables = self.renames['tables']
-        renamed_cols = self.renames['columns']
-        extra_ops = []
-        if renamed_tables or renamed_cols:
-            for table in self.new_objects:
-                prev_name = renamed_tables.get(table.name)
-                if prev_name:
-                    extra_ops.extend(table.get_rename_ops(prev_name))
-            if self.schema.provider.dialect != 'SQLite':
-                for table in self.new_objects:
-                    for name, prev_name in renamed_cols.get(table.name, {}).items():
-                        col = table.column_dict[name]
-                        extra_ops.extend(col.get_rename_ops(prev_name))
-        return extra_ops + ops
-
     def handle_defaults(self, ops):
         schema = self.schema
         provider = schema.provider
@@ -204,7 +188,22 @@ class Executor(object):
 
         ops = include + [op for op in ops if op not in exclude]
 
-        ops = self.handle_renames(ops)
+        # handle renames
+        renamed_tables = self.renames['tables']
+        renamed_cols = self.renames['columns']
+        extra_ops = []
+        if renamed_tables or renamed_cols:
+            for table in self.new_objects:
+                prev_name = renamed_tables.get(table.name)
+                if prev_name:
+                    extra_ops.extend(table.get_rename_ops(prev_name))
+            if self.schema.provider.dialect != 'SQLite':
+                for table in self.new_objects:
+                    for name, prev_name in renamed_cols.get(table.name, {}).items():
+                        col = table.column_dict[name]
+                        extra_ops.extend(col.get_rename_ops(prev_name))
+        ops = extra_ops + ops
+
         ops = self.handle_defaults(ops)
 
         def is_instance(obj, klass):
