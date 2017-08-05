@@ -228,7 +228,7 @@ class Table(DBObject):
         quote_name = provider.quote_name
         new_name = quote_name(table.name)
         sql = case('RENAME TO {}').format(new_name)
-        op = Op(sql, table, 'rename', prefix=alter_table(prev_name))
+        op = Op(sql, table, type='rename', prefix=alter_table(prev_name))
 
         for entity in table.entities:
             break
@@ -544,7 +544,7 @@ class Column(object):
         cmd = [
             schema.case('DROP COLUMN'), quote_name(column.name),
         ]
-        yield Op(' '.join(cmd), column, 'drop', prefix=alter_table(table))
+        yield Op(' '.join(cmd), column, type='drop', prefix=alter_table(table))
 
 class Constraint(DBObject):
     rename_sql_template = 'ALTER TABLE %(table_name)s RENAME CONSTRAINT %(prev_name)s TO %(new_name)s'
