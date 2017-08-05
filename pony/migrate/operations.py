@@ -25,8 +25,8 @@ class Op(object):
         sql = ', '.join((self.sql, other.sql))
         types = []
         for obj in (self, other):
-            if isinstance(obj, (tuple, list)):
-                types.extend(iter(obj.type))
+            if isinstance(obj.type, (tuple, list)):
+                types.extend(obj.type)
             else:
                 types.append(obj.type)
         return self.__class__(sql, [self.obj, other.obj], types, self.prefix)
