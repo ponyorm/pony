@@ -33,23 +33,20 @@ class Executor(object):
         db = self.db
         prev_db = self.prev_db
 
-        rename_ops = [op for op in self.entity_ops if isinstance(op, (RenameAttr, RenameEntity))]
-        rename_ops = sorted(rename_ops,
-                     key=lambda op: isinstance(op, RenameEntity),
-                     reverse=True)
-
         renamed_tables = {}
         renamed_cols = defaultdict(dict)
         renamed_entities = {}
         renamed_attrs = {}
 
-        for op in rename_ops:
+        for op in self.entity_ops:
             if isinstance(op, RenameEntity):
                 prev_entity = prev_db.entities[op.old_name]
                 entity = db.entities[op.new_name]
                 renamed_entities[prev_entity] = entity
                 renamed_tables[entity._table_] = prev_entity._table_
-            elif isinstance(op, RenameAttr):
+
+        for op in self.entity_ops:
+            if isinstance(op, RenameAttr):
                 prev_entity = prev_db.entities[op.entity_name]
 
                 if prev_entity in renamed_entities:
