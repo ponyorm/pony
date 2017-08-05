@@ -79,33 +79,19 @@ class Executor(object):
         return result
 
     def handle_renames(self, ops):
-        new_objects = self.new_objects
         renamed_tables = self.renames['tables']
         renamed_cols = self.renames['columns']
         extra_ops = []
         if renamed_tables or renamed_cols:
-            new_tables = set()
-            for table, _ in new_objects.items():
-                new_tables.add(table)
-            for table in new_tables:
+            for table in self.new_objects:
                 prev_name = renamed_tables.get(table.name)
-                if not prev_name:
-                    continue
-                for op in table.get_rename_ops(prev_name):
-                    extra_ops.append(op)
-            for table in new_tables:
-                rename = renamed_cols.get(table.name)
-                if not rename:
-                    continue
-                for name, prev_name in rename.items():
-                    col = table.column_dict[name]
-                    try:
-                        for op in col.get_rename_ops(prev_name):
-                            extra_ops.append(op)
-                    except NotImplementedError:
-                        # sqlite
-                        pass
-
+                if prev_name:
+                    extra_ops.extend(table.get_rename_ops(prev_name))
+            if self.schema.provider.dialect != 'SQLite':
+                for table in self.new_objects:
+                    for name, prev_name in renamed_cols.get(table.name, {}).items():
+                        col = table.column_dict[name]
+                        extra_ops.extend(col.get_rename_ops(prev_name))
         return extra_ops + ops
 
     def handle_defaults(self, ops):
