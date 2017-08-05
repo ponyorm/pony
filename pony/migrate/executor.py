@@ -5,7 +5,8 @@ from collections import OrderedDict, defaultdict
 from copy import copy
 
 from pony.utils import cached_property
-from pony.orm import sqlbuilding, dbschema
+from pony.orm import sqlbuilding
+from pony.orm.dbschema import Table, Column, DBIndex, ForeignKey
 
 from .operations import Op, OperationBatch, alter_table
 from .diagram_ops import RenameEntity, RenameAttr, AddAttr, ModifyAttr
@@ -93,12 +94,12 @@ class Executor(object):
                         return attr
             raise NotImplementedError
 
-        columns = {op.obj for op in ops if isinstance(op.obj, schema.column_class)}
+        columns = {op.obj for op in ops if isinstance(op.obj, Column)}
         col2attrs = {column: find_attr(column) for column in columns}
 
         for op in ops:
             col = op.obj
-            cond = isinstance(col, schema.column_class)
+            cond = isinstance(col, Column)
             if not cond:
                 continue
             if op.type == 'alter':
@@ -169,13 +170,13 @@ class Executor(object):
         schema = self.schema
         drop_primary = [
             op for op in ops if op.type == 'drop'
-            if isinstance(op.obj, schema.index_class) and op.obj.is_pk
+            if isinstance(op.obj, DBIndex) and op.obj.is_pk
         ]
 
         exclude, include = [], []
 
         for op in ops:
-            if not isinstance(op.obj, schema.column_class):
+            if not isinstance(op.obj, Column):
                 continue
             for index_op in drop_primary:
                 if op.obj.name in index_op.obj.col_names:
@@ -223,11 +224,11 @@ class Executor(object):
                     from pony.orm.dbproviders import oracle
                     if is_instance(op.obj, oracle.OraTrigger):
                         return 0
-                if is_instance(op.obj, schema.fk_class):
+                if is_instance(op.obj, ForeignKey):
                     return 1
-                if is_instance(op.obj, schema.index_class):
+                if is_instance(op.obj, DBIndex):
                     return 2
-                if is_instance(op.obj, schema.table_class):
+                if is_instance(op.obj, Table):
                     return 5
             return 10
 
@@ -281,7 +282,7 @@ class Executor(object):
             for obj in objects.values():
                 table = prev_tables[table_name]
                 kw = {}
-                if not isinstance(obj, dbschema.DBSchema.table_class):
+                if not isinstance(obj, Table):
                     kw['table'] = table
                 for item in obj.get_drop_ops(inside_table=False, **kw):
                     yield item
