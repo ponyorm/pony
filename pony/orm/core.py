@@ -1824,7 +1824,7 @@ class Attribute(object):
                 'is_pk', 'is_collection', 'is_relation', 'is_basic', 'is_string', 'is_volatile', 'is_implicit', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
-                'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
+                'column', 'columns', 'column_objects', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
                 'optimistic', 'fk_name', '_provided_columns', 'initial', '_constructor_args', 'provided_table'
     def __deepcopy__(attr, memo):
@@ -1891,6 +1891,7 @@ class Attribute(object):
         attr.fk_name = kwargs.pop('fk_name', None)
         attr.col_paths = ()
         attr._columns_checked = False
+        attr.column_objects = None
         attr.composite_keys = []
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
@@ -2434,13 +2435,18 @@ class Attribute(object):
                 value = converter.py2sql(attr.default)
                 value = value_class(provider.paramstyle, value)
                 default = unicode(value)
-            table.add_column(columns[0], converter.get_sql_type(attr),
-                             converter, not attr.nullable, default)
+            column = table.add_column(columns[0], converter.get_sql_type(attr), converter, not attr.nullable, default)
+            column.attr = attr
+            attr.column_objects = [ column ]
         elif columns:
             if attr.sql_type is not None:
                 throw(NotImplementedError, 'sql_type cannot be specified for composite attribute %s' % attr)
-            for (column_name, converter) in izip(columns, attr.converters):
+            attr.column_objects = [
                 table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
+                for (column_name, converter) in izip(columns, attr.converters)
+            ]
+            for column in attr.column_objects:
+                column.attr = attr
         else: pass  # virtual attribute of one-to-one pair
     def _add_foreign_key_(attr, table):
         if attr.is_collection:
@@ -3750,6 +3756,7 @@ class EntityMeta(type):
             table_name = tuple(table_name)
 
         entity._table_ = entity._provided_table_ = table_name
+        entity._table_object_ = None
 
         database.entities[entity.__name__] = entity
         setattr(database, entity.__name__, entity)
@@ -3988,6 +3995,7 @@ class EntityMeta(type):
         table = schema.tables.get(table_name)
         if table is None: table = schema.add_table(table_name, entity)
         else: table.add_entity(entity)
+        entity._table_object_ = table
         return table
     def __iter__(entity):
         return EntityIter(entity)

@@ -470,6 +470,7 @@ class Column(object):
         column.is_pk_part = False
         column.is_unique = False
         column.converter = converter
+        column.attr = None
     def __repr__(column):
         return '<Column `%s`.`%s`>' % (column.table.name, column.name)
     def _schema_rename(column, new_name):
