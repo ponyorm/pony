@@ -1,10 +1,5 @@
-from __future__ import unicode_literals
-
-import warnings
 from collections import OrderedDict, defaultdict
-from copy import copy
 
-from pony.utils import cached_property
 from pony.orm import sqlbuilding
 from pony.orm.dbschema import Table, Column, DBIndex, ForeignKey
 
