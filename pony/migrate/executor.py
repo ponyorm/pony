@@ -229,9 +229,9 @@ class Executor(object):
         prev_tables = {}
         for t, objects in self.prev_objects.items():
             prev_tables[t.name] = t
-            prev_objects[t.name] = copy(objects)
+            prev_objects[t.name] = objects.copy()
         new_objects = OrderedDict(
-            ((t.name, copy(objects)) for t, objects in self.new_objects.items())
+            ((t.name, objects.copy()) for t, objects in self.new_objects.items())
         )
         renamed_tables = self.renamed_tables
 
