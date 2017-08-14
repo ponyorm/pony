@@ -146,7 +146,6 @@ class Executor(object):
         return ops + extra_ops
 
     def _sorted(self, ops):
-        schema = self.schema
         drop_primary = [
             op for op in ops if op.type == 'drop'
             if isinstance(op.obj, DBIndex) and op.obj.is_pk
