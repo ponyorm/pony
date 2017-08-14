@@ -140,27 +140,6 @@ class Executor(object):
         return ops + extra_ops
 
     def _sorted(self, ops):
-        drop_primary = [
-            op for op in ops if op.type == 'drop'
-            if isinstance(op.obj, DBIndex) and op.obj.is_pk
-        ]
-
-        exclude, include = [], []
-
-        for op in ops:
-            if not isinstance(op.obj, Column):
-                continue
-            for index_op in drop_primary:
-                if op.obj.name in index_op.obj.col_names:
-                # TODO if op.obj in index_op.obj.columns:
-                    break
-            else:
-                continue
-            include.append(op + index_op)
-            exclude.extend((op, index_op))
-
-        ops = include + [op for op in ops if op not in exclude]
-
         # handle renames
         renamed_tables = self.renamed_tables
         renamed_columns = self.renamed_columns
