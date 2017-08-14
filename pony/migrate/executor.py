@@ -38,17 +38,12 @@ class Executor(object):
         for op in self.entity_ops:
             if isinstance(op, RenameAttr):
                 prev_entity = prev_db.entities[op.entity_name]
-
-                if prev_entity in renamed_entities:
-                    entity = renamed_entities[prev_entity]
-                else:
-                    entity = db.entities[op.entity_name]
-
-                prev_attr = getattr(prev_entity, op.old_name)
+                prev_table_name = prev_entity._table_
+                entity = renamed_entities.get(prev_entity, db.entities.get(op.entity_name))
+                prev_attr = prev_entity._adict_[op.old_name]
                 new_attr = entity._adict_[op.new_name]
-                for prev_col, col in zip(prev_attr.columns, new_attr.columns):
-                    if prev_col != col:
-                        renamed_columns[prev_attr.entity._table_][col] = prev_col
+                renamed_columns[prev_table_name].update(
+                    {col: prev_col} for prev_col, col in zip(prev_attr.columns, new_attr.columns) if prev_col != col)
 
     def generate(self):
         ops = list(self._generate_ops())
