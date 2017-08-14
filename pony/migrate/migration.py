@@ -399,11 +399,7 @@ class MigrationGraph(object):
                 else:
                     schema = new_db.generate_schema()
                     prev_schema = prev_db.generate_schema()
-
-                    # TODO remove ?
-                    operations = [o for batch in op_batches for o in batch]
-
-                    executor = Executor(schema, prev_schema, db=new_db, prev_db=prev_db, entity_ops=ops, operations=operations)
+                    executor = Executor(schema, prev_schema, db=new_db, prev_db=prev_db, entity_ops=ops)
                     to_execute = executor.generate()
 
                 with orm.db_session(ddl=True):

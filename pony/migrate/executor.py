@@ -9,13 +9,12 @@ from .diagram_ops import RenameEntity, RenameAttr, AddAttr, ModifyAttr
 
 class Executor(object):
 
-    def __init__(self, schema, prev_schema, db, prev_db, entity_ops, operations):
+    def __init__(self, schema, prev_schema, db, prev_db, entity_ops):
         self.schema = schema
         self.prev_schema = prev_schema
         self.db = db
         self.prev_db = prev_db
         self.entity_ops = entity_ops
-        self.operations = operations
         self.prev_objects = prev_schema.objects_to_create()
         self.new_objects = schema.objects_to_create()
 
