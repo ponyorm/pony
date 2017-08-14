@@ -27,7 +27,6 @@ class Executor(object):
         self.renamed_tables = renamed_tables = {}
         self.renamed_columns = renamed_columns = defaultdict(dict)
         renamed_entities = {}
-        renamed_attrs = {}
 
         for op in self.entity_ops:
             if isinstance(op, RenameEntity):
@@ -47,7 +46,6 @@ class Executor(object):
 
                 prev_attr = getattr(prev_entity, op.old_name)
                 new_attr = entity._adict_[op.new_name]
-                renamed_attrs[prev_attr] = new_attr
                 for prev_col, col in zip(prev_attr.columns, new_attr.columns):
                     if prev_col != col:
                         renamed_columns[prev_attr.entity._table_][col] = prev_col
