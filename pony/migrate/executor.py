@@ -45,21 +45,18 @@ class Executor(object):
                 renamed_columns[prev_table_name].update(
                     {col: prev_col} for prev_col, col in zip(prev_attr.columns, new_attr.columns) if prev_col != col)
 
-    def generate(self):
-        ops = list(self._generate_ops())
-        ops = self._sorted(ops)
-        return ops
-
-    @cached_property
-    def defaults(self):
-        result = {}
+        self.defaults = defaults = {}
         for op in self.entity_ops:
             if isinstance(op, (AddAttr, ModifyAttr)):
                 entity = self.db.entities[op.entity_name]
                 attr = entity._adict_[op.attr_name]
                 if attr.initial is not None:
-                    result[attr] = attr.initial
-        return result
+                    defaults[attr] = attr.initial
+
+    def generate(self):
+        ops = list(self._generate_ops())
+        ops = self._sorted(ops)
+        return ops
 
     def handle_defaults(self, ops):
         schema = self.schema
