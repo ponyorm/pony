@@ -397,9 +397,7 @@ class MigrationGraph(object):
                     op = CustomOp(ops[0].forward)
                     to_execute = [op]
                 else:
-                    schema = new_db.generate_schema()
-                    prev_schema = prev_db.generate_schema()
-                    executor = Executor(schema, prev_schema, db=new_db, prev_db=prev_db, entity_ops=ops)
+                    executor = Executor(prev_db, new_db, ops)
                     to_execute = executor.generate()
 
                 with orm.db_session(ddl=True):

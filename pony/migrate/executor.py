@@ -9,14 +9,14 @@ from .diagram_ops import RenameEntity, RenameAttr, AddAttr, ModifyAttr
 
 class Executor(object):
 
-    def __init__(self, schema, prev_schema, db, prev_db, entity_ops):
-        self.schema = schema
-        self.prev_schema = prev_schema
-        self.db = db
+    def __init__(self, prev_db, new_db, entity_ops):
         self.prev_db = prev_db
+        self.new_db = new_db
         self.entity_ops = entity_ops
-        self.prev_objects = prev_schema.objects_to_create()
-        self.new_objects = schema.objects_to_create()
+        self.prev_schema = prev_db.generate_schema()
+        self.new_schema = new_db.generate_schema()
+        self.prev_objects = self.prev_schema.objects_to_create()
+        self.new_objects = self.new_schema.objects_to_create()
 
         self.renamed_tables = renamed_tables = {}
         self.renamed_columns = renamed_columns = defaultdict(dict)
@@ -25,7 +25,7 @@ class Executor(object):
         for op in self.entity_ops:
             if isinstance(op, RenameEntity):
                 prev_entity = prev_db.entities[op.old_name]
-                entity = db.entities[op.new_name]
+                entity = new_db.entities[op.new_name]
                 renamed_entities[prev_entity] = entity
                 renamed_tables[entity._table_] = prev_entity._table_
 
@@ -33,7 +33,7 @@ class Executor(object):
             if isinstance(op, RenameAttr):
                 prev_entity = prev_db.entities[op.entity_name]
                 prev_table_name = prev_entity._table_
-                entity = renamed_entities.get(prev_entity, db.entities.get(op.entity_name))
+                entity = renamed_entities.get(prev_entity, new_db.entities.get(op.entity_name))
                 prev_attr = prev_entity._adict_[op.old_name]
                 new_attr = entity._adict_[op.new_name]
                 renamed_columns[prev_table_name].update(
@@ -42,7 +42,7 @@ class Executor(object):
         self.defaults = defaults = {}
         for op in self.entity_ops:
             if isinstance(op, (AddAttr, ModifyAttr)):
-                entity = self.db.entities[op.entity_name]
+                entity = self.new_db.entities[op.entity_name]
                 attr = entity._adict_[op.attr_name]
                 if attr.initial is not None:
                     defaults[attr] = attr.initial
@@ -53,7 +53,7 @@ class Executor(object):
         return ops
 
     def handle_defaults(self, ops):
-        schema = self.schema
+        schema = self.new_schema
         provider = schema.provider
         quote_name = provider.quote_name
 
@@ -122,7 +122,7 @@ class Executor(object):
             [col] = obj.columns
             table = obj.entity._table_
             col_is_null = ['IS_NULL', ['COLUMN', table, col]]
-            builder = sqlbuilding.SQLBuilder(self.schema.provider, col_is_null)
+            builder = sqlbuilding.SQLBuilder(self.new_schema.provider, col_is_null)
 
             value = builder.VALUE(value)
             ctx = {
@@ -170,7 +170,7 @@ class Executor(object):
                 prev_name = renamed_tables.get(table.name)
                 if prev_name:
                     extra_ops.extend(table.get_rename_ops(prev_name))
-            if self.schema.provider.dialect != 'SQLite':
+            if self.new_schema.provider.dialect != 'SQLite':
                 for table in self.new_objects:
                     for name, prev_name in renamed_columns.get(table.name, {}).items():
                         col = table.column_dict[name]
@@ -192,7 +192,7 @@ class Executor(object):
             else:
                 cond = op.type == 'drop'
             if cond:
-                if self.db.provider.dialect == 'Oracle':
+                if self.new_db.provider.dialect == 'Oracle':
                     from pony.orm.dbproviders import oracle
                     if is_instance(op.obj, oracle.OraTrigger):
                         return 0
