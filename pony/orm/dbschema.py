@@ -262,15 +262,15 @@ class Table(DBObject):
         provider = schema.provider
         quote_name = provider.quote_name
 
-        renamed_cols = kwargs['renamed_cols']
+        renamed_columns = kwargs['renamed_columns']
         prev_columns = {c.name: c for c in prev.column_list}
 
         for column in table.column_list:
             sql = column.get_sql()
             column_name = column.name # prev column name
-            was_renamed = column_name in renamed_cols
+            was_renamed = column_name in renamed_columns
             if was_renamed:
-                column_name = renamed_cols.get(column_name, column_name)
+                column_name = renamed_columns.get(column_name, column_name)
 
             if column_name not in prev_columns:
                 op = case('{} {}').format(schema.ADD_COLUMN, sql)
@@ -297,7 +297,7 @@ class Table(DBObject):
         dropped_cols = set()
 
         for column in prev.column_list:
-            if column.name in renamed_cols.values():
+            if column.name in renamed_columns.values():
                 continue
             if column.name not in column_names:
                 dropped_cols.add(column)

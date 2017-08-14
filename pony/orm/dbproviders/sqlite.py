@@ -33,12 +33,12 @@ class SQLiteForeignKey(dbschema.ForeignKey):
         assert False  # pragma: no cover
 
 class SQLiteTable(dbschema.Table):
-    def get_alter_ops(table, prev, new_tables, executor, renamed_cols=None):
+    def get_alter_ops(table, prev, new_tables, executor, renamed_columns=None):
         current_schema = executor.schema
         operations = executor.operations
 
         # table name before possible rename
-        table_name_before = executor.renames['tables'].get(table.name)
+        table_name_before = executor.renamed_tables.get(table.name)
         if not table_name_before:
             table_name_before = table.name
 

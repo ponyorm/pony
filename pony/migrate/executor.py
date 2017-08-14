@@ -24,18 +24,8 @@ class Executor(object):
         self.prev_objects = prev_schema.objects_to_create()
         self.new_objects = schema.objects_to_create()
 
-    def generate(self):
-        ops = list(self._generate_ops())
-        ops = self._sorted(ops)
-        return ops
-
-    @cached_property
-    def renames(self):
-        db = self.db
-        prev_db = self.prev_db
-
-        renamed_tables = {}
-        renamed_cols = defaultdict(dict)
+        self.renamed_tables = renamed_tables = {}
+        self.renamed_columns = renamed_columns = defaultdict(dict)
         renamed_entities = {}
         renamed_attrs = {}
 
@@ -60,13 +50,12 @@ class Executor(object):
                 renamed_attrs[prev_attr] = new_attr
                 for prev_col, col in zip(prev_attr.columns, new_attr.columns):
                     if prev_col != col:
-                        renamed_cols[prev_attr.entity._table_][col] = prev_col
+                        renamed_columns[prev_attr.entity._table_][col] = prev_col
 
-        return {
-            'columns': renamed_cols,
-            'tables': renamed_tables,
-        }
-
+    def generate(self):
+        ops = list(self._generate_ops())
+        ops = self._sorted(ops)
+        return ops
 
     @cached_property
     def defaults(self):
@@ -105,7 +94,7 @@ class Executor(object):
             if op.type == 'alter':
                 is_required = col2attrs[op.obj].is_required
                 entity = col2attrs[col].entity
-                entity_name = self.renames['tables'].get(entity.__name__, entity.__name__)
+                entity_name = self.renamed_tables.get(entity.__name__, entity.__name__)
                 was_required = self.prev_db.entities[entity_name]
                 cond = is_required and not was_required
             else:
@@ -190,17 +179,17 @@ class Executor(object):
         ops = include + [op for op in ops if op not in exclude]
 
         # handle renames
-        renamed_tables = self.renames['tables']
-        renamed_cols = self.renames['columns']
+        renamed_tables = self.renamed_tables
+        renamed_columns = self.renamed_columns
         extra_ops = []
-        if renamed_tables or renamed_cols:
+        if renamed_tables or renamed_columns:
             for table in self.new_objects:
                 prev_name = renamed_tables.get(table.name)
                 if prev_name:
                     extra_ops.extend(table.get_rename_ops(prev_name))
             if self.schema.provider.dialect != 'SQLite':
                 for table in self.new_objects:
-                    for name, prev_name in renamed_cols.get(table.name, {}).items():
+                    for name, prev_name in renamed_columns.get(table.name, {}).items():
                         col = table.column_dict[name]
                         extra_ops.extend(col.get_rename_ops(prev_name))
         ops = extra_ops + ops
@@ -255,7 +244,7 @@ class Executor(object):
         new_objects = OrderedDict(
             ((t.name, copy(objects)) for t, objects in self.new_objects.items())
         )
-        renamed_tables = self.renames['tables']
+        renamed_tables = self.renamed_tables
 
         for table_name, objects in new_objects.items():
             for obj_name, obj in objects.items():
@@ -265,14 +254,14 @@ class Executor(object):
                 if obj_name in renamed_tables:
                     obj_name = renamed_tables[obj_name]
                 prev_obj = prev_objects.get(table_name, {}).pop(obj_name, None)
-                renamed_cols = self.renames['columns'].get(table_name, {})
+                renamed_columns = self.renamed_columns.get(table_name, {})
 
                 if prev_obj is not None:
                     if prev_obj.get_create_command() == sql:
                         continue
                     # obj is altered
                     for item in obj.get_alter_ops(prev_obj, new_objects, executor=self,
-                                                    renamed_cols=renamed_cols):
+                                                    renamed_columns=renamed_columns):
                         yield item
                     continue
                 op = Op(sql, obj, type='create')
