@@ -136,6 +136,7 @@ class Table(DBObject):
         schema.names[name] = table
         table.schema = schema
         table.name = name
+        table.prev = table.new = None
         table.column_list = []
         table.column_dict = {}
         table.indexes = {}
@@ -463,6 +464,7 @@ class Column(object):
         table.column_list.append(column)
         column.table = table
         column.name = name
+        column.prev = column.new = None
         column.sql_type = sql_type
         column.is_not_null = is_not_null
         column.sql_default = sql_default
@@ -559,6 +561,7 @@ class Constraint(DBObject):
             schema.names[name] = constraint
             schema.constraints[name] = constraint
         constraint.name = name
+        constraint.prev = constraint.new = None
         constraint.table = table
     def rename(constraint, new_name):
         schema = constraint.table.schema

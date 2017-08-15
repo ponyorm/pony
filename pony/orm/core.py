@@ -1826,7 +1826,8 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'column_objects', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic', 'fk_name', '_provided_columns', 'initial', '_constructor_args', 'provided_table'
+                'optimistic', 'fk_name', '_provided_columns', 'initial', '_constructor_args', 'provided_table', \
+                'prev_attr', 'new_attr'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1892,6 +1893,7 @@ class Attribute(object):
         attr.col_paths = ()
         attr._columns_checked = False
         attr.column_objects = None
+        attr.prev_attr = attr.new_attr = None
         attr.composite_keys = []
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
@@ -3757,6 +3759,7 @@ class EntityMeta(type):
 
         entity._table_ = entity._provided_table_ = table_name
         entity._table_object_ = None
+        entity._prev_entity_ = entity._new_entity_ = None
 
         database.entities[entity.__name__] = entity
         setattr(database, entity.__name__, entity)

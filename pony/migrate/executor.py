@@ -1,6 +1,5 @@
 from collections import OrderedDict, defaultdict
 
-from pony.orm import sqlbuilding
 from pony.orm.dbschema import Table, Column, DBIndex, ForeignKey
 
 from .operations import Op, OperationBatch, alter_table
@@ -25,9 +24,12 @@ class Executor(object):
         for op in self.entity_ops:
             if isinstance(op, RenameEntity):
                 prev_entity = prev_db.entities[op.old_name]
-                entity = new_db.entities[op.new_name]
-                renamed_entities[prev_entity] = entity
-                renamed_tables[entity._table_] = prev_entity._table_
+                new_entity = new_db.entities[op.new_name]
+                prev_entity._new_entity_ = new_entity
+                new_entity._prev_entity_ = prev_entity
+
+                renamed_entities[prev_entity] = new_entity
+                renamed_tables[new_entity._table_] = prev_entity._table_
 
         for op in self.entity_ops:
             if isinstance(op, RenameAttr):
@@ -36,106 +38,75 @@ class Executor(object):
                 entity = renamed_entities.get(prev_entity, new_db.entities.get(op.entity_name))
                 prev_attr = prev_entity._adict_[op.old_name]
                 new_attr = entity._adict_[op.new_name]
-                renamed_columns[prev_table_name].update(
-                    {col: prev_col} for prev_col, col in zip(prev_attr.columns, new_attr.columns) if prev_col != col)
+                prev_attr.new_attr = new_attr
+                new_attr.prev_attr = prev_attr
+                assert len(prev_attr.columns) == len(new_attr.columns)
+                assert len(prev_attr.column_objects) == len(new_attr.column_objects)
+                for prev_col, new_col in zip(prev_attr.column_objects, new_attr.column_objects):
+                    prev_col.new = new_col
+                    new_col.prev = prev_col
 
-        self.defaults = defaults = {}
+                for prev_col, col in zip(prev_attr.columns, new_attr.columns):
+                    if prev_col != col:
+                        renamed_columns[prev_table_name][col] = prev_col
+
+        self.initials = initials = {}
         for op in self.entity_ops:
             if isinstance(op, (AddAttr, ModifyAttr)):
                 entity = self.new_db.entities[op.entity_name]
                 attr = entity._adict_[op.attr_name]
                 if attr.initial is not None:
-                    defaults[attr] = attr.initial
+                    initials[attr] = attr.initial
 
     def generate(self):
         ops = list(self._generate_ops())
         ops = self._sorted(ops)
         return ops
 
-    def handle_defaults(self, ops):
+    def handle_initials(self, ops):
         schema = self.new_schema
         provider = schema.provider
         quote_name = provider.quote_name
 
         extra_ops = []
 
-        def find_attr(column):
-            for entity in column.table.entities:
-                for attr in entity._attrs_:
-                    if len(attr.columns) > 1: raise NotImplementedError
-                    if column.name == attr.columns[0]:
-                        return attr
-            raise NotImplementedError
-
-        columns = {op.obj for op in ops if isinstance(op.obj, Column)}
-        col2attrs = {column: find_attr(column) for column in columns}
-
         for op in ops:
             col = op.obj
-            cond = isinstance(col, Column)
-            if not cond:
+
+            if not isinstance(col, Column):
                 continue
-            if op.type == 'alter':
-                is_required = col2attrs[op.obj].is_required
-                entity = col2attrs[col].entity
-                entity_name = self.renamed_tables.get(entity.__name__, entity.__name__)
-                was_required = self.prev_db.entities[entity_name]
-                cond = is_required and not was_required
-            else:
-                cond = cond and op.type == 'create'
-            if not cond:
+
+            if op.type != 'create' and not (
+                    op.type == 'alter' and col.attr.is_required and not col.attr.prev_attr.is_requried):
                 continue
-            if col.is_not_null and not col.sql_default:
-                for attr, value in self.defaults.items():
-                    if attr.get_declaration_id() != col2attrs[col].get_declaration_id():
-                        continue
-                    value_class = provider.sqlbuilder_cls.value_class
-                    value = value_class(provider.paramstyle, value)
-                    # hack
-                    _default = 'DEFAULT {}'.format(value)
-                    if provider.dialect == 'Oracle':
-                        for sub in ('NOT NULL', 'NULL'):
-                            ind = op.sql.rfind(sub)
-                            if ind == -1:
-                                continue
-                            op.sql = ' '.join(
-                                (op.sql[:ind], _default, op.sql[ind:])
-                            )
-                            break
-                    else:
-                        op.sql = ' '.join((op.sql, _default))
-                    del self.defaults[attr]
-                    schema = col.table.schema
-                    if provider.dialect == 'Oracle':
-                        sql = schema.case('{} {} DEFAULT NULL').format(
-                            schema.MODIFY_COLUMN, quote_name(col.name),
-                        )
-                    else:
-                        sql = schema.case('{} {} DROP DEFAULT').format(
-                            schema.MODIFY_COLUMN, quote_name(col.name),
-                        )
-                    op = Op(sql, col, type='alter', prefix=alter_table(col.table))
-                    extra_ops.append(op)
-                    break
 
-        for obj, value in self.defaults.items():
-            [col] = obj.columns
-            table = obj.entity._table_
-            col_is_null = ['IS_NULL', ['COLUMN', table, col]]
-            builder = sqlbuilding.SQLBuilder(self.new_schema.provider, col_is_null)
+            if not col.is_not_null or col.sql_default:
+                continue
 
-            value = builder.VALUE(value)
-            ctx = {
-                'table': quote_name(table),
-                'col': quote_name(col),
-                'col_is_null': ''.join(builder.result),
-                'value': value,
-            }
-            sql = 'UPDATE {table} SET {col} = {value} WHERE {col_is_null}'.format(**ctx)
+            attr = col.attr
+            if attr not in self.initials: continue
+            value = self.initials.pop(attr)
 
-            extra_ops.append(
-                Op(sql, obj, 'set_defaults')
-            )
+            value_class = provider.sqlbuilder_cls.value_class
+            op.sql += ' DEFAULT %s' % value_class(provider.paramstyle, value)  # fix Oracle?
+
+
+
+            schema = col.table.schema
+            drop_default_clause = 'DROP DEFAULT' if provider.dialect != 'Oracle' else 'DEFAULT NULL'
+            sql = '{} {} {}'.format(
+                schema.MODIFY_COLUMN, quote_name(col.name), schema.case(drop_default_clause))
+
+            extra_ops.append(Op(sql, col, type='alter', prefix=alter_table(col.table)))
+
+        for attr, value in self.initials.items():
+            assert len(attr.columns) == 1
+            col_name = attr.columns[0]
+            table_name = attr.entity._table_
+            sql_ast = [ 'UPDATE', table_name, [ [ 'COLUMN', None, col_name ], [ 'VALUE', value ] ],
+                        [ 'WHERE', [ 'IS_NULL', [ 'COLUMN', None, col_name ] ] ] ]
+            sql = provider.ast2sql(sql_ast)[0]
+            extra_ops.append(Op(sql, attr, type='set_defaults'))
 
         return ops + extra_ops
 
@@ -156,7 +127,7 @@ class Executor(object):
                         extra_ops.extend(col.get_rename_ops(prev_name))
         ops = extra_ops + ops
 
-        ops = self.handle_defaults(ops)
+        ops = self.handle_initials(ops)
 
         def is_instance(obj, klass):
             if not isinstance(obj, (list, tuple)):
@@ -166,11 +137,7 @@ class Executor(object):
         def keyfunc(op):
             if op.type == 'rename':
                 return 3
-            if isinstance(op.type, list):
-                cond = 'drop' in op.type
-            else:
-                cond = op.type == 'drop'
-            if cond:
+            if op.type == 'drop' or isinstance(op.type, list) and 'drop' in op.type:
                 if self.new_db.provider.dialect == 'Oracle':
                     from pony.orm.dbproviders import oracle
                     if is_instance(op.obj, oracle.OraTrigger):
@@ -183,18 +150,13 @@ class Executor(object):
                     return 5
             return 10
 
-        result = sorted(ops, key=keyfunc)
-
-        def flatten(ops):
-            li = []
-            for op in ops:
-                if isinstance(op, OperationBatch):
-                    li.extend(op)
-                else:
-                    li.append(op)
-            return li
-
-        return flatten(result)
+        result = []
+        for op in sorted(ops, key=keyfunc):
+            if isinstance(op, OperationBatch):
+                result.extend(op)
+            else:
+                result.append(op)
+        return result
 
     def _generate_ops(self):
         # by table
@@ -209,8 +171,8 @@ class Executor(object):
         renamed_tables = self.renamed_tables
 
         for table_name, objects in new_objects.items():
-            for obj_name, obj in objects.items():
-                sql = obj.get_create_command()
+            for obj_name, new_obj in objects.items():
+                sql = new_obj.get_create_command()
                 if table_name in renamed_tables:
                     table_name = renamed_tables[table_name]
                 if obj_name in renamed_tables:
@@ -218,22 +180,18 @@ class Executor(object):
                 prev_obj = prev_objects.get(table_name, {}).pop(obj_name, None)
                 renamed_columns = self.renamed_columns.get(table_name, {})
 
-                if prev_obj is not None:
-                    if prev_obj.get_create_command() == sql:
-                        continue
-                    # obj is altered
-                    for item in obj.get_alter_ops(prev_obj, new_objects, executor=self,
-                                                    renamed_columns=renamed_columns):
+                if prev_obj is None:
+                    yield Op(sql, new_obj, type='create')
+                elif sql != prev_obj.get_create_command():
+                    for item in new_obj.get_alter_ops(
+                            prev_obj, new_objects, executor=self, renamed_columns=renamed_columns):
                         yield item
-                    continue
-                op = Op(sql, obj, type='create')
-                yield op
 
         for table_name, objects in prev_objects.items():
-            for obj in objects.values():
+            for prev_obj in objects.values():
                 table = prev_tables[table_name]
                 kw = {}
-                if not isinstance(obj, Table):
+                if not isinstance(prev_obj, Table):
                     kw['table'] = table
-                for item in obj.get_drop_ops(inside_table=False, **kw):
+                for item in prev_obj.get_drop_ops(inside_table=False, **kw):
                     yield item
