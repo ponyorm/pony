@@ -89,15 +89,48 @@ class Executor(object):
                                 new_col.prev = prev_col
 
     def generate(self):
-        ops = list(self._generate_ops())
-        ops = self._sorted(ops)
-        return ops
+        ops = []
 
-    def handle_initials(self, ops):
+        prev_objects = OrderedDict()
+        prev_tables = {}
+        for t, objects in self.prev_objects.items():
+            prev_tables[t.name] = t
+            prev_objects[t.name] = objects.copy()
+        new_objects = OrderedDict(((t.name, objects.copy()) for t, objects in self.new_objects.items()))
+
+        for table_name, objects in new_objects.items():
+            for obj_name, new_obj in objects.items():
+                sql = new_obj.get_create_command()
+                prev_obj = new_obj.prev
+                if prev_obj is None:
+                    ops.append(Op(sql, obj=new_obj, type='create'))
+                elif sql != prev_obj.get_create_command():
+                    ops.extend(new_obj.get_alter_ops(prev_obj, new_objects, executor=self))
+
+        for table_name, objects in prev_objects.items():
+            for prev_obj in objects.values():
+                table = prev_tables[table_name]
+                kw = {}
+                if not isinstance(prev_obj, Table):
+                    kw['table'] = table
+                ops.extend(prev_obj.get_drop_ops(inside_table=False, **kw))
+
+        # handle renames
+        extra_ops = []
+        for prev_name, prev_table in self.prev_schema.tables.items():
+            if prev_name != prev_table.new.name:
+                extra_ops.extend(prev_table.get_rename_ops(prev_table.new.name))
+            if self.new_schema.provider.dialect != 'SQLite':
+                for prev_col in prev_table.column_list:
+                    if prev_col.name != prev_col.new.name:
+                        extra_ops.extend(prev_col.get_rename_ops(prev_col.new.name))
+        ops = extra_ops + ops
+
         schema = self.new_schema
         provider = schema.provider
         quote_name = provider.quote_name
-
+        
+        # handle initials
         for op in ops[:]:
             col = op.obj
             if not isinstance(col, Column): continue
@@ -128,22 +161,6 @@ class Executor(object):
                     sql = provider.ast2sql(sql_ast)[0]
                     ops.append(Op(sql, obj=new_attr, type='set_defaults'))
 
-        return ops
-
-    def _sorted(self, ops):
-        # handle renames
-        extra_ops = []
-        for prev_name, prev_table in self.prev_schema.tables.items():
-            if prev_name != prev_table.new.name:
-                extra_ops.extend(prev_table.get_rename_ops(prev_table.new.name))
-            if self.new_schema.provider.dialect != 'SQLite':
-                for prev_col in prev_table.column_list:
-                    if prev_col.name != prev_col.new.name:
-                        extra_ops.extend(prev_col.get_rename_ops(prev_col.new.name))
-        ops = extra_ops + ops
-
-        ops = self.handle_initials(ops)
-
         def keyfunc(op):
             if op.type == 'rename':
                 return 3
@@ -165,33 +182,3 @@ class Executor(object):
             else:
                 result.append(op)
         return result
-
-    def _generate_ops(self):
-        # by table
-        prev_objects = OrderedDict()
-        prev_tables = {}
-        for t, objects in self.prev_objects.items():
-            prev_tables[t.name] = t
-            prev_objects[t.name] = objects.copy()
-        new_objects = OrderedDict(
-            ((t.name, objects.copy()) for t, objects in self.new_objects.items())
-        )
-
-        for table_name, objects in new_objects.items():
-            for obj_name, new_obj in objects.items():
-                sql = new_obj.get_create_command()
-                prev_obj = new_obj.prev
-                if prev_obj is None:
-                    yield Op(sql, obj=new_obj, type='create')
-                elif sql != prev_obj.get_create_command():
-                    for item in new_obj.get_alter_ops(prev_obj, new_objects, executor=self):
-                        yield item
-
-        for table_name, objects in prev_objects.items():
-            for prev_obj in objects.values():
-                table = prev_tables[table_name]
-                kw = {}
-                if not isinstance(prev_obj, Table):
-                    kw['table'] = table
-                for item in prev_obj.get_drop_ops(inside_table=False, **kw):
-                    yield item
