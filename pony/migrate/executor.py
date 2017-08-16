@@ -148,24 +148,19 @@ class Executor(object):
 
         ops = self.handle_initials(ops)
 
-        def is_instance(obj, klass):
-            if not isinstance(obj, (list, tuple)):
-                return isinstance(obj, klass)
-            return any(isinstance(o, klass) for o in obj)
-
         def keyfunc(op):
             if op.type == 'rename':
                 return 3
             if op.type == 'drop' or isinstance(op.type, list) and 'drop' in op.type:
                 if self.new_db.provider.dialect == 'Oracle':
                     from pony.orm.dbproviders import oracle
-                    if is_instance(op.obj, oracle.OraTrigger):
+                    if isinstance(op.obj, oracle.OraTrigger):
                         return 0
-                if is_instance(op.obj, ForeignKey):
+                if isinstance(op.obj, ForeignKey):
                     return 1
-                if is_instance(op.obj, DBIndex):
+                if isinstance(op.obj, DBIndex):
                     return 2
-                if is_instance(op.obj, Table):
+                if isinstance(op.obj, Table):
                     return 5
             return 10
 
