@@ -89,16 +89,12 @@ class PGDBIndex(dbschema.DBIndex):
         schema = index.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        cmd = []
-        # if inside_table:
-        #     cmd.extend((case('ALTER TABLE'), quote_name(index.table.name)))
-        kw = {'prefix': alter_table(index.table)} if inside_table else {}
         if index.is_pk:
-            cmd.extend(('DROP CONSTRAINT', index.name))
-            yield Op(' '.join(cmd), index, type='drop', **kw)
-            raise StopIteration
-        for item in super(PGDBIndex, index).get_drop_ops(inside_table=inside_table):
-            yield item
+            sql = case('DROP CONSTRAINT %s') % quote_name(index.name)
+            yield Op(sql, index, type='drop', prefix=alter_table(index.table) if inside_table else None)
+        else:
+            for item in super(PGDBIndex, index).get_drop_ops(inside_table=inside_table):
+                yield item
 
 class PGForeignKey(dbschema.ForeignKey):
 

@@ -122,7 +122,7 @@ class DBObject(object):
         provider.execute(cursor, sql)
     def get_create_ops(db_object):
         sql = db_object.get_create_command()
-        yield Op(sql, db_object, type='create')
+        yield Op(sql, obj=db_object, type='create')
 
 class Table(DBObject):
     typename = 'Table'
@@ -229,15 +229,15 @@ class Table(DBObject):
         quote_name = provider.quote_name
         new_name = quote_name(table.name)
         sql = case('RENAME TO {}').format(new_name)
-        op = Op(sql, table, type='rename', prefix=alter_table(prev_name))
+        op = Op(sql, obj=table, type='rename', prefix=alter_table(prev_name))
 
         for entity in table.entities:
             break
         with orm.db_session:
             cache = entity._database_._get_cache()
         if schema.provider.dialect == 'SQLite' and not cache.saved_fk_state:
-            op1 = Op('PRAGMA foreign_keys = true', None, 'pragma_foreign_keys')
-            op2 = Op('PRAGMA foreign_keys = false', None, 'pragma_foreign_keys')
+            op1 = Op('PRAGMA foreign_keys = true', obj=None, type='pragma_foreign_keys')
+            op2 = Op('PRAGMA foreign_keys = false', obj=None, type='pragma_foreign_keys')
             yield OperationBatch([op1, op, op2], type='rename')
             raise StopIteration
         yield op
@@ -650,13 +650,8 @@ class DBIndex(Constraint):
         if table is None:
             table = index.table
         quote_name = schema.provider.quote_name
-        cmd = []
-        kw = {'prefix': alter_table(table)} if inside_table else {}
-            # cmd.append(
-            #     case('ALTER TABLE %s') % quote_name(index.table.name)
-            # )
-        cmd.extend(('DROP INDEX', quote_name(index.name)))
-        yield Op(' '.join(cmd), index, type='drop', **kw)
+        sql = 'DROP INDEX %s' % quote_name(index.name)
+        yield Op(sql, obj=index, type='drop', prefix=alter_table(table) if inside_table else None)
     def _get_create_sql(index, inside_table):
         schema = index.table.schema
         case = schema.case

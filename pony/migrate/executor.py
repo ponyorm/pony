@@ -116,7 +116,7 @@ class Executor(object):
             sql = '{} {} {}'.format(
                 schema.MODIFY_COLUMN, quote_name(col.name), schema.case(drop_default_clause))
 
-            extra_ops.append(Op(sql, col, type='alter', prefix=alter_table(col.table)))
+            extra_ops.append(Op(sql, obj=col, type='alter', prefix=alter_table(col.table)))
 
         for attr, value in self.initials.items():
             assert len(attr.columns) == 1
@@ -125,7 +125,7 @@ class Executor(object):
             sql_ast = [ 'UPDATE', table_name, [ [ 'COLUMN', None, col_name ], [ 'VALUE', value ] ],
                         [ 'WHERE', [ 'IS_NULL', [ 'COLUMN', None, col_name ] ] ] ]
             sql = provider.ast2sql(sql_ast)[0]
-            extra_ops.append(Op(sql, attr, type='set_defaults'))
+            extra_ops.append(Op(sql, obj=attr, type='set_defaults'))
 
         return ops + extra_ops
 
@@ -195,7 +195,7 @@ class Executor(object):
                 renamed_columns = self.renamed_columns.get(table_name, {})
 
                 if prev_obj is None:
-                    yield Op(sql, new_obj, type='create')
+                    yield Op(sql, obj=new_obj, type='create')
                 elif sql != prev_obj.get_create_command():
                     for item in new_obj.get_alter_ops(
                             prev_obj, new_objects, executor=self, renamed_columns=renamed_columns):

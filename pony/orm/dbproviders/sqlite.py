@@ -73,7 +73,7 @@ class SQLiteTable(dbschema.Table):
         batch = OperationBatch(type='rename')
 
         batch.append(
-            Op('PRAGMA foreign_keys = false', None, 'pragma_foreign_keys')
+            Op('PRAGMA foreign_keys = false', obj=None, type='pragma_foreign_keys')
         )
 
         index_ops = []
@@ -92,7 +92,7 @@ class SQLiteTable(dbschema.Table):
                     continue
                 sql = index.get_create_command()
                 index_ops.append(
-                    Op(sql, index, type='create')
+                    Op(sql, obj=index, type='create')
                 )
         finally:
             table.column_list = table_columns
@@ -103,15 +103,15 @@ class SQLiteTable(dbschema.Table):
         cols = ', '.join(copy_cols)
         insert_sql = 'INSERT INTO {} ({}) SELECT {} FROM {}'.format(name__new, cols, cols, name)
 
-        op = Op(insert_sql, table, type='insert')
+        op = Op(insert_sql, obj=table, type='insert')
         batch.append(op)
 
         drop_sql = 'DROP TABLE {}'.format(name)
-        op = Op(drop_sql, table, type='drop')
+        op = Op(drop_sql, obj=table, type='drop')
         batch.append(op)
 
         rename_sql = 'ALTER TABLE {} RENAME TO {}'.format(name__new, name)
-        op = Op(rename_sql, table, type='rename')
+        op = Op(rename_sql, obj=table, type='rename')
         batch.append(op)
 
         batch.extend(index_ops)
@@ -120,7 +120,7 @@ class SQLiteTable(dbschema.Table):
             cache = executor.db._get_cache()
         if cache.saved_fk_state:
             batch.append(
-                Op('PRAGMA foreign_keys = true', None, 'pragma_foreign_keys')
+                Op('PRAGMA foreign_keys = true', obj=None, type='pragma_foreign_keys')
             )
 
         yield batch
