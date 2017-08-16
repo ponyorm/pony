@@ -222,25 +222,13 @@ class Table(DBObject):
             return None
         return '%s %s' % (name, value)
 
-    def get_rename_ops(table, prev_name):
+    def get_rename_ops(table):
         schema = table.schema
         case = schema.case
         provider = schema.provider
         quote_name = provider.quote_name
-        new_name = quote_name(table.name)
-        sql = case('RENAME TO {}').format(new_name)
-        op = Op(sql, obj=table, type='rename', prefix=alter_table(prev_name))
-
-        for entity in table.entities:
-            break
-        with orm.db_session:
-            cache = entity._database_._get_cache()
-        if schema.provider.dialect == 'SQLite' and not cache.saved_fk_state:
-            op1 = Op('PRAGMA foreign_keys = true', obj=None, type='pragma_foreign_keys')
-            op2 = Op('PRAGMA foreign_keys = false', obj=None, type='pragma_foreign_keys')
-            yield OperationBatch([op1, op, op2], type='rename')
-            raise StopIteration
-        yield op
+        sql = '%s %s' % (case('RENAME TO'), quote_name(table.new.name))
+        return [ Op(sql, obj=table, type='rename', prefix=alter_table(table)) ]
 
     def get_alter_ops(table, prev, new_tables, **kwargs):
         ops = table._get_alter_ops_unsorted(prev, new_tables, **kwargs)

@@ -63,15 +63,15 @@ class PGColumn(dbschema.Column):
             op = '{} SET DEFAULT {}'.format(sql, value)
             yield Op(op, column, type='alter', prefix=alter_table(table))
 
-    def get_rename_ops(column, old_name):
-        table = column.table
-        schema = table.schema
+    def get_rename_ops(column):
+        prev_table = column.table
+        schema = prev_table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        old_name = quote_name(old_name)
-        name = quote_name(column.name)
-        op = case('RENAME {} TO {}').format(old_name, name)
-        yield Op(op, column, type='rename', prefix=alter_table(table))
+        prev_name = quote_name(column.name)
+        new_name = quote_name(column.new.name)
+        sql = case('RENAME {} TO {}').format(prev_name, new_name)
+        return [ Op(sql, column, type='rename', prefix=alter_table(prev_table)) ]
 
 
 class PGTable(dbschema.Table):

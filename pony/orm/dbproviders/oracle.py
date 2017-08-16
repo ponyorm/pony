@@ -127,15 +127,15 @@ class OraColumn(Column):
         for op in DBIndex.get_alter_ops(column, prev_column, **kwargs):
             yield op
 
-    def get_rename_ops(column, old_name):
-        table = column.table
-        schema = table.schema
+    def get_rename_ops(column):
+        prev_table = column.table
+        schema = prev_table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        old_name = quote_name(old_name)
-        name = quote_name(column.name)
-        op = case('RENAME COLUMN {} TO {}').format(old_name, name)
-        yield Op(op, column, type='rename', prefix=alter_table(table))
+        prev_name = quote_name(column.name)
+        new_name = quote_name(column.new.name)
+        sql = case('RENAME COLUMN {} TO {}').format(prev_name, new_name)
+        return [ Op(sql, column, type='rename', prefix=alter_table(prev_table)) ]
 
 
 class OraForeignKey(ForeignKey):

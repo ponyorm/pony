@@ -33,6 +33,13 @@ class SQLiteForeignKey(dbschema.ForeignKey):
         assert False  # pragma: no cover
 
 class SQLiteTable(dbschema.Table):
+    def get_rename_ops(table):
+        ops = []
+        ops.append(Op('PRAGMA foreign_keys = true', obj=None, type='pragma_foreign_keys'))
+        ops.extend(dbschema.Table.get_rename_ops(table))
+        ops.append(Op('PRAGMA foreign_keys = false', obj=None, type='pragma_foreign_keys'))
+        return [ OperationBatch(ops, type='rename') ]
+
     def get_alter_ops(table, prev, new_tables, executor, renamed_columns=None):
         current_schema = executor.schema
         operations = executor.operations
@@ -135,8 +142,8 @@ class SQLiteIndex(dbschema.DBIndex):
         return False
 
 class SQLiteColumn(dbschema.Column):
-    def get_rename_ops(column, *args, **kw):
-        raise NotImplementedError
+    def get_rename_ops(column):
+        throw(NotImplementedError)
 
     def db_rename(column, cursor, table_name):
         throw(NotImplementedError)

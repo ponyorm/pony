@@ -119,17 +119,17 @@ class Executor(object):
         extra_ops = []
         for prev_name, prev_table in self.prev_schema.tables.items():
             if prev_name != prev_table.new.name:
-                extra_ops.extend(prev_table.get_rename_ops(prev_table.new.name))
+                extra_ops.extend(prev_table.get_rename_ops())
             if self.new_schema.provider.dialect != 'SQLite':
                 for prev_col in prev_table.column_list:
                     if prev_col.name != prev_col.new.name:
-                        extra_ops.extend(prev_col.get_rename_ops(prev_col.new.name))
+                        extra_ops.extend(prev_col.get_rename_ops())
         ops = extra_ops + ops
 
         schema = self.new_schema
         provider = schema.provider
         quote_name = provider.quote_name
-        
+
         # handle initials
         for op in ops[:]:
             col = op.obj

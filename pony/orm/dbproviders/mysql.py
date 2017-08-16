@@ -67,14 +67,14 @@ class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
     rename_sql_template = 'ALTER TABLE %(table_name)s CHANGE %(prev_name)s %(new_col_def)s'
 
-    def get_rename_ops(column, old_name):
-        table = column.table
-        schema = table.schema
+    def get_rename_ops(column):
+        prev_table = column.table
+        schema = prev_table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        old_name = quote_name(old_name)
-        op = case('CHANGE {} {}').format(old_name, column.get_sql())
-        yield Op(op, column, type='rename', prefix=alter_table(table))
+        prev_name = quote_name(column.name)
+        sql = '%s %s %s' % (case('CHANGE'), prev_name, column.new.get_sql())
+        return [ Op(sql, obj=column, type='rename', prefix=alter_table(prev_table)) ]
 
     def db_rename(column, cursor):
         schema = column.table.schema
