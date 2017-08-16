@@ -100,18 +100,9 @@ class PGForeignKey(dbschema.ForeignKey):
 
     def get_drop_ops(foreign_key, inside_table=True,**kw):
         schema = foreign_key.table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
-        cmd = [
-            # case('ALTER TABLE'),
-            # quote_name(foreign_key.table.name),
-            case('DROP CONSTRAINT'),
-            quote_name(foreign_key.name),
-        ]
-        cmd = ' '.join(cmd)
-        table = foreign_key.table
-        yield Op(cmd, foreign_key, type='drop', prefix=alter_table(table))
-
+        sql = schema.case('DROP CONSTRAINT %s') % quote_name(foreign_key.name)
+        yield Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table))
 
 
 class PGSchema(dbschema.DBSchema):

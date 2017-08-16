@@ -140,18 +140,11 @@ class OraColumn(Column):
 
 
 class OraForeignKey(ForeignKey):
-    def get_drop_ops(foreign_key, table=None, **kw):
-        # assert table is not None
-        table = foreign_key.table
+    def get_drop_ops(foreign_key, **kw):
         schema = foreign_key.table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
-        cmd = [
-            case('DROP CONSTRAINT'),
-            quote_name(foreign_key.name),
-        ]
-        cmd = ' '.join(cmd)
-        yield Op(cmd, foreign_key, type='drop', prefix=alter_table(table))
+        sql = schema.case('DROP CONSTRAINT %s') % quote_name(foreign_key.name)
+        yield Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table))
 
 class OraDBIndex(DBIndex):
 

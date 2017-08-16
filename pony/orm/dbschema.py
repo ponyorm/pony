@@ -544,10 +544,8 @@ class Column(object):
             table = column.table
         schema = table.schema
         quote_name = schema.provider.quote_name
-        cmd = [
-            schema.case('DROP COLUMN'), quote_name(column.name),
-        ]
-        yield Op(' '.join(cmd), column, type='drop', prefix=alter_table(table))
+        sql = schema.case('DROP COLUMN %s') % quote_name(column.name),
+        yield Op(sql, column, type='drop', prefix=alter_table(table))
 
 class Constraint(DBObject):
     rename_sql_template = 'ALTER TABLE %(table_name)s RENAME CONSTRAINT %(prev_name)s TO %(new_name)s'
@@ -764,15 +762,8 @@ class ForeignKey(Constraint):
         schema = foreign_key.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        cmd = [
-            # case('ALTER TABLE'),
-            # quote_name(foreign_key.table.name),
-            case('DROP FOREIGN KEY'),
-            quote_name(foreign_key.name),
-        ]
-        cmd = ' '.join(cmd)
-        table = foreign_key.table
-        yield Op(cmd, foreign_key, type='drop', prefix=alter_table(table))
+        sql = case('DROP FOREIGN KEY %s') % quote_name(foreign_key.name)
+        yield Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table))
 
     def get_alter_ops(foreign_key, prev, new_tables, **kwargs):
         for op in foreign_key.get_drop_ops():
