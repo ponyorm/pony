@@ -590,6 +590,9 @@ class Constraint(DBObject):
             provider.execute(cursor, drop_sql)
             constraint.create(provider, cursor)
 
+class Trigger(Constraint):
+    typename = 'Trigger'
+
 class DBIndex(Constraint):
     typename = 'Index'
     rename_sql_template = 'ALTER INDEX %(prev_name)s RENAME TO %(new_name)s'

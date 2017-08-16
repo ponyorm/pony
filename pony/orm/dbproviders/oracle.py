@@ -15,7 +15,7 @@ from pony.migrate.operations import Op, alter_table
 
 from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
-from pony.orm.dbschema import DBSchema, DBObject, Table, Column, ForeignKey, DBIndex
+from pony.orm.dbschema import DBSchema, DBObject, Table, Column, Trigger, DBIndex, ForeignKey
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, Value
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
@@ -77,15 +77,14 @@ BEGIN
   END IF;
 END;""".strip()
 
-class OraTrigger(DBObject):
-    typename = 'Trigger'
+class OraTrigger(Trigger):
     def __init__(trigger, table, column, sequence):
-        trigger.table = table
-        trigger.column = column
-        trigger.sequence = sequence
         table_name = table.name
         if not isinstance(table_name, basestring): table_name = table_name[-1]
-        trigger.name = table_name + '_BI' # Before Insert
+        trigger_name = table_name + '_BI' # Before Insert
+        Trigger.__init__(trigger_name, table)
+        trigger.column = column
+        trigger.sequence = sequence
     def exists(trigger, provider, cursor, case_sensitive=True):
         if case_sensitive: sql = 'SELECT trigger_name FROM all_triggers ' \
                                  'WHERE table_name = :tbn AND table_owner = :o ' \

@@ -1,6 +1,6 @@
 from collections import OrderedDict, defaultdict
 
-from pony.orm.dbschema import Table, Column, DBIndex, ForeignKey
+from pony.orm.dbschema import Table, Column, Trigger, DBIndex, ForeignKey
 
 from .operations import Op, OperationBatch, alter_table
 from .diagram_ops import RenameEntity, RenameAttr, AddAttr, ModifyAttr
@@ -152,10 +152,8 @@ class Executor(object):
             if op.type == 'rename':
                 return 3
             if op.type == 'drop' or isinstance(op.type, list) and 'drop' in op.type:
-                if self.new_db.provider.dialect == 'Oracle':
-                    from pony.orm.dbproviders import oracle
-                    if isinstance(op.obj, oracle.OraTrigger):
-                        return 0
+                if isinstance(op.obj, Trigger):
+                    return 0
                 if isinstance(op.obj, ForeignKey):
                     return 1
                 if isinstance(op.obj, DBIndex):
