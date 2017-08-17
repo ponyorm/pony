@@ -58,7 +58,6 @@ class OraSequence(DBObject):
         schema = sequence.table.schema
         seq_name = schema.provider.quote_name(sequence.name)
         return schema.case('CREATE SEQUENCE %s NOCACHE') % seq_name
-
     def get_drop_ops(sequence):
         schema = sequence.table.schema
         quote_name = schema.provider.quote_name

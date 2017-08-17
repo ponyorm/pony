@@ -225,19 +225,16 @@ class Table(DBObject):
         quote_name = provider.quote_name
         sql = '%s %s' % (case('RENAME TO'), quote_name(table.new.name))
         return [ Op(sql, obj=table, type='rename', prefix=alter_table(table)) ]
-
     def get_alter_ops(table):
         schema = table.schema
         drops = []
         ops = []
-
         for column in table.column_list:
             if column.prev is None:
                 sql = '%s %s' % (schema.ADD_COLUMN, column.get_sql())
                 ops.append(Op(sql, column, type='create', prefix=alter_table(table)))
             elif column.get_definition() != column.prev.get_definition():
                 ops.extend(column.get_alter_ops())
-
         for cols, fkey in table.foreign_keys.items():
             sql = fkey.get_create_command()
             prev_fkey = table.prev.foreign_keys.get(cols)
@@ -246,7 +243,6 @@ class Table(DBObject):
             if sql != prev_fkey.get_create_command():
                 drops.extend(prev_fkey.get_drop_ops())
                 ops.append(Op(sql, obj=fkey, type='create'))
-
         for cols, index in table.indexes.items():
             sql = index.get_create_command()
             prev_index = table.prev.indexes.get(cols)
@@ -255,21 +251,16 @@ class Table(DBObject):
             if sql != prev_index.get_create_command():
                 drops.extend(prev_index.get_drop_ops())
                 ops.append(Op(sql, obj=index, type='create'))
-
         for column in table.prev.column_list:
             if column.new is None:
                 drops.extend(column.get_drop_ops())
-
         return drops + ops
-
-
     def get_drop_ops(table):
         schema = table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
         sql = case('DROP TABLE {}').format(quote_name(table.name))
         return [ Op(sql, obj=table, type='drop') ]
-
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
         created_tables.add(table)
@@ -559,12 +550,6 @@ class DBIndex(Constraint):
         return index._get_create_sql(inside_table=True)
     def get_create_command(index):
         return index._get_create_sql(inside_table=False)
-    def get_drop_ops(index):
-        table = index.table
-        schema = table.schema
-        quote_name = schema.provider.quote_name
-        sql = '%s %s' % (schema.case('DROP INDEX'), quote_name(index.name))
-        return [ Op(sql, obj=index, type='drop') ]
     def _get_create_sql(index, inside_table):
         schema = index.table.schema
         case = schema.case
@@ -591,6 +576,12 @@ class DBIndex(Constraint):
             else: append(case('INDEX'))
         append(schema.names_row(index.col_names))
         return ' '.join(cmd)
+    def get_drop_ops(index):
+        table = index.table
+        schema = table.schema
+        quote_name = schema.provider.quote_name
+        sql = '%s %s' % (schema.case('DROP INDEX'), quote_name(index.name))
+        return [ Op(sql, obj=index, type='drop') ]
 
 
 class ForeignKey(Constraint):
@@ -646,13 +637,6 @@ class ForeignKey(Constraint):
         return fk._get_create_sql(inside_table=True)
     def get_create_command(fk):
         return fk._get_create_sql(inside_table=False)
-    def get_drop_ops(foreign_key):
-        schema = foreign_key.table.schema
-        case = schema.case
-        quote_name = schema.provider.quote_name
-        sql = case('DROP FOREIGN KEY {}').format(quote_name(foreign_key.name))
-        return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
-
     def _get_create_sql(fk, inside_table):
         schema = fk.table.schema
         case = schema.case
@@ -672,6 +656,12 @@ class ForeignKey(Constraint):
         append(quote_name(fk.parent_table.name))
         append(schema.names_row(fk.parent_col_names))
         return ' '.join(cmd)
+    def get_drop_ops(foreign_key):
+        schema = foreign_key.table.schema
+        case = schema.case
+        quote_name = schema.provider.quote_name
+        sql = case('DROP FOREIGN KEY {}').format(quote_name(foreign_key.name))
+        return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
 DBSchema.table_class = Table
 DBSchema.column_class = Column

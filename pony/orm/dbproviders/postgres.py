@@ -89,7 +89,6 @@ class PGDBIndex(dbschema.DBIndex):
             index.name = '{}_pkey'.format(index.table.name)
 
 class PGForeignKey(dbschema.ForeignKey):
-
     def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
         quote_name = schema.provider.quote_name
