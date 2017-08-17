@@ -59,13 +59,11 @@ class OraSequence(DBObject):
         seq_name = schema.provider.quote_name(sequence.name)
         return schema.case('CREATE SEQUENCE %s NOCACHE') % seq_name
 
-    def get_drop_ops(sequence, **kw):
+    def get_drop_ops(sequence):
         schema = sequence.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP SEQUENCE {}').format(
-            quote_name(sequence.name)
-        )
-        yield Op(sql, sequence, type='drop')
+        sql = schema.case('DROP SEQUENCE {}').format(quote_name(sequence.name))
+        return [ Op(sql, obj=sequence, type='drop') ]
 
 trigger_template = """
 CREATE TRIGGER %s
@@ -104,13 +102,11 @@ class OraTrigger(Trigger):
         column_name = quote_name(trigger.column.name)
         seq_name = quote_name(trigger.sequence.name)
         return schema.case(trigger_template) % (trigger_name, table_name, column_name, seq_name, column_name)
-    def get_drop_ops(trigger, inside_table=False, **kw):
+    def get_drop_ops(trigger):
         schema = trigger.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP TRIGGER {}').format(
-            quote_name(trigger.name)
-        )
-        yield Op(sql, trigger, type='drop')
+        sql = schema.case('DROP TRIGGER {}').format(quote_name(trigger.name))
+        return [ Op(sql, trigger, type='drop') ]
 
 class OraColumn(Column):
     auto_template = None
@@ -139,11 +135,11 @@ class OraColumn(Column):
 
 
 class OraForeignKey(ForeignKey):
-    def get_drop_ops(foreign_key, **kw):
+    def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP CONSTRAINT %s') % quote_name(foreign_key.name)
-        yield Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table))
+        sql = schema.case('DROP CONSTRAINT {}').format(quote_name(foreign_key.name))
+        return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
 class OraDBIndex(DBIndex):
 

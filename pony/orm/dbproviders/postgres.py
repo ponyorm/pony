@@ -85,24 +85,13 @@ class PGDBIndex(dbschema.DBIndex):
         if index.is_pk and not index.name:
             index.name = '{}_pkey'.format(index.table.name)
 
-    def get_drop_ops(index, inside_table=True, **kw):
-        schema = index.table.schema
-        case = schema.case
-        quote_name = schema.provider.quote_name
-        if index.is_pk:
-            sql = case('DROP CONSTRAINT %s') % quote_name(index.name)
-            yield Op(sql, index, type='drop', prefix=alter_table(index.table) if inside_table else None)
-        else:
-            for item in super(PGDBIndex, index).get_drop_ops(inside_table=inside_table):
-                yield item
-
 class PGForeignKey(dbschema.ForeignKey):
 
-    def get_drop_ops(foreign_key, inside_table=True,**kw):
+    def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP CONSTRAINT %s') % quote_name(foreign_key.name)
-        yield Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table))
+        sql = schema.case('DROP CONSTRAINT {}').format(quote_name(foreign_key.name))
+        return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
 
 class PGSchema(dbschema.DBSchema):

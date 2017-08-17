@@ -44,14 +44,12 @@ class MySQLIndex(dbschema.DBIndex):
     def get_pk_alter_ops(index, prev):
         return ()
 
-    def get_drop_ops(index, inside_table=True, **kw):
-        inside_table = True
-        if not index.is_pk or not inside_table:
-            for op in super(MySQLIndex, index).get_drop_ops(inside_table=inside_table):
-                yield op
-            raise StopIteration
-        case = index.table.schema.case
-        yield Op(case('DROP PRIMARY KEY'), index, 'drop', prefix=alter_table(index.table))
+    def get_drop_ops(index):
+        table = index.table
+        schema = table.schema
+        quote_name = schema.provider.quote_name
+        sql = schema.case('DROP INDEX {} ON {}').format(quote_name(index.name), quote_name(table.name))
+        return [ Op(sql, obj=index, type='drop') ]
 
     def can_be_renamed(index):
         return index.table.schema.provider.server_version >= (5, 7)

@@ -109,11 +109,7 @@ class Executor(object):
 
         for table_name, objects in prev_objects.items():
             for prev_obj in objects.values():
-                table = prev_tables[table_name]
-                kw = {}
-                if not isinstance(prev_obj, Table):
-                    kw['table'] = table
-                ops.extend(prev_obj.get_drop_ops(inside_table=False, **kw))
+                ops.extend(prev_obj.get_drop_ops())
 
         # handle renames
         extra_ops = []

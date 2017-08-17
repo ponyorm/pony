@@ -133,11 +133,6 @@ class SQLiteTable(dbschema.Table):
         yield batch
 
 class SQLiteIndex(dbschema.DBIndex):
-    def get_drop_ops(index, inside_table=True, **kw):
-        if index.name not in index.table.indexes:
-            return ()
-        return dbschema.DBIndex.get_drop_ops(index, inside_table)
-
     def can_be_renamed(index):
         return False
 

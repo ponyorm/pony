@@ -339,13 +339,12 @@ class Table(DBObject):
             for op in index.get_alter_ops(prev_index):
                 yield op
 
-    def get_drop_ops(table, inside_table=False, **kw):
-        assert not inside_table
+    def get_drop_ops(table):
         schema = table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        op = case('DROP TABLE %s') % quote_name(table.name)
-        yield Op(op, table, type='drop')
+        sql = case('DROP TABLE {}').format(quote_name(table.name))
+        return [ Op(sql, obj=table, type='drop') ]
 
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
@@ -527,13 +526,12 @@ class Column(object):
         op = '{} {}'.format(schema.MODIFY_COLUMN_DEF, column.get_sql())
         yield Op(op, column, type='alter', prefix=alter_table(table))
 
-    def get_drop_ops(column, table=None, **kw):
-        if table is None:
-            table = column.table
+    def get_drop_ops(column):
+        table = column.table
         schema = table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP COLUMN %s') % quote_name(column.name),
-        yield Op(sql, column, type='drop', prefix=alter_table(table))
+        sql = schema.case('DROP COLUMN {}').format(quote_name(column.name))
+        return [ Op(sql, obj=column, type='drop', prefix=alter_table(table)) ]
 
 class Constraint(DBObject):
     rename_sql_template = 'ALTER TABLE %(table_name)s RENAME CONSTRAINT %(prev_name)s TO %(new_name)s'
@@ -634,13 +632,12 @@ class DBIndex(Constraint):
         return index._get_create_sql(inside_table=True)
     def get_create_command(index):
         return index._get_create_sql(inside_table=False)
-    def get_drop_ops(index, inside_table=True, table=None):
-        schema = index.table.schema
-        if table is None:
-            table = index.table
+    def get_drop_ops(index):
+        table = index.table
+        schema = table.schema
         quote_name = schema.provider.quote_name
-        sql = 'DROP INDEX %s' % quote_name(index.name)
-        yield Op(sql, obj=index, type='drop', prefix=alter_table(table) if inside_table else None)
+        sql = '%s %s' % (schema.case('DROP INDEX'), quote_name(index.name))
+        return [ Op(sql, obj=index, type='drop') ]
     def _get_create_sql(index, inside_table):
         schema = index.table.schema
         case = schema.case
@@ -749,12 +746,12 @@ class ForeignKey(Constraint):
         return fk._get_create_sql(inside_table=True)
     def get_create_command(fk):
         return fk._get_create_sql(inside_table=False)
-    def get_drop_ops(foreign_key, inside_table=True, **kw):
+    def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        sql = case('DROP FOREIGN KEY %s') % quote_name(foreign_key.name)
-        yield Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table))
+        sql = case('DROP FOREIGN KEY {}').format(quote_name(foreign_key.name))
+        return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
     def get_alter_ops(foreign_key, prev, new_tables, **kwargs):
         for op in foreign_key.get_drop_ops():
