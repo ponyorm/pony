@@ -179,9 +179,6 @@ class Table(DBObject):
         quote_name = schema.provider.quote_name
         return ('ALTER TABLE %s %s %s RENAME TO %s'
                % (quote_name(table.name), schema.ALTER_COLUMN, quote_name(old_name), quote_name(new_name)))
-
-    extra_create_cmd = ()
-
     def get_create_command(table):
         schema = table.schema
         case = schema.case
@@ -205,7 +202,6 @@ class Table(DBObject):
                 if schema.inline_fk_syntax and len(fk.col_names) == 1: continue
                 cmd.append(schema.indent + fk.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
-        cmd.extend(table.extra_create_cmd)
         cmd.append(')')
         for name, value in sorted(table.options.items()):
             option = table.format_option(name, value)
