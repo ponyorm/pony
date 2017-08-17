@@ -105,7 +105,7 @@ class Executor(object):
                 if prev_obj is None:
                     ops.append(Op(sql, obj=new_obj, type='create'))
                 elif sql != prev_obj.get_create_command():
-                    ops.extend(new_obj.get_alter_ops(prev_obj, new_objects, executor=self))
+                    ops.extend(new_obj.get_alter_ops())
 
         for table_name, objects in prev_objects.items():
             for prev_obj in objects.values():

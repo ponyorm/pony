@@ -230,105 +230,42 @@ class Table(DBObject):
         sql = '%s %s' % (case('RENAME TO'), quote_name(table.new.name))
         return [ Op(sql, obj=table, type='rename', prefix=alter_table(table)) ]
 
-    def get_alter_ops(table, prev, new_tables, **kwargs):
-        ops = table._get_alter_ops_unsorted(prev, new_tables, **kwargs)
-        ops = sorted(ops, key=lambda op: op.type == 'drop', reverse=True)
-        Index = table.schema.index_class
-        Column = table.schema.column_class
-        for op in ops:
-            if isinstance(op.obj, Index) and op.obj.is_pk and op.type == 'create':
-                new_columns = {
-                    o.obj for o in ops
-                    if o.type in ['create', 'alter'] and isinstance(o.obj, Column)
-                }
-                if set(op.obj.col_names) <= {c.name for c in new_columns}:
-                    continue
-            yield op
-
-    def _get_alter_ops_unsorted(table, prev, new_tables, **kwargs):
+    def get_alter_ops(table):
         schema = table.schema
-        case = schema.case
-        provider = schema.provider
-        quote_name = provider.quote_name
-
-        renamed_columns = kwargs['renamed_columns']
-        prev_columns = {c.name: c for c in prev.column_list}
+        drops = []
+        ops = []
 
         for column in table.column_list:
-            sql = column.get_sql()
-            column_name = column.name # prev column name
-            was_renamed = column_name in renamed_columns
-            if was_renamed:
-                column_name = renamed_columns.get(column_name, column_name)
+            if column.prev is None:
+                sql = '%s %s' % (schema.ADD_COLUMN, column.get_sql())
+                ops.append(Op(sql, column, type='create', prefix=alter_table(table)))
+            elif column.get_definition() != column.prev.get_definition():
+                ops.extend(column.get_alter_ops())
 
-            if column_name not in prev_columns:
-                op = case('{} {}').format(schema.ADD_COLUMN, sql)
-                yield Op(op, column, type='create', prefix=alter_table(table))
-                continue
-            # FIXME sql is computed multiple times: for table and columns
-            if column.get_definition() == column.prev.get_definition():
-                continue
-            changes = list(column.get_alter_ops(prev_columns[column_name]))
-            for op in changes:
-                yield op
+        for cols, fkey in table.foreign_keys.items():
+            sql = fkey.get_create_command()
+            prev_fkey = table.prev.foreign_keys.get(cols)
+            if prev_fkey is None:
+                ops.append(Op(sql, obj=fkey, type='create'))
+            if sql != prev_fkey.get_create_command():
+                drops.extend(prev_fkey.get_drop_ops())
+                ops.append(Op(sql, obj=fkey, type='create'))
 
-        column_names = [c.name for c in table.column_list]
+        for cols, index in table.indexes.items():
+            sql = index.get_create_command()
+            prev_index = table.prev.indexes.get(cols)
+            if prev_index is None:
+                ops.append(Op(sql, obj=index, type='create', prefix=alter_table(index.table)))
+            if sql != prev_index.get_create_command():
+                drops.extend(prev_index.get_drop_ops())
+                ops.append(Op(sql, obj=index, type='create'))
 
-        dropped_cols = set()
+        for column in table.prev.column_list:
+            if column.new is None:
+                drops.extend(column.get_drop_ops())
 
-        for column in prev.column_list:
-            if column.name in renamed_columns.values():
-                continue
-            if column.name not in column_names:
-                dropped_cols.add(column)
-                for op in column.get_drop_ops():
-                    yield op
+        return drops + ops
 
-        fkeys, prev_fkeys = ({
-                tuple(c for c in cols): fkey
-                for cols, fkey in table.foreign_keys.items()
-            }
-            for table in (table, prev)
-        )
-        for cols, fkey in fkeys.items():
-            if fkey.name in new_tables[table.name]:
-                continue
-
-            sql = fkey.get_sql()
-            if cols not in prev_fkeys:
-                op = [
-                    case('ALTER TABLE %s') % quote_name(table.name), 'ADD', sql
-                ]
-                yield Op(op, fkey, type='create')
-                continue
-            if sql != prev_fkeys[cols].get_sql():
-                for op in prev_fkeys[cols].get_drop_ops():
-                    yield op
-                op = [
-                    case('ALTER TABLE %s') % quote_name(table.name), 'ADD', sql
-                ]
-                yield Op(op, fkey, type='create')
-
-        indexes, prev_indexes = ({
-                tuple(cols): index
-                # tuple(c.name for c in cols): index
-                for cols, index in table.indexes.items()
-            }
-            for table in (table, prev)
-        )
-
-        for cols, index in indexes.items():
-            prev_index = prev_indexes.get(cols)
-            sql = index.get_sql()
-            if prev_index and index.get_sql() == prev_index.get_sql():
-                continue
-
-            elif not prev or set(prev.pk_index.col_names) <= {c.name for c in dropped_cols}:
-                sql = 'ADD {}'.format(sql)
-                yield Op(sql, index, type='create', prefix=alter_table(index.table))
-                continue
-            for op in index.get_alter_ops(prev_index):
-                yield op
 
     def get_drop_ops(table):
         schema = table.schema
@@ -514,11 +451,11 @@ class Column(object):
                 append(schema.names_row(fk.parent_col_names))
         return ' '.join(result)
 
-    def get_alter_ops(column, prev_column, **kwargs):
+    def get_alter_ops(column):
         table = column.table
         schema = column.table.schema
-        op = '{} {}'.format(schema.MODIFY_COLUMN_DEF, column.get_sql())
-        yield Op(op, column, type='alter', prefix=alter_table(table))
+        sql = '%s %s' % (schema.MODIFY_COLUMN_DEF, column.get_sql())
+        return [ Op(sql, obj=column, type='alter', prefix=alter_table(table)) ]
 
     def get_drop_ops(column):
         table = column.table
@@ -659,33 +596,6 @@ class DBIndex(Constraint):
         append(schema.names_row(index.col_names))
         return ' '.join(cmd)
 
-    def get_alter_ops(index, prev, **kwargs):
-
-        if index.is_pk:
-            for op in index.get_pk_alter_ops(prev):
-                yield op
-        # if prev is None:
-        #     yield ' '.join(('ADD', sql))
-        #     raise StopIteration
-
-        # if sql != prev.get_sql():
-        #     for item in prev.get_drop_ops():
-        #         yield item
-        #     yield sql
-
-    def get_pk_alter_ops(index, prev):
-        sql = index.get_sql()
-
-        for op in prev.get_drop_ops():
-            op.prefix = alter_table(prev.table)
-            yield op
-        # if not set(c.name for c in index.columns) <= set(new_columns):
-        op = ' '.join([
-            # case('ALTER TABLE %s') % quote_name(index.table.name),
-            'ADD', sql,
-        ])
-        yield Op(op, index, type='create', prefix=alter_table(index.table))
-
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
@@ -746,12 +656,6 @@ class ForeignKey(Constraint):
         quote_name = schema.provider.quote_name
         sql = case('DROP FOREIGN KEY {}').format(quote_name(foreign_key.name))
         return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
-
-    def get_alter_ops(foreign_key, prev, new_tables, **kwargs):
-        for op in foreign_key.get_drop_ops():
-            yield op
-        for op in foreign_key.get_create_ops():
-            yield op
 
     def _get_create_sql(fk, inside_table):
         schema = fk.table.schema

@@ -38,30 +38,34 @@ NoneType = type(None)
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL %(pk_constraint_template)s PRIMARY KEY'
 
-    def get_alter_ops(column, prev_column, db=None, **kw):
-        provider = column.table.schema.provider
-        quote_name = provider.quote_name
+    def get_alter_ops(column):
         table = column.table
-        # pre = schema.case('ALTER TABLE %s') % quote_name(table.name)
-        schema = table.schema
-        sql = '{} {}'.format(schema.MODIFY_COLUMN_DEF, quote_name(column.name))
-        if column.sql_type != prev_column.sql_type:
-            op = '{} TYPE {}'.format(sql, column.sql_type)
-            yield Op(op, column, type='alter', prefix=alter_table(table))
-        if column.is_not_null and not prev_column.is_not_null:
-            op = '{} SET NOT NULL'.format(sql)
-            yield Op(op, column, type='alter', prefix=alter_table(table))
-        elif not column.is_not_null and prev_column.is_not_null:
-            op = '{} DROP NOT NULL'.format(sql)
-            yield Op(op, column, type='alter', prefix=alter_table(table))
-        if column.sql_default is None and prev_column.sql_default is not None:
-            op = '{} DROP DEFAULT'.format(sql)
-            yield Op(op, column, type='alter', prefix=alter_table(table))
-        elif column.sql_default is not None and prev_column.sql_default != column.sql_default:
+        provider = table.schema.provider
+        quote_name = provider.quote_name
+        case = table.schema.case
+        prefix = '%s %s' % (table.schema.MODIFY_COLUMN_DEF, quote_name(column.name))
+        ops = []
+        if column.sql_type != column.prev.sql_type:
+            sql = case('{} TYPE {}').format(prefix, column.sql_type)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+
+        if column.is_not_null and not column.prev.is_not_null:
+            sql = '{} SET NOT NULL'.format(prefix)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+        elif not column.is_not_null and column.prev.is_not_null:
+            sql = '{} DROP NOT NULL'.format(prefix)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+
+        if column.sql_default is None and column.prev.sql_default is not None:
+            sql = '{} DROP DEFAULT'.format(prefix)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+        elif column.sql_default is not None and column.prev.sql_default != column.sql_default:
             value_class = provider.sqlbuilder_cls.value_class
             value = value_class(provider.paramstyle, column.sql_default)
-            op = '{} SET DEFAULT {}'.format(sql, value)
-            yield Op(op, column, type='alter', prefix=alter_table(table))
+            sql = '{} SET DEFAULT {}'.format(prefix, value)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+
+        return ops
 
     def get_rename_ops(column):
         prev_table = column.table

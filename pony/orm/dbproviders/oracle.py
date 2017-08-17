@@ -111,18 +111,6 @@ class OraTrigger(Trigger):
 class OraColumn(Column):
     auto_template = None
 
-    def _get_identity(column):
-        return (
-            column.name, column.sql_type, column.is_not_null, column.sql_default,
-            column.is_pk, column.is_unique
-        )
-
-    def get_alter_ops(column, prev_column, **kwargs):
-        if column._get_identity() == prev_column._get_identity():
-            raise StopIteration
-        for op in DBIndex.get_alter_ops(column, prev_column, **kwargs):
-            yield op
-
     def get_rename_ops(column):
         prev_table = column.table
         schema = prev_table.schema
