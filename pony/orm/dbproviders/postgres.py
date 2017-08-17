@@ -43,7 +43,7 @@ class PGColumn(dbschema.Column):
         provider = table.schema.provider
         quote_name = provider.quote_name
         case = table.schema.case
-        prefix = '%s %s' % (table.schema.MODIFY_COLUMN_DEF, quote_name(column.name))
+        prefix = '%s %s' % (table.schema.ALTER_COLUMN, quote_name(column.name))
         ops = []
         if column.sql_type != column.prev.sql_type:
             sql = case('{} TYPE {}').format(prefix, column.sql_type)
@@ -79,8 +79,7 @@ class PGColumn(dbschema.Column):
 
 
 class PGTable(dbschema.Table):
-    MODIFY_COLUMN = 'ALTER COLUMN'
-
+    pass
 
 class PGDBIndex(dbschema.DBIndex):
 

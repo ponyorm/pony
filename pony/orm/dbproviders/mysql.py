@@ -89,9 +89,7 @@ class MySQLSchema(dbschema.DBSchema):
     column_class = MySQLColumn
     index_class = MySQLIndex
     fk_class = MySQLForeignKey
-
-    MODIFY_COLUMN = 'ALTER COLUMN'
-    MODIFY_COLUMN_DEF = 'MODIFY COLUMN'
+    ALTER_COLUMN = 'MODIFY COLUMN'
 
 class MySQLTranslator(SQLTranslator):
     json_path_wildcard_syntax = True

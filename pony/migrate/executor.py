@@ -141,7 +141,7 @@ class Executor(object):
 
                 schema = col.table.schema
                 drop_default_clause = 'DROP DEFAULT' if provider.dialect != 'Oracle' else 'DEFAULT NULL'
-                sql = '%s %s %s' % (schema.MODIFY_COLUMN, quote_name(col.name), schema.case(drop_default_clause))
+                sql = '%s %s %s' % (schema.ALTER_COLUMN_DEFAULT, quote_name(col.name), schema.case(drop_default_clause))
                 ops.append(Op(sql, obj=col, type='alter', prefix=alter_table(col.table)))
 
         for op in self.entity_ops:

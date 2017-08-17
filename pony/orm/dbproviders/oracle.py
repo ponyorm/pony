@@ -143,7 +143,7 @@ class OraSchema(DBSchema):
     column_class = OraColumn
     fk_class = OraForeignKey
     index_class = OraDBIndex
-    MODIFY_COLUMN = 'MODIFY'
+    ALTER_COLUMN = ALTER_COLUMN_DEFAULT = 'MODIFY'
     ADD_COLUMN = 'ADD'
 
 class OraNoneMonad(sqltranslation.NoneMonad):

@@ -19,12 +19,8 @@ class DBSchema(object):
     named_foreign_keys = True
     upgrades = []
 
-    MODIFY_COLUMN = 'ALTER COLUMN'
     ADD_COLUMN = 'ADD COLUMN'
-
-    @property
-    def MODIFY_COLUMN_DEF(self):
-        return self.MODIFY_COLUMN
+    ALTER_COLUMN = ALTER_COLUMN_DEFAULT = 'ALTER COLUMN'
 
     def __init__(schema, provider, uppercase=True):
         schema.provider = provider
@@ -182,7 +178,7 @@ class Table(DBObject):
         schema = table.schema
         quote_name = schema.provider.quote_name
         return ('ALTER TABLE %s %s %s RENAME TO %s'
-               % (quote_name(table.name), schema.MODIFY_COLUMN_DEF, quote_name(old_name), quote_name(new_name)))
+               % (quote_name(table.name), schema.ALTER_COLUMN, quote_name(old_name), quote_name(new_name)))
 
     extra_create_cmd = ()
 
@@ -454,7 +450,7 @@ class Column(object):
     def get_alter_ops(column):
         table = column.table
         schema = column.table.schema
-        sql = '%s %s' % (schema.MODIFY_COLUMN_DEF, column.get_sql())
+        sql = '%s %s' % (schema.ALTER_COLUMN, column.get_sql())
         return [ Op(sql, obj=column, type='alter', prefix=alter_table(table)) ]
 
     def get_drop_ops(column):
