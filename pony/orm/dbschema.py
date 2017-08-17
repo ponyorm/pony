@@ -266,16 +266,7 @@ class Table(DBObject):
                 yield Op(op, column, type='create', prefix=alter_table(table))
                 continue
             # FIXME sql is computed multiple times: for table and columns
-            prev_column = prev_columns[column_name]
-            if was_renamed:
-                try:
-                    prev_column.name = column.name
-                    prev_sql = prev_column.get_sql()
-                finally:
-                    prev_column.name = column_name
-            else:
-                prev_sql = prev_column.get_sql()
-            if sql == prev_sql:
+            if column.get_definition() == column.prev.get_definition():
                 continue
             changes = list(column.get_alter_ops(prev_columns[column_name]))
             for op in changes:
@@ -479,12 +470,15 @@ class Column(object):
         provider.execute(cursor, sql)
     def get_sql(column):
         table = column.table
+        quote_name = table.schema.provider.quote_name
+        return '%s %s' % (quote_name(column.name), column.get_definition())
+    def get_definition(column):
+        table = column.table
         schema = table.schema
         quote_name = schema.provider.quote_name
         case = schema.case
         result = []
         append = result.append
-        append(quote_name(column.name))
         if column.is_pk:
             constraint_name = quote_name(column.table.pk_index.name)
             pk_constraint_template = case(column.pk_constraint_template) % {
