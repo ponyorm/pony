@@ -64,7 +64,8 @@ class TestSymmetricOne2One(unittest.TestCase):
     def test4(self):
         persons = set(select(p for p in Person if p.spouse.name in ('B', 'D')))
         self.assertEqual(persons, {Person[1], Person[3]})
-    @raises_exception(UnrepeatableReadError, 'Value of Person.spouse for Person[1] was updated outside of current transaction')
+    @raises_exception(UnrepeatableReadError, 'Multiple Person objects linked with the same Person[2] object. '
+                                             'Maybe Person.spouse attribute should be Set instead of Optional')
     def test5(self):
         db.execute('update person set spouse = 3 where id = 2')
         p1 = Person[1]

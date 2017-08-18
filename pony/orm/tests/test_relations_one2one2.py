@@ -121,7 +121,8 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([2, None, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 1, None], husbands)
-    @raises_exception(UnrepeatableReadError, 'Value of Male.wife for Male[1] was updated outside of current transaction')
+    @raises_exception(UnrepeatableReadError, 'Multiple Male objects linked with the same Female[1] object. '
+                                             'Maybe Female.husband attribute should be Set instead of Optional')
     def test_9(self):
         db.execute('update female set husband = 3 where id = 1')
         m1 = Male[1]

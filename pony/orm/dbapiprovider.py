@@ -399,7 +399,7 @@ class StrConverter(Converter):
         Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
-        max_len = attr.kwargs.pop('max_len', None)
+        max_len = kwargs.pop('max_len', None)
         if len(attr.args) > 1: unexpected_args(attr, attr.args[1:])
         elif attr.args:
             if max_len is not None: throw(TypeError,

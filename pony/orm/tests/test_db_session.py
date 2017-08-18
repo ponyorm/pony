@@ -276,11 +276,28 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
-    @raises_exception(TypeError, "@db_session can accept 'ddl' parameter "
-                      "only when used as decorator and not as context manager")
+    # restriction removed in 0.7.3:
+    # @raises_exception(TypeError, "@db_session can accept 'ddl' parameter "
+    #                   "only when used as decorator and not as context manager")
     def test_db_session_ddl_1(self):
         with db_session(ddl=True):
             pass
+
+    def test_db_session_ddl_1a(self):
+        with db_session(ddl=True):
+              with db_session(ddl=True):
+                  pass
+
+    def test_db_session_ddl_1b(self):
+        with db_session(ddl=True):
+              with db_session:
+                  pass
+
+    @raises_exception(TransactionError, 'Cannot start ddl transaction inside non-ddl transaction')
+    def test_db_session_ddl_1c(self):
+        with db_session:
+              with db_session(ddl=True):
+                  pass
 
     @raises_exception(TransactionError, "test() cannot be called inside of db_session")
     def test_db_session_ddl_2(self):
@@ -379,7 +396,7 @@ class TestDBSessionScope(unittest.TestCase):
         group_id = s1.group.id
         major = s1.group.major
 
-    @raises_exception(DatabaseSessionIsOver, 'Cannot assign new value to attribute Student[1].name: the database session is over')
+    @raises_exception(DatabaseSessionIsOver, 'Cannot assign new value to Student[1].name: the database session is over')
     def test4(self):
         with db_session:
             s1 = Student[1]
@@ -396,28 +413,28 @@ class TestDBSessionScope(unittest.TestCase):
             g1 = Group[1]
         l = len(g1.students)
 
-    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
+    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].students: the database session is over')
     def test7(self):
         with db_session:
             s1 = Student[1]
             g1 = Group[1]
         g1.students.remove(s1)
 
-    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
+    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].students: the database session is over')
     def test8(self):
         with db_session:
             g2_students = Group[2].students
             g1 = Group[1]
         g1.students = g2_students
 
-    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
+    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].students: the database session is over')
     def test9(self):
         with db_session:
             s3 = Student[3]
             g1 = Group[1]
         g1.students.add(s3)
 
-    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
+    @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].students: the database session is over')
     def test10(self):
         with db_session:
             g1 = Group[1]
@@ -434,6 +451,16 @@ class TestDBSessionScope(unittest.TestCase):
         with db_session:
             s1 = Student[1]
         s1.set(name='New name')
+
+    def test_db_session_strict_1(self):
+        with db_session(strict=True):
+            s1 = Student[1]
+
+    @raises_exception(DatabaseSessionIsOver, 'Cannot read value of Student[1].name: the database session is over')
+    def test_db_session_strict_2(self):
+        with db_session(strict=True):
+            s1 = Student[1]
+        name = s1.name
 
 if __name__ == '__main__':
     unittest.main()
