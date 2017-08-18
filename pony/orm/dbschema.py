@@ -53,13 +53,6 @@ class DBSchema(object):
             else: table = tables_to_create.pop()
             tables.append(table)
         return tables
-    def objects_to_create(schema):
-        created_tables = set()
-        result = OrderedDict()
-        for table in schema.order_tables_to_create():
-            for obj in table.get_objects_to_create(created_tables):
-                result.setdefault(table, OrderedDict())[obj.name] = obj
-        return result
     def generate_create_script(schema):
         created_tables = set()
         commands = []

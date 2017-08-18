@@ -13,8 +13,6 @@ class Executor(object):
         self.entity_ops = entity_ops
         self.prev_schema = prev_db.generate_schema()
         self.new_schema = new_db.generate_schema()
-        self.prev_objects = self.prev_schema.objects_to_create()
-        self.new_objects = self.new_schema.objects_to_create()
 
         entities = prev_db.entities.copy()
         new_entities = new_db.entities
@@ -91,15 +89,9 @@ class Executor(object):
     def generate(self):
         ops = []
 
-        prev_objects = OrderedDict()
-        prev_tables = {}
-        for t, objects in self.prev_objects.items():
-            prev_tables[t.name] = t
-            prev_objects[t.name] = objects.copy()
-        new_objects = OrderedDict(((t.name, objects.copy()) for t, objects in self.new_objects.items()))
-
-        for table_name, objects in new_objects.items():
-            for obj_name, new_obj in objects.items():
+        created_new_tables = set()
+        for table in self.new_schema.order_tables_to_create():
+            for new_obj in table.get_objects_to_create(created_new_tables):
                 sql = new_obj.get_create_command()
                 prev_obj = new_obj.prev
                 if prev_obj is None:
@@ -107,9 +99,11 @@ class Executor(object):
                 elif sql != prev_obj.get_create_command():
                     ops.extend(new_obj.get_alter_ops())
 
-        for table_name, objects in prev_objects.items():
-            for prev_obj in objects.values():
-                ops.extend(prev_obj.get_drop_ops())
+        created_prev_tables = set()
+        for table in self.prev_schema.order_tables_to_create():
+            for prev_obj in reversed(table.get_objects_to_create(created_prev_tables)):
+                if prev_obj.new is None:
+                    ops.extend(prev_obj.get_drop_ops())
 
         # handle renames
         extra_ops = []
