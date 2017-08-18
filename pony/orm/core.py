@@ -1583,15 +1583,14 @@ class SessionCache(object):
                     raise
             provider.release(connection, cache)
         finally:
-            cache.objects = cache.objects_to_save = cache.saved_objects = cache.query_results \
-                = cache.indexes = cache.seeds = cache.for_update = cache.max_id_cache \
-                = cache.modified_collections = cache.collection_statistics = None
-
             db_session = cache.db_session or local.db_session
             if db_session and db_session.strict:
                 for obj in cache.objects:
                     obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
                 cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
+            cache.objects = cache.objects_to_save = cache.saved_objects = cache.query_results \
+                = cache.indexes = cache.seeds = cache.for_update = cache.max_id_cache \
+                = cache.modified_collections = cache.collection_statistics = None
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1

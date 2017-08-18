@@ -435,5 +435,15 @@ class TestDBSessionScope(unittest.TestCase):
             s1 = Student[1]
         s1.set(name='New name')
 
+    def test_db_session_strict_1(self):
+        with db_session(strict=True):
+            s1 = Student[1]
+
+    @raises_exception(DatabaseSessionIsOver, 'Cannot read value of Student[1].name: the database session is over')
+    def test_db_session_strict_2(self):
+        with db_session(strict=True):
+            s1 = Student[1]
+        name = s1.name
+
 if __name__ == '__main__':
     unittest.main()
