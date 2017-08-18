@@ -2100,7 +2100,6 @@ class Attribute(object):
             old_val = obj._vals_.get(attr, NOT_LOADED)
             assert old_val == old_dbval, (old_val, old_dbval)
             if attr.is_part_of_unique_index:
-                cache = obj._session_cache_
                 if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
                 get_val = obj._vals_.get
                 for attrs, i in attr.composite_keys:
@@ -4815,8 +4814,6 @@ class Entity(with_metaclass(EntityMeta)):
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
     def _save_(obj, dependent_objects=None):
-        cache = obj._session_cache_
-        assert cache.is_alive
         status = obj._status_
 
         if status in ('created', 'modified'):
@@ -4829,6 +4826,7 @@ class Entity(with_metaclass(EntityMeta)):
 
         assert obj._status_ in saved_statuses
         cache = obj._session_cache_
+        assert cache.is_alive
         cache.saved_objects.append((obj, obj._status_))
         objects_to_save = cache.objects_to_save
         save_pos = obj._save_pos_
