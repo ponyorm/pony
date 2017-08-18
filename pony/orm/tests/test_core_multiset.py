@@ -77,7 +77,7 @@ class TestMultiset(unittest.TestCase):
         with db_session:
             g = Group[101]
             multiset = g.students.courses
-        self.assertEqual(multiset._obj_._session_cache_.is_alive, False)
+        self.assertIsNone(multiset._obj_._session_cache_)
         self.assertEqual(repr(multiset), "<CourseMultiset Group[101].students.courses>")
 
     @db_session
