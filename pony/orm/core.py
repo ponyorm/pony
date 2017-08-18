@@ -2980,6 +2980,7 @@ class SetInstance(object):
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
         elif setdata.count is not None: return setdata.count
+        if not cache.is_alive: throw_db_session_is_over(obj, attr)
         entity = attr.entity
         reverse = attr.reverse
         database = entity._database_
