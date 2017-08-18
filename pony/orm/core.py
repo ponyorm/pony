@@ -495,9 +495,9 @@ class DBSessionContextManager(object):
 
 db_session = DBSessionContextManager()
 
-def throw_db_session_is_over(obj, attr):
-    throw(DatabaseSessionIsOver, 'Cannot read value of %s.%s: the database session is over'
-                                 % (safe_repr(obj), attr.name))
+def throw_db_session_is_over(action, obj, attr=None):
+    msg = 'Cannot %s %s%s: the database session is over'
+    throw(DatabaseSessionIsOver, msg % (action, safe_repr(obj), '.%s' % attr.name if attr else ''))
 
 def with_transaction(*args, **kwargs):
     deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
@@ -1945,8 +1945,7 @@ class Attribute(object):
         return val
     def load(attr, obj):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot load attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('load attribute', obj, attr)
         if not attr.columns:
             reverse = attr.reverse
             assert reverse is not None and reverse.columns
@@ -1990,7 +1989,7 @@ class Attribute(object):
         if attr.pk_offset is None and obj._status_ in ('deleted', 'cancelled'):
             throw_object_was_deleted(obj)
         vals = obj._vals_
-        if vals is None: throw_db_session_is_over(obj, attr)
+        if vals is None: throw_db_session_is_over('read value of', obj, attr)
         val = vals[attr] if attr in vals else attr.load(obj)
         if val is not None and attr.reverse and val._subclasses_ and val._status_ not in ('deleted', 'cancelled'):
             seeds = obj._session_cache_.seeds[val._pk_attrs_]
@@ -1999,8 +1998,7 @@ class Attribute(object):
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot assign new value to attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('assign new value to', obj, attr)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         reverse = attr.reverse
         new_val = attr.validate(new_val, obj, from_db=False)
@@ -2513,8 +2511,7 @@ class Set(Collection):
         return items
     def load(attr, obj, items=None):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot load collection %s.%s: the database session is over' % (safe_repr(obj), attr.name))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('load collection', obj, attr)
         assert obj._status_ not in del_statuses
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
@@ -2651,7 +2648,7 @@ class Set(Collection):
         return sql, adapter
     def copy(attr, obj):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
+        if obj._vals_ is None: throw_db_session_is_over('read value of', obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
@@ -2675,8 +2672,7 @@ class Set(Collection):
         if isinstance(new_items, SetInstance) and new_items._obj_ is obj and new_items._attr_ is attr:
             return  # after += or -=
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('change collection', obj, attr)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
             new_items = attr.validate(new_items, obj)
@@ -2920,7 +2916,7 @@ class SetInstance(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
+        if obj._vals_ is None: throw_db_session_is_over('read value of', obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = attr.load(obj)
         if setdata: return True
@@ -2931,7 +2927,7 @@ class SetInstance(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
+        if obj._vals_ is None: throw_db_session_is_over('read value of', obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
         elif setdata.is_fully_loaded: return not setdata
@@ -2977,7 +2973,7 @@ class SetInstance(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
+        if obj._vals_ is None: throw_db_session_is_over('read value of', obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
@@ -2987,11 +2983,11 @@ class SetInstance(object):
         obj = wrapper._obj_
         cache = obj._session_cache_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
+        if obj._vals_ is None: throw_db_session_is_over('read value of', obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
         elif setdata.count is not None: return setdata.count
-        if cache is None or not cache.is_alive: throw_db_session_is_over(obj, attr)
+        if cache is None or not cache.is_alive: throw_db_session_is_over('read value of', obj, attr)
         entity = attr.entity
         reverse = attr.reverse
         database = entity._database_
@@ -3039,7 +3035,7 @@ class SetInstance(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
+        if obj._vals_ is None: throw_db_session_is_over('read value of', obj, attr)
         if not isinstance(item, attr.py_type): return False
 
         reverse = attr.reverse
@@ -3081,8 +3077,7 @@ class SetInstance(object):
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('change collection', obj, attr)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
             reverse = attr.reverse
@@ -3121,8 +3116,7 @@ class SetInstance(object):
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('change collection', obj, attr)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
             reverse = attr.reverse
@@ -3165,8 +3159,7 @@ class SetInstance(object):
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
-        if cache is None or not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
+        if cache is None or not obj._session_cache_.is_alive: throw_db_session_is_over('change collection', obj, attr)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr.__set__(obj, ())
     @cut_traceback
@@ -4285,8 +4278,7 @@ class Entity(with_metaclass(EntityMeta)):
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot load object %s: the database session is over' % safe_repr(obj))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('load object', obj)
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
@@ -4307,8 +4299,7 @@ class Entity(with_metaclass(EntityMeta)):
     @cut_traceback
     def load(obj, *attrs):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot load object %s: the database session is over' % safe_repr(obj))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('load object', obj)
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
@@ -4368,8 +4359,7 @@ class Entity(with_metaclass(EntityMeta)):
                                      'Phantom object %s disappeared' % safe_repr(obj))
     def _attr_changed_(obj, attr):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot assign new value to attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('assign new value to', obj, attr)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         status = obj._status_
         wbits = obj._wbits_
@@ -4540,14 +4530,12 @@ class Entity(with_metaclass(EntityMeta)):
     @cut_traceback
     def delete(obj):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot delete object %s: the database session is over' % safe_repr(obj))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('delete object', obj)
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
         cache = obj._session_cache_
-        if cache is None or not cache.is_alive: throw(DatabaseSessionIsOver,
-            'Cannot change object %s: the database session is over' % safe_repr(obj))
+        if cache is None or not cache.is_alive: throw_db_session_is_over('change object', obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
             avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
