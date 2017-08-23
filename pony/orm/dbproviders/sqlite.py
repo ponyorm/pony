@@ -18,8 +18,6 @@ from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
 
-from contextlib import contextmanager
-
 class SqliteExtensionUnavailable(Exception):
     pass
 
