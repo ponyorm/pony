@@ -754,22 +754,22 @@ class UuidConverter(Converter):
 class JsonConverter(Converter):
     json_kwargs = {}
     class JsonEncoder(json.JSONEncoder):
-        def default(self, obj):
+        def default(converter, obj):
             if isinstance(obj, Json):
                 return obj.wrapped
-            return json.JSONEncoder.default(self, obj)
-    def val2dbval(self, val, obj=None):
-        return json.dumps(val, cls=self.JsonEncoder, **self.json_kwargs)
-    def dbval2val(self, dbval, obj=None):
+            return json.JSONEncoder.default(converter, obj)
+    def val2dbval(converter, val, obj=None):
+        return json.dumps(val, cls=converter.JsonEncoder, **converter.json_kwargs)
+    def dbval2val(converter, dbval, obj=None):
         if isinstance(dbval, (int, bool, float, type(None))):
             return dbval
         val = json.loads(dbval)
         if obj is None:
             return val
-        return TrackedValue.make(obj, self.attr, val)
-    def dbvals_equal(self, x, y):
+        return TrackedValue.make(obj, converter.attr, val)
+    def dbvals_equal(converter, x, y):
         if isinstance(x, basestring): x = json.loads(x)
         if isinstance(y, basestring): y = json.loads(y)
         return x == y
-    def sql_type(self):
+    def sql_type(converter):
         return "JSON"
