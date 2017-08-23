@@ -524,7 +524,6 @@ class SQLitePool(Pool):
         con.create_function('py_json_contains', 3, py_json_contains)
         con.create_function('py_json_nonzero', 2, py_json_nonzero)
         con.create_function('py_json_array_length', -1, py_json_array_length)
-        con.create_function('py_lower', 1, py_lower)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
     def disconnect(pool):
