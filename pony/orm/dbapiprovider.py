@@ -350,7 +350,7 @@ class Converter(object):
     def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         return val
     def py2sql(converter, val):
         return val
@@ -393,7 +393,7 @@ class NoneConverter(Converter):  # used for raw_sql() parameters only
         assert False
 
 class BoolConverter(Converter):
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         return bool(val)
     def sql2py(converter, val):
         return bool(val)
@@ -421,7 +421,7 @@ class StrConverter(Converter):
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
         converter.autostrip = kwargs.pop('autostrip', True)
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if PY2 and isinstance(val, str): val = val.decode('ascii')
         elif not isinstance(val, unicode): throw(TypeError,
             'Value type for attribute %s must be %s. Got: %r' % (converter.attr, unicode.__name__, type(val)))
@@ -492,7 +492,7 @@ class IntConverter(Converter):
         converter.max_val = max_val or highest
         converter.size = size
         converter.unsigned = unsigned
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, int_types): pass
         elif isinstance(val, basestring):
             try: val = int(val)
@@ -539,7 +539,7 @@ class RealConverter(Converter):
         converter.min_val = min_val
         converter.max_val = max_val
         converter.tolerance = kwargs.pop('tolerance', converter.default_tolerance)
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         try: val = float(val)
         except ValueError:
             throw(TypeError, 'Invalid value for attribute %s: %r' % (converter.attr, val))
@@ -604,7 +604,7 @@ class DecimalConverter(Converter):
 
         converter.min_val = min_val
         converter.max_val = max_val
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, float):
             s = str(val)
             if float(s) != val: s = repr(val)
@@ -625,7 +625,7 @@ class DecimalConverter(Converter):
         return 'DECIMAL(%d, %d)' % (converter.precision, converter.scale)
 
 class BlobConverter(Converter):
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, buffer): return val
         if isinstance(val, str): return buffer(val)
         throw(TypeError, "Attribute %r: expected type is 'buffer'. Got: %r" % (converter.attr, type(val)))
@@ -638,7 +638,7 @@ class BlobConverter(Converter):
         return 'BLOB'
 
 class DateConverter(Converter):
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, datetime): return val.date()
         if isinstance(val, date): return val
         if isinstance(val, basestring): return str2date(val)
@@ -688,7 +688,7 @@ class ConverterWithMicroseconds(Converter):
 
 class TimeConverter(ConverterWithMicroseconds):
     sql_type_name = 'TIME'
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, time): pass
         elif isinstance(val, basestring): val = str2time(val)
         else: throw(TypeError, "Attribute %r: expected type is 'time'. Got: %r" % (converter.attr, val))
@@ -702,7 +702,7 @@ class TimeConverter(ConverterWithMicroseconds):
 
 class TimedeltaConverter(ConverterWithMicroseconds):
     sql_type_name = 'INTERVAL'
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, timedelta): pass
         elif isinstance(val, basestring): val = str2timedelta(val)
         else: throw(TypeError, "Attribute %r: expected type is 'timedelta'. Got: %r" % (converter.attr, val))
@@ -716,7 +716,7 @@ class TimedeltaConverter(ConverterWithMicroseconds):
 
 class DatetimeConverter(ConverterWithMicroseconds):
     sql_type_name = 'DATETIME'
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, datetime): pass
         elif isinstance(val, basestring): val = str2datetime(val)
         else: throw(TypeError, "Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
@@ -734,7 +734,7 @@ class UuidConverter(Converter):
             attr.auto = False
             if not attr.default: attr.default = uuid4
         Converter.__init__(converter, provider, py_type, attr)
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if isinstance(val, UUID): return val
         if isinstance(val, buffer): return UUID(bytes=val)
         if isinstance(val, basestring):
@@ -758,6 +758,12 @@ class JsonConverter(Converter):
             if isinstance(obj, Json):
                 return obj.wrapped
             return json.JSONEncoder.default(converter, obj)
+    def validate(converter, val, obj=None):
+        if obj is None or converter.attr is None:
+            return val
+        if isinstance(val, TrackedValue) and val.obj is obj and val.attr is converter.attr:
+            return val
+        return TrackedValue.make(obj, converter.attr, val)
     def val2dbval(converter, val, obj=None):
         return json.dumps(val, cls=converter.JsonEncoder, **converter.json_kwargs)
     def dbval2val(converter, dbval, obj=None):
