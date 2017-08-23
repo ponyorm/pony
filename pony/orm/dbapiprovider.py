@@ -45,12 +45,20 @@ class     NotSupportedError(DatabaseError): pass
 @decorator
 def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     dbapi_module = provider.dbapi_module
-    try: return func(provider, *args, **kwargs)
+    try:
+        if provider.dialect != 'SQLite':
+            return func(provider, *args, **kwargs)
+        else:
+            provider.local_exceptions.keep_traceback = True
+            try: return func(provider, *args, **kwargs)
+            finally: provider.local_exceptions.keep_traceback = False
     except dbapi_module.NotSupportedError as e: raise NotSupportedError(e)
     except dbapi_module.ProgrammingError as e: raise ProgrammingError(e)
     except dbapi_module.InternalError as e: raise InternalError(e)
     except dbapi_module.IntegrityError as e: raise IntegrityError(e)
-    except dbapi_module.OperationalError as e: raise OperationalError(e)
+    except dbapi_module.OperationalError as e:
+        if provider.dialect == 'SQLite': provider.restore_exception()
+        raise OperationalError(e)
     except dbapi_module.DataError as e: raise DataError(e)
     except dbapi_module.DatabaseError as e: raise DatabaseError(e)
     except dbapi_module.InterfaceError as e:

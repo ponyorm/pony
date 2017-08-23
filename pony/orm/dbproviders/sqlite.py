@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
-import os.path, re, json
+import os.path, sys, re, json
 import sqlite3 as sqlite
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -16,7 +16,7 @@ from pony.orm import core, dbschema, sqltranslation, dbapiprovider, ormtypes
 from pony.orm.core import log_orm
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, throw
+from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
 
 from contextlib import contextmanager
 
@@ -210,8 +210,33 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
 class SQLiteJsonConverter(dbapiprovider.JsonConverter):
     json_kwargs = {'separators': (',', ':'), 'sort_keys': True, 'ensure_ascii': False}
 
+
+class LocalExceptions(localbase):
+    def __init__(self):
+        self.exc_info = None
+        self.keep_traceback = False
+
+local_exceptions = LocalExceptions()
+
+def keep_exception(func):
+    @wraps(func)
+    def new_func(*args):
+        local_exceptions.exc_info = None
+        try:
+            return func(*args)
+        except Exception:
+            local_exceptions.exc_info = sys.exc_info()
+            if not local_exceptions.keep_traceback:
+                local_exceptions.exc_info = local_exceptions.exc_info[:2] + (None,)
+            raise
+        finally:
+            local_exceptions.keep_traceback = False
+    return new_func
+
+
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
+    local_exceptions = local_exceptions
     max_name_len = 1024
     select_for_update_nowait_syntax = False
 
@@ -248,6 +273,11 @@ class SQLiteProvider(DBAPIProvider):
     def inspect_connection(provider, conn):
         DBAPIProvider.inspect_connection(provider, conn)
         provider.json1_available = provider.check_json1(conn)
+
+    def restore_exception(provider):
+        if provider.local_exceptions.exc_info is not None:
+            try: reraise(*provider.local_exceptions.exc_info)
+            finally: provider.local_exceptions.exc_info = None
 
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):
@@ -494,15 +524,21 @@ class SQLitePool(Pool):
             throw(IOError, "Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename, isolation_level=None)
         con.text_factory = _text_factory
-        con.create_function('power', 2, pow)
-        con.create_function('rand', 0, random)
-        con.create_function('py_upper', 1, py_upper)
-        con.create_function('py_lower', 1, py_lower)
-        con.create_function('py_json_unwrap', 1, py_json_unwrap)
-        con.create_function('py_json_extract', -1, py_json_extract)
-        con.create_function('py_json_contains', 3, py_json_contains)
-        con.create_function('py_json_nonzero', 2, py_json_nonzero)
-        con.create_function('py_json_array_length', -1, py_json_array_length)
+
+        def create_function(name, num_params, func):
+            func = keep_exception(func)
+            con.create_function(name, num_params, func)
+
+        create_function('power', 2, pow)
+        create_function('rand', 0, random)
+        create_function('py_upper', 1, py_upper)
+        create_function('py_lower', 1, py_lower)
+        create_function('py_json_unwrap', 1, py_json_unwrap)
+        create_function('py_json_extract', -1, py_json_extract)
+        create_function('py_json_contains', 3, py_json_contains)
+        create_function('py_json_nonzero', 2, py_json_nonzero)
+        create_function('py_json_array_length', -1, py_json_array_length)
+
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
     def disconnect(pool):
