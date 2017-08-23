@@ -210,20 +210,6 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
 class SQLiteJsonConverter(dbapiprovider.JsonConverter):
     json_kwargs = {'separators': (',', ':'), 'sort_keys': True, 'ensure_ascii': False}
 
-def print_traceback(func):
-    @wraps(func)
-    def wrapper(*args, **kw):
-        try:
-            return func(*args, **kw)
-        except:
-            if core.debug:
-                import traceback
-                msg = traceback.format_exc()
-                log_orm(msg)
-            raise
-    return wrapper
-
-
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
     max_name_len = 1024
@@ -414,7 +400,6 @@ def make_string_function(name, base_func):
 py_upper = make_string_function('py_upper', unicode.upper)
 py_lower = make_string_function('py_lower', unicode.lower)
 
-@print_traceback
 def py_json_unwrap(value):
     # [null,some-value] -> some-value
     assert value.startswith('[null,'), value
@@ -462,14 +447,12 @@ def _extract(expr, *paths):
         result.append(_traverse(expr, keys))
     return result[0] if len(paths) == 1 else result
 
-@print_traceback
 def py_json_extract(expr, *paths):
     result = _extract(expr, *paths)
     if type(result) in (list, dict):
         result = json.dumps(result, **SQLiteJsonConverter.json_kwargs)
     return result
 
-@print_traceback
 def py_json_query(expr, path, with_wrapper):
     result = _extract(expr, path)
     if type(result) not in (list, dict):
@@ -477,26 +460,22 @@ def py_json_query(expr, path, with_wrapper):
         result = [result]
     return json.dumps(result, **SQLiteJsonConverter.json_kwargs)
 
-@print_traceback
 def py_json_value(expr, path):
     result = _extract(expr, path)
     return result if type(result) not in (list, dict) else None
 
-@print_traceback
 def py_json_contains(expr, path, key):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
     return type(expr) in (list, dict) and key in expr
 
-@print_traceback
 def py_json_nonzero(expr, path):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
     return bool(expr)
 
-@print_traceback
 def py_json_array_length(expr, path=None):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
     if path:
