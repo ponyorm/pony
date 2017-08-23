@@ -31,11 +31,11 @@ class Param(object):
         if j is not None:
             assert type(type(value)).__name__ == 'EntityMeta'
             value = value._get_raw_pkval_()[j]
-        if value is not None:  # can value be None at all?
-            converter = param.converter
-            if converter is not None:
-                if not param.optimistic: value = converter.val2dbval(value)
-                value = converter.py2sql(value)
+        converter = param.converter
+        if value is not None and converter is not None:
+            if converter.attr is None:
+                value = converter.val2dbval(value)
+            value = converter.py2sql(value)
         return value
     def __unicode__(param):
         paramstyle = param.style

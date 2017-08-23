@@ -4659,7 +4659,7 @@ class Entity(with_metaclass(EntityMeta)):
             val = obj._vals_[attr]
             if val is not None and val._status_ == 'created':
                 val._save_(dependent_objects)
-    def _update_dbvals_(obj, after_create):
+    def _update_dbvals_(obj, after_create, new_dbvals):
         bits = obj._bits_
         vals = obj._vals_
         dbvals = obj._dbvals_
@@ -4678,10 +4678,7 @@ class Entity(with_metaclass(EntityMeta)):
             elif after_create and val is None:
                 obj._rbits_ &= ~bits[attr]
             else:
-                # For normal attribute, set `dbval` to the same value as `val` after update/create
-                # dbvals[attr] = val
-                converter = attr.converters[0]
-                dbvals[attr] = converter.val2dbval(val, obj)  # TODO this conversion should be unnecessary
+                dbvals[attr] = new_dbvals.get(attr, val)
                 continue
             # Clear value of volatile attribute or null values after create, because the value may be changed in the DB
             del vals[attr]
@@ -4691,12 +4688,19 @@ class Entity(with_metaclass(EntityMeta)):
         auto_pk = (obj._pkval_ is None)
         attrs = []
         values = []
+        new_dbvals = {}
         for attr in obj._attrs_with_columns_:
             if auto_pk and attr.is_pk: continue
             val = obj._vals_[attr]
             if val is not None:
                 attrs.append(attr)
-                values.extend(attr.get_raw_values(val))
+                if not attr.reverse:
+                    assert len(attr.converters) == 1
+                    dbval = attr.converters[0].val2dbval(val, obj)
+                    new_dbvals[attr] = dbval
+                    values.append(dbval)
+                else:
+                    values.extend(attr.get_raw_values(val))
         attrs = tuple(attrs)
 
         database = obj._database_
@@ -4746,14 +4750,21 @@ class Entity(with_metaclass(EntityMeta)):
         obj._status_ = 'inserted'
         obj._rbits_ = obj._all_bits_except_volatile_
         obj._wbits_ = 0
-        obj._update_dbvals_(True)
+        obj._update_dbvals_(True, new_dbvals)
     def _save_updated_(obj):
         update_columns = []
         values = []
+        new_dbvals = {}
         for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_):
             update_columns.extend(attr.columns)
             val = obj._vals_[attr]
-            values.extend(attr.get_raw_values(val))
+            if not attr.reverse:
+                assert len(attr.converters) == 1
+                dbval = attr.converters[0].val2dbval(val, obj)
+                new_dbvals[attr] = dbval
+                values.append(dbval)
+            else:
+                values.extend(attr.get_raw_values(val))
         if update_columns:
             for attr in obj._pk_attrs_:
                 val = obj._vals_[attr]
@@ -4791,7 +4802,7 @@ class Entity(with_metaclass(EntityMeta)):
         obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
-        obj._update_dbvals_(False)
+        obj._update_dbvals_(False, new_dbvals)
     def _save_deleted_(obj):
         values = []
         values.extend(obj._get_raw_pkval_())
