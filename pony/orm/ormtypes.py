@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, items_list, izip, basestring, unicode, buffer, int_types
+from pony.py23compat import PY2, items_list, izip, basestring, unicode, buffer, int_types, iteritems
 
 import types, weakref
 from decimal import Decimal
@@ -240,8 +240,13 @@ class TrackedValue(object):
 
 def tracked_method(func):
     @wraps(func, assigned=('__name__', '__doc__') if PY2 else WRAPPER_ASSIGNMENTS)
-    def new_func(self, *args, **kw):
-        result = func(self, *args, **kw)
+    def new_func(self, *args, **kwargs):
+        obj = self.obj_ref()
+        attr = self.attr
+        if obj is not None:
+            args = tuple(TrackedValue.make(obj, attr, arg) for arg in args)
+            if kwargs: kwargs = {key: TrackedValue.make(obj, attr, value) for key, value in iteritems(kwargs)}
+        result = func(self, *args, **kwargs)
         self._changed_()
         return result
     return new_func
@@ -249,13 +254,15 @@ def tracked_method(func):
 class TrackedDict(TrackedValue, dict):
     def __init__(self, obj, attr, value):
         TrackedValue.__init__(self, obj, attr)
-        dict.__init__(self, ((key, self.make(obj, attr, val))
-                             for key, val in value.items()))
+        dict.__init__(self, {key: self.make(obj, attr, val) for key, val in iteritems(value)})
     def __reduce__(self):
         return dict, (dict(self),)
     __setitem__ = tracked_method(dict.__setitem__)
     __delitem__ = tracked_method(dict.__delitem__)
-    update = tracked_method(dict.update)
+    _update = tracked_method(dict.update)
+    def update(self, *args, **kwargs):
+        args = [ arg if isinstance(arg, dict) else dict(arg) for arg in args ]
+        return self._update(*args, **kwargs)
     setdefault = tracked_method(dict.setdefault)
     pop = tracked_method(dict.pop)
     popitem = tracked_method(dict.popitem)
