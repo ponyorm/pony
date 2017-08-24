@@ -1153,7 +1153,7 @@ class Transformer:
         # listmaker: test ( list_for | (',' test)* [','] )
         values = []
         for i in range(1, len(nodelist)):
-            if nodelist[i][0] == symbol.list_for:
+            if PY2 and nodelist[i][0] == symbol.list_for:
                 assert len(nodelist[i:]) == 1
                 return self.com_list_comprehension(values[0],
                                                    nodelist[i])
