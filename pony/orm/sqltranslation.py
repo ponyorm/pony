@@ -1080,6 +1080,8 @@ class Monad(with_metaclass(MonadMeta)):
     def __xor__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
     def cast_from_json(monad, type): assert False, monad
+    def to_int(monad):
+        return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ])
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -1729,6 +1731,8 @@ class JsonItemMonad(JsonMixin, Monad):
             monad = monad.parent
         path.reverse()
         return monad, path
+    def to_int(monad):
+        return monad.cast_from_json(int)
     def cast_from_json(monad, type):
         translator = monad.translator
         if issubclass(type, Json):
@@ -1970,6 +1974,11 @@ class FuncBufferMonad(FuncMonad):
             elif encoding: value = buffer(source, encoding)
             else: value = buffer(source)
             return translator.ConstMonad.new(translator, value)
+
+class FuncIntMonad(FuncMonad):
+    func = int
+    def call(monad, x):
+        return x.to_int()
 
 class FuncDecimalMonad(FuncMonad):
     func = Decimal

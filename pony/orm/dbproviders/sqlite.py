@@ -141,11 +141,14 @@ class SQLiteBuilder(SQLBuilder):
         fname = 'json_extract' if builder.json1_available else 'py_json_extract'
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', path_sql, '))'
-    # json_value_type_mapping = {unicode: 'text', bool: 'boolean', int: 'integer', float: 'real', Json: None}
+    json_value_type_mapping = {unicode: 'text', bool: 'integer', int: 'integer', float: 'real'}
     def JSON_VALUE(builder, expr, path, type):
         func_name = 'json_extract' if builder.json1_available else 'py_json_extract'
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
-        return func_name, '(', builder(expr), ', ', path_sql, ')'
+        type_name = builder.json_value_type_mapping.get(type)
+        result = func_name, '(', builder(expr), ', ', path_sql, ')'
+        if type_name is not None: result = 'CAST(', result, ' as ', type_name, ')'
+        return result
     def JSON_NONZERO(builder, expr):
         return builder(expr), ''' NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_ARRAY_LENGTH(builder, value):

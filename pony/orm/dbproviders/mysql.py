@@ -60,6 +60,8 @@ class MySQLBuilder(SQLBuilder):
     def RTRIM(builder, expr, chars=None):
         if chars is None: return 'rtrim(', builder(expr), ')'
         return 'trim(trailing ', builder(chars), ' from ' ,builder(expr), ')'
+    def TO_INT(builder, expr):
+        return 'CAST(', builder(expr), ' AS SIGNED)'
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
     def MONTH(builder, expr):
