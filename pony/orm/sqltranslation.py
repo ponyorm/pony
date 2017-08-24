@@ -181,6 +181,7 @@ class SQLTranslator(ASTTranslator):
         translator.conditions = subquery.conditions
         translator.having_conditions = []
         translator.order = []
+        translator.inside_order_by = False
         translator.aggregated = False if not optimize else True
         translator.hint_join = False
         translator.query_result_is_cacheable = True
@@ -605,6 +606,7 @@ class SQLTranslator(ASTTranslator):
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
         else: nodes = (func_ast,)
         if order_by:
+            translator.inside_order_by = True
             new_order = []
             for node in nodes:
                 if isinstance(node.monad, translator.SetMixin):
@@ -614,6 +616,7 @@ class SQLTranslator(ASTTranslator):
                                             % (t, ast2src(node)))
                 new_order.extend(node.monad.getsql())
             translator.order[:0] = new_order
+            translator.inside_order_by = False
         else:
             for node in nodes:
                 monad = node.monad
@@ -1745,6 +1748,9 @@ class JsonItemMonad(JsonMixin, Monad):
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
+        translator = monad.translator
+        if translator.inside_order_by and translator.dialect == 'SQLite':
+            return [ [ 'JSON_VALUE', base_sql, path, None ] ]
         return [ [ 'JSON_QUERY', base_sql, path ] ]
 
 class ConstMonad(Monad):
