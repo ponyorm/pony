@@ -287,7 +287,7 @@ class OraBoolConverter(dbapiprovider.BoolConverter):
         return "NUMBER(1)"
 
 class OraStrConverter(dbapiprovider.StrConverter):
-    def validate(converter, val):
+    def validate(converter, val, obj=None):
         if val == '': return None
         return dbapiprovider.StrConverter.validate(converter, val)
     def sql2py(converter, val):

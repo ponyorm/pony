@@ -1908,7 +1908,7 @@ class Attribute(object):
             if converter is not None:
                 try:
                     if from_db: return converter.sql2py(val)
-                    val = converter.validate(val)
+                    val = converter.validate(val, obj)
                 except UnicodeDecodeError as e:
                     throw(ValueError, 'Value for attribute %s cannot be converted to %s: %s'
                                       % (attr, unicode.__name__, truncate_repr(val)))
@@ -1923,7 +1923,7 @@ class Attribute(object):
                 except TypeError: throw(TypeError, 'Attribute %s must be of %s type. Got: %r'
                                                    % (attr, rentity.__name__, val))
             else:
-                if obj is not None: cache = obj._session_cache_
+                if obj is not None and obj._status_ is not None: cache = obj._session_cache_
                 else: cache = entity._database_._get_cache()
                 if cache is not val._session_cache_:
                     throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
@@ -2236,7 +2236,8 @@ class Required(Attribute):
         val = Attribute.validate(attr, val, obj, entity, from_db)
         if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
             if not from_db:
-                throw(ValueError, 'Attribute %s is required' % (attr if obj is None else '%r.%s' % (obj, attr.name)))
+                throw(ValueError, 'Attribute %s is required' % (
+                      attr if obj is None or obj._status_ is None else '%r.%s' % (obj, attr.name)))
             else:
                 warnings.warn('Database contains %s for required attribute %s'
                               % ('NULL' if val is None else 'empty string', attr),
@@ -2507,7 +2508,7 @@ class Set(Collection):
                 if not isinstance(item, rentity):
                     throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                     % (entity.__name__, attr.name, rentity.__name__, item))
-        if obj is not None: cache = obj._session_cache_
+        if obj is not None and obj._status_ is not None: cache = obj._session_cache_
         else: cache = entity._database_._get_cache()
         for item in items:
             if item._session_cache_ is not cache:
@@ -3555,26 +3556,6 @@ class EntityMeta(type):
         return pk_columns
     def __iter__(entity):
         return EntityIter(entity)
-    def _normalize_args_(entity, kwargs, setdefault=False):
-        avdict = {}
-        if setdefault:
-            for name in kwargs:
-                if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
-            for attr in entity._attrs_:
-                val = kwargs.get(attr.name, DEFAULT)
-                avdict[attr] = attr.validate(val, None, entity, from_db=False)
-        else:
-            get_attr = entity._adict_.get
-            for name, val in iteritems(kwargs):
-                attr = get_attr(name)
-                if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
-                avdict[attr] = attr.validate(val, None, entity, from_db=False)
-        if entity._pk_is_composite_:
-            get_val = avdict.get
-            pkval = tuple(get_val(attr) for attr in entity._pk_attrs_)
-            if None in pkval: pkval = None
-        else: pkval = avdict.get(entity._pk_attrs_[0])
-        return pkval, avdict
     @cut_traceback
     def __getitem__(entity, key):
         if type(key) is not tuple: key = (key,)
@@ -3678,7 +3659,16 @@ class EntityMeta(type):
     def _find_one_(entity, kwargs, for_update=False, nowait=False):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
-        pkval, avdict = entity._normalize_args_(kwargs, False)
+        avdict = {}
+        get_attr = entity._adict_.get
+        for name, val in iteritems(kwargs):
+            attr = get_attr(name)
+            if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
+            avdict[attr] = attr.validate(val, None, entity, from_db=False)
+        if entity._pk_is_composite_:
+            pkval = tuple(imap(avdict.get, entity._pk_attrs_))
+            if None in pkval: pkval = None
+        else: pkval = avdict.get(entity._pk_attrs_[0])
         for attr in avdict:
             if attr.is_collection:
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
@@ -4190,13 +4180,24 @@ class Entity(with_metaclass(EntityMeta)):
         return unpickle_entity, (d,)
     @cut_traceback
     def __init__(obj, *args, **kwargs):
+        obj._status_ = None
         entity = obj.__class__
         if args: raise TypeError('%s constructor accept only keyword arguments. Got: %d positional argument%s'
                                  % (entity.__name__, len(args), len(args) > 1 and 's' or ''))
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
 
-        pkval, avdict = entity._normalize_args_(kwargs, True)
+        avdict = {}
+        for name in kwargs:
+            if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
+        for attr in entity._attrs_:
+            val = kwargs.get(attr.name, DEFAULT)
+            avdict[attr] = attr.validate(val, obj, entity, from_db=False)
+        if entity._pk_is_composite_:
+            pkval = tuple(imap(avdict.get, entity._pk_attrs_))
+            if None in pkval: pkval = None
+        else: pkval = avdict.get(entity._pk_attrs_[0])
+
         undo_funcs = []
         cache = entity._database_._get_cache()
         cache_indexes = cache.indexes
@@ -4659,7 +4660,7 @@ class Entity(with_metaclass(EntityMeta)):
             val = obj._vals_[attr]
             if val is not None and val._status_ == 'created':
                 val._save_(dependent_objects)
-    def _update_dbvals_(obj, after_create):
+    def _update_dbvals_(obj, after_create, new_dbvals):
         bits = obj._bits_
         vals = obj._vals_
         dbvals = obj._dbvals_
@@ -4678,10 +4679,7 @@ class Entity(with_metaclass(EntityMeta)):
             elif after_create and val is None:
                 obj._rbits_ &= ~bits[attr]
             else:
-                # For normal attribute, set `dbval` to the same value as `val` after update/create
-                # dbvals[attr] = val
-                converter = attr.converters[0]
-                dbvals[attr] = converter.val2dbval(val, obj)  # TODO this conversion should be unnecessary
+                dbvals[attr] = new_dbvals.get(attr, val)
                 continue
             # Clear value of volatile attribute or null values after create, because the value may be changed in the DB
             del vals[attr]
@@ -4691,12 +4689,19 @@ class Entity(with_metaclass(EntityMeta)):
         auto_pk = (obj._pkval_ is None)
         attrs = []
         values = []
+        new_dbvals = {}
         for attr in obj._attrs_with_columns_:
             if auto_pk and attr.is_pk: continue
             val = obj._vals_[attr]
             if val is not None:
                 attrs.append(attr)
-                values.extend(attr.get_raw_values(val))
+                if not attr.reverse:
+                    assert len(attr.converters) == 1
+                    dbval = attr.converters[0].val2dbval(val, obj)
+                    new_dbvals[attr] = dbval
+                    values.append(dbval)
+                else:
+                    values.extend(attr.get_raw_values(val))
         attrs = tuple(attrs)
 
         database = obj._database_
@@ -4746,14 +4751,21 @@ class Entity(with_metaclass(EntityMeta)):
         obj._status_ = 'inserted'
         obj._rbits_ = obj._all_bits_except_volatile_
         obj._wbits_ = 0
-        obj._update_dbvals_(True)
+        obj._update_dbvals_(True, new_dbvals)
     def _save_updated_(obj):
         update_columns = []
         values = []
+        new_dbvals = {}
         for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_):
             update_columns.extend(attr.columns)
             val = obj._vals_[attr]
-            values.extend(attr.get_raw_values(val))
+            if not attr.reverse:
+                assert len(attr.converters) == 1
+                dbval = attr.converters[0].val2dbval(val, obj)
+                new_dbvals[attr] = dbval
+                values.append(dbval)
+            else:
+                values.extend(attr.get_raw_values(val))
         if update_columns:
             for attr in obj._pk_attrs_:
                 val = obj._vals_[attr]
@@ -4791,7 +4803,7 @@ class Entity(with_metaclass(EntityMeta)):
         obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
-        obj._update_dbvals_(False)
+        obj._update_dbvals_(False, new_dbvals)
     def _save_deleted_(obj):
         values = []
         values.extend(obj._get_raw_pkval_())

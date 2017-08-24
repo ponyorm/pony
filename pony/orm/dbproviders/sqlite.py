@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
-import os.path, re, json
+import os.path, sys, re, json
 import sqlite3 as sqlite
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -16,9 +16,7 @@ from pony.orm import core, dbschema, sqltranslation, dbapiprovider, ormtypes
 from pony.orm.core import log_orm
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, throw
-
-from contextlib import contextmanager
+from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
 
 class SqliteExtensionUnavailable(Exception):
     pass
@@ -210,22 +208,33 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
 class SQLiteJsonConverter(dbapiprovider.JsonConverter):
     json_kwargs = {'separators': (',', ':'), 'sort_keys': True, 'ensure_ascii': False}
 
-def print_traceback(func):
+
+class LocalExceptions(localbase):
+    def __init__(self):
+        self.exc_info = None
+        self.keep_traceback = False
+
+local_exceptions = LocalExceptions()
+
+def keep_exception(func):
     @wraps(func)
-    def wrapper(*args, **kw):
+    def new_func(*args):
+        local_exceptions.exc_info = None
         try:
-            return func(*args, **kw)
-        except:
-            if core.debug:
-                import traceback
-                msg = traceback.format_exc()
-                log_orm(msg)
+            return func(*args)
+        except Exception:
+            local_exceptions.exc_info = sys.exc_info()
+            if not local_exceptions.keep_traceback:
+                local_exceptions.exc_info = local_exceptions.exc_info[:2] + (None,)
             raise
-    return wrapper
+        finally:
+            local_exceptions.keep_traceback = False
+    return new_func
 
 
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
+    local_exceptions = local_exceptions
     max_name_len = 1024
     select_for_update_nowait_syntax = False
 
@@ -262,6 +271,11 @@ class SQLiteProvider(DBAPIProvider):
     def inspect_connection(provider, conn):
         DBAPIProvider.inspect_connection(provider, conn)
         provider.json1_available = provider.check_json1(conn)
+
+    def restore_exception(provider):
+        if provider.local_exceptions.exc_info is not None:
+            try: reraise(*provider.local_exceptions.exc_info)
+            finally: provider.local_exceptions.exc_info = None
 
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):
@@ -414,7 +428,6 @@ def make_string_function(name, base_func):
 py_upper = make_string_function('py_upper', unicode.upper)
 py_lower = make_string_function('py_lower', unicode.lower)
 
-@print_traceback
 def py_json_unwrap(value):
     # [null,some-value] -> some-value
     assert value.startswith('[null,'), value
@@ -462,14 +475,12 @@ def _extract(expr, *paths):
         result.append(_traverse(expr, keys))
     return result[0] if len(paths) == 1 else result
 
-@print_traceback
 def py_json_extract(expr, *paths):
     result = _extract(expr, *paths)
     if type(result) in (list, dict):
         result = json.dumps(result, **SQLiteJsonConverter.json_kwargs)
     return result
 
-@print_traceback
 def py_json_query(expr, path, with_wrapper):
     result = _extract(expr, path)
     if type(result) not in (list, dict):
@@ -477,26 +488,22 @@ def py_json_query(expr, path, with_wrapper):
         result = [result]
     return json.dumps(result, **SQLiteJsonConverter.json_kwargs)
 
-@print_traceback
 def py_json_value(expr, path):
     result = _extract(expr, path)
     return result if type(result) not in (list, dict) else None
 
-@print_traceback
 def py_json_contains(expr, path, key):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
     return type(expr) in (list, dict) and key in expr
 
-@print_traceback
 def py_json_nonzero(expr, path):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
     return bool(expr)
 
-@print_traceback
 def py_json_array_length(expr, path=None):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
     if path:
@@ -515,16 +522,21 @@ class SQLitePool(Pool):
             throw(IOError, "Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename, isolation_level=None)
         con.text_factory = _text_factory
-        con.create_function('power', 2, pow)
-        con.create_function('rand', 0, random)
-        con.create_function('py_upper', 1, py_upper)
-        con.create_function('py_lower', 1, py_lower)
-        con.create_function('py_json_unwrap', 1, py_json_unwrap)
-        con.create_function('py_json_extract', -1, py_json_extract)
-        con.create_function('py_json_contains', 3, py_json_contains)
-        con.create_function('py_json_nonzero', 2, py_json_nonzero)
-        con.create_function('py_json_array_length', -1, py_json_array_length)
-        con.create_function('py_lower', 1, py_lower)
+
+        def create_function(name, num_params, func):
+            func = keep_exception(func)
+            con.create_function(name, num_params, func)
+
+        create_function('power', 2, pow)
+        create_function('rand', 0, random)
+        create_function('py_upper', 1, py_upper)
+        create_function('py_lower', 1, py_lower)
+        create_function('py_json_unwrap', 1, py_json_unwrap)
+        create_function('py_json_extract', -1, py_json_extract)
+        create_function('py_json_contains', 3, py_json_contains)
+        create_function('py_json_nonzero', 2, py_json_nonzero)
+        create_function('py_json_array_length', -1, py_json_array_length)
+
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
     def disconnect(pool):
