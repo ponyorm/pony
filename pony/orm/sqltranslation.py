@@ -182,7 +182,6 @@ class SQLTranslator(ASTTranslator):
         translator.having_conditions = []
         translator.order = []
         translator.aggregated = False if not optimize else True
-        translator.inside_not = False
         translator.hint_join = False
         translator.query_result_is_cacheable = True
         translator.aggregated_subquery_paths = set()
@@ -274,7 +273,6 @@ class SQLTranslator(ASTTranslator):
 
         translator.dispatch(tree.expr)
         assert not translator.hint_join
-        assert not translator.inside_not
         monad = tree.expr.monad
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
@@ -638,12 +636,9 @@ class SQLTranslator(ASTTranslator):
         ops = node.ops
         left = node.expr
         translator.dispatch(left)
-        inside_not = translator.inside_not
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not in' | 'is' | 'is not'
         for op, right in node.ops:
-            translator.inside_not = inside_not
-            if op == 'not in': translator.inside_not = not inside_not
             translator.dispatch(right)
             if op.endswith('in'): monad = right.monad.contains(left.monad, op == 'not in')
             else: monad = left.monad.cmp(op, right.monad)
@@ -655,7 +650,6 @@ class SQLTranslator(ASTTranslator):
                 'Too complex aggregation, expressions cannot be combined: {EXPR}')
             monads.append(monad)
             left = right
-        translator.inside_not = inside_not
         if len(monads) == 1: return monads[0]
         return translator.AndMonad(monads)
     def postConst(translator, node):
@@ -712,11 +706,7 @@ class SQLTranslator(ASTTranslator):
     def postBitxor(translator, node):
         left, right = (subnode.monad for subnode in node.nodes)
         return left ^ right
-
-    def preNot(translator, node):
-        translator.inside_not = not translator.inside_not
     def postNot(translator, node):
-        translator.inside_not = not translator.inside_not
         return node.expr.monad.negate()
     def preCallFunc(translator, node):
         if node.star_args is not None: throw(NotImplementedError, '*%s is not supported' % ast2src(node.star_args))
