@@ -12,8 +12,9 @@ from uuid import UUID
 from binascii import hexlify
 from functools import wraps
 
-from pony.orm import core, dbschema, sqltranslation, dbapiprovider, ormtypes
+from pony.orm import core, dbschema, sqltranslation, dbapiprovider
 from pony.orm.core import log_orm
+from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
@@ -260,7 +261,7 @@ class SQLiteProvider(DBAPIProvider):
         (timedelta, SQLiteTimedeltaConverter),
         (UUID, dbapiprovider.UuidConverter),
         (buffer, dbapiprovider.BlobConverter),
-        (ormtypes.Json, SQLiteJsonConverter)
+        (Json, SQLiteJsonConverter)
     ]
 
     def __init__(provider, *args, **kwargs):

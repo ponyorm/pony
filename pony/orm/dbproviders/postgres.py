@@ -89,7 +89,7 @@ class PGSQLBuilder(SQLBuilder):
     def JSON_QUERY(builder, expr, path):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return '(', builder(expr), " #> ", path_sql, ')'
-    json_value_type_mapping = {bool: 'boolean', int: 'integer', float: 'real'}
+    json_value_type_mapping = {bool: 'boolean', int: 'int', float: 'real'}
     def JSON_VALUE(builder, expr, path, type):
         if type is ormtypes.Json: return builder.JSON_QUERY(expr, path)
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
