@@ -5662,5 +5662,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr}
+special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr, int}
 const_functions = {buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta}
