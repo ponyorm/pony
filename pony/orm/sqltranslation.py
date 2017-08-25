@@ -182,7 +182,6 @@ class SQLTranslator(ASTTranslator):
         translator.having_conditions = []
         translator.order = []
         translator.aggregated = False if not optimize else True
-        translator.inside_expr = False
         translator.inside_not = False
         translator.hint_join = False
         translator.query_result_is_cacheable = True
@@ -273,7 +272,6 @@ class SQLTranslator(ASTTranslator):
                     if not m.aggregated: translator.conditions.extend(m.getsql())
                     else: translator.having_conditions.extend(m.getsql())
 
-        translator.inside_expr = True
         translator.dispatch(tree.expr)
         assert not translator.hint_join
         assert not translator.inside_not
