@@ -79,8 +79,19 @@ sql_logger = logging.getLogger('pony.orm.sql')
 
 orm_log_level = logging.INFO
 
+def has_handlers(logger):
+    if not PY2:
+        return logger.hasHandlers()
+    while logger:
+        if logger.handlers:
+            return True
+        elif not logger.propagate:
+            return False
+        logger = logger.parent
+    return False
+
 def log_orm(msg):
-    if logging.root.handlers:
+    if has_handlers(orm_logger):
         orm_logger.log(orm_log_level, msg)
     else:
         print(msg)
@@ -88,7 +99,7 @@ def log_orm(msg):
 def log_sql(sql, arguments=None):
     if type(arguments) is list:
         sql = 'EXECUTEMANY (%d)\n%s' % (len(arguments), sql)
-    if logging.root.handlers:
+    if has_handlers(sql_logger):
         sql_logger.log(orm_log_level, sql)  # arguments can hold sensitive information
     else:
         print(sql)
