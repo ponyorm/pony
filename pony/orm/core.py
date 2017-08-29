@@ -46,7 +46,7 @@ __all__ = [
     'DatabaseContainsIncorrectValue', 'DatabaseContainsIncorrectEmptyValue',
     'TranslationError', 'ExprEvalError', 'PermissionError',
 
-    'Database', 'sql_debug', 'show',
+    'Database', 'sql_debug', 'sql_debugging', 'show',
 
     'PrimaryKey', 'Required', 'Optional', 'Set', 'Discriminator',
     'composite_key', 'composite_index',
@@ -263,6 +263,7 @@ num_counter = itertools.count()
 class Local(localbase):
     def __init__(local):
         local.debug = False
+        local.debug_stack = []
         local.db2cache = {}
         local.db_context_counter = 0
         local.db_session = None
@@ -270,6 +271,11 @@ class Local(localbase):
         local.perms_context = None
         local.user_groups_cache = {}
         local.user_roles_cache = defaultdict(dict)
+    def push_debug_state(local, debug):
+        local.debug_stack.append(local.debug)
+        local.debug = debug
+    def pop_debug_state(local):
+        local.debug = local.debug_stack.pop()
 
 local = Local()
 
@@ -505,6 +511,69 @@ class DBSessionContextManager(object):
         return decorator(new_gen_func, gen_func)
 
 db_session = DBSessionContextManager()
+
+
+class SQLDebuggingContextManager(object):
+    def __init__(self, debug=True):
+        self.debug = debug
+    def __call__(self, *args, **kwargs):
+        if not kwargs and len(args) == 1 and callable(args[0]):
+            arg = args[0]
+            if not isgeneratorfunction(arg):
+                return self._wrap_function(arg)
+            return self._wrap_generator_function(arg)
+        return self.__class__(*args, **kwargs)
+    def __enter__(self):
+        local.push_debug_state(self.debug)
+    def __exit__(self, exc_type=None, exc=None, tb=None):
+        local.pop_debug_state()
+    def _wrap_function(self, func):
+        def new_func(func, *args, **kwargs):
+            self.__enter__()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                self.__exit__()
+        return decorator(new_func, func)
+    def _wrap_generator_function(self, gen_func):
+        def interact(iterator, input=None, exc_info=None):
+            if exc_info is None:
+                return next(iterator) if input is None else iterator.send(input)
+
+            if exc_info[0] is GeneratorExit:
+                close = getattr(iterator, 'close', None)
+                if close is not None: close()
+                reraise(*exc_info)
+
+            throw_ = getattr(iterator, 'throw', None)
+            if throw_ is None: reraise(*exc_info)
+            return throw_(*exc_info)
+
+        def new_gen_func(gen_func, *args, **kwargs):
+            def wrapped_interact(iterator, input=None, exc_info=None):
+                self.__enter__()
+                try:
+                    return interact(iterator, input, exc_info)
+                finally:
+                    self.__exit__()
+
+            gen = gen_func(*args, **kwargs)
+            iterator = iter(gen)
+            output = wrapped_interact(iterator)
+            try:
+                while True:
+                    try:
+                        input = yield output
+                    except:
+                        output = wrapped_interact(iterator, exc_info=sys.exc_info())
+                    else:
+                        output = wrapped_interact(iterator, input)
+            except StopIteration:
+                return
+        return decorator(new_gen_func, gen_func)
+
+sql_debugging = SQLDebuggingContextManager()
+
 
 def throw_db_session_is_over(action, obj, attr=None):
     msg = 'Cannot %s %s%s: the database session is over'
