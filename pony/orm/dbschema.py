@@ -257,9 +257,9 @@ class DBIndex(Constraint):
             throw(DBSchemaError, 'Index %s cannot be created, name is already in use' % name)
         Constraint.__init__(index, name, schema)
         for column in columns:
-            column.is_pk = len(columns) == 1 and is_pk
-            column.is_pk_part = bool(is_pk)
-            column.is_unique = is_unique and len(columns) == 1
+            column.is_pk = column.is_pk or (len(columns) == 1 and is_pk)
+            column.is_pk_part = column.is_pk_part or bool(is_pk)
+            column.is_unique = column.is_unique or (is_unique and len(columns) == 1)
         table.indexes[columns] = index
         index.table = table
         index.columns = columns
