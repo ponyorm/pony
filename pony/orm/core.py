@@ -99,14 +99,17 @@ def log_sql(sql, arguments=None):
     if type(arguments) is list:
         sql = 'EXECUTEMANY (%d)\n%s' % (len(arguments), sql)
     if has_handlers(sql_logger):
-        sql_logger.log(orm_log_level, sql)  # arguments can hold sensitive information
+        if local.show_values and arguments:
+            sql = '%s\n%s' % (sql, format_arguments(arguments))
+        sql_logger.log(orm_log_level, sql)
     else:
-        print(sql)
-        if not arguments: pass
-        elif type(arguments) is list:
-            for args in arguments: print(args2str(args))
-        else: print(args2str(arguments))
-        print()
+        if (local.show_values is None or local.show_values) and arguments:
+            sql = '%s\n%s' % (sql, format_arguments(arguments))
+        print(sql, end='\n\n')
+
+def format_arguments(arguments):
+    if type(arguments) is not list: return args2str(arguments)
+    return '\n'.join(args2str(args) for args in arguments)
 
 def args2str(args):
     if isinstance(args, (tuple, list)):
@@ -263,6 +266,7 @@ num_counter = itertools.count()
 class Local(localbase):
     def __init__(local):
         local.debug = False
+        local.show_values = None
         local.debug_stack = []
         local.db2cache = {}
         local.db_context_counter = 0
@@ -271,11 +275,12 @@ class Local(localbase):
         local.perms_context = None
         local.user_groups_cache = {}
         local.user_roles_cache = defaultdict(dict)
-    def push_debug_state(local, debug):
-        local.debug_stack.append(local.debug)
+    def push_debug_state(local, debug, show_values):
+        local.debug_stack.append((local.debug, local.show_values))
         local.debug = debug
+        local.show_values = show_values
     def pop_debug_state(local):
-        local.debug = local.debug_stack.pop()
+        local.debug, local.show_values = local.debug_stack.pop()
 
 local = Local()
 
@@ -514,8 +519,9 @@ db_session = DBSessionContextManager()
 
 
 class SQLDebuggingContextManager(object):
-    def __init__(self, debug=True):
+    def __init__(self, debug=True, show_values=None):
         self.debug = debug
+        self.show_values = show_values
     def __call__(self, *args, **kwargs):
         if not kwargs and len(args) == 1 and callable(args[0]):
             arg = args[0]
@@ -524,7 +530,7 @@ class SQLDebuggingContextManager(object):
             return self._wrap_generator_function(arg)
         return self.__class__(*args, **kwargs)
     def __enter__(self):
-        local.push_debug_state(self.debug)
+        local.push_debug_state(self.debug, self.show_values)
     def __exit__(self, exc_type=None, exc=None, tb=None):
         local.pop_debug_state()
     def _wrap_function(self, func):
