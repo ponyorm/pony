@@ -67,12 +67,11 @@ __all__ = [
     'user_groups_getter', 'user_roles_getter', 'obj_labels_getter'
 ]
 
-debug = False
 suppress_debug_change = False
 
 def sql_debug(value):
-    global debug
-    if not suppress_debug_change: debug = value
+    if not suppress_debug_change:
+        local.debug = value
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')
@@ -263,6 +262,7 @@ num_counter = itertools.count()
 
 class Local(localbase):
     def __init__(local):
+        local.debug = False
         local.db2cache = {}
         local.db_context_counter = 0
         local.db_session = None
@@ -709,14 +709,14 @@ class Database(object):
         if start_transaction: cache.immediate = True
         connection = cache.prepare_connection_for_query_execution()
         cursor = connection.cursor()
-        if debug: log_sql(sql, arguments)
+        if local.debug: log_sql(sql, arguments)
         provider = database.provider
         t = time()
         try: new_id = provider.execute(cursor, sql, arguments, returning_id)
         except Exception as e:
             connection = cache.reconnect(e)
             cursor = connection.cursor()
-            if debug: log_sql(sql, arguments)
+            if local.debug: log_sql(sql, arguments)
             t = time()
             new_id = provider.execute(cursor, sql, arguments, returning_id)
         if cache.immediate: cache.in_transaction = True
@@ -943,7 +943,7 @@ class Database(object):
                     'Cannot drop table %s because it is not empty. Specify option '
                     'with_all_data=True if you want to drop table with all data' % table_name)
         for table_name in existed_tables:
-            if debug: log_orm('DROPPING TABLE %s' % table_name)
+            if local.debug: log_orm('DROPPING TABLE %s' % table_name)
             provider.drop_table(connection, table_name)
     @cut_traceback
     @db_session(ddl=True)
@@ -1524,7 +1524,7 @@ class SessionCache(object):
         if exc is not None:
             exc = getattr(exc, 'original_exc', exc)
             if not provider.should_reconnect(exc): reraise(*sys.exc_info())
-            if debug: log_orm('CONNECTION FAILED: %s' % exc)
+            if local.debug: log_orm('CONNECTION FAILED: %s' % exc)
             connection = cache.connection
             assert connection is not None
             cache.connection = None

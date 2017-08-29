@@ -192,16 +192,16 @@ class PGProvider(DBAPIProvider):
         assert not cache.in_transaction
         if cache.immediate and connection.autocommit:
             connection.autocommit = False
-            if core.debug: log_orm('SWITCH FROM AUTOCOMMIT TO TRANSACTION MODE')
+            if core.local.debug: log_orm('SWITCH FROM AUTOCOMMIT TO TRANSACTION MODE')
         db_session = cache.db_session
         if db_session is not None and db_session.serializable:
             cursor = connection.cursor()
             sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
-            if core.debug: log_orm(sql)
+            if core.local.debug: log_orm(sql)
             cursor.execute(sql)
         elif not cache.immediate and not connection.autocommit:
             connection.autocommit = True
-            if core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+            if core.local.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
         if db_session is not None and (db_session.serializable or db_session.ddl):
             cache.in_transaction = True
 

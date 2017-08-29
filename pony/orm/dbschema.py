@@ -73,13 +73,13 @@ class DBSchema(object):
                         [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
                       ]
             sql, adapter = provider.ast2sql(sql_ast)
-            if core.debug: log_sql(sql)
+            if core.local.debug: log_sql(sql)
             provider.execute(cursor, sql)
 
 class DBObject(object):
     def create(table, provider, connection):
         sql = table.get_create_command()
-        if core.debug: log_sql(sql)
+        if core.local.debug: log_sql(sql)
         cursor = connection.cursor()
         provider.execute(cursor, sql)
 

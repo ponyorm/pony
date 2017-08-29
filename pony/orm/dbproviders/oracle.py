@@ -440,7 +440,7 @@ class OraProvider(DBAPIProvider):
         if db_session is not None and db_session.serializable:
             cursor = connection.cursor()
             sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
-            if core.debug: log_orm(sql)
+            if core.local.debug: log_orm(sql)
             cursor.execute(sql)
         cache.immediate = True
         if db_session is not None and (db_session.serializable or db_session.ddl):
@@ -570,7 +570,7 @@ class OraPool(object):
             pool.forked_pools.append((pool.cx_pool, pool.pid))
             pool.cx_pool = cx_Oracle.SessionPool(**pool.kwargs)
             pool.pid = os.getpid()
-        if core.debug: log_orm('GET CONNECTION')
+        if core.local.debug: log_orm('GET CONNECTION')
         con = pool.cx_pool.acquire()
         con.outputtypehandler = output_type_handler
         return con

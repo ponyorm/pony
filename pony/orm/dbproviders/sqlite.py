@@ -296,17 +296,17 @@ class SQLiteProvider(DBAPIProvider):
                 if fk is not None: fk = fk[0]
                 if fk:
                     sql = 'PRAGMA foreign_keys = false'
-                    if core.debug: log_orm(sql)
+                    if core.local.debug: log_orm(sql)
                     cursor.execute(sql)
                 cache.saved_fk_state = bool(fk)
                 assert cache.immediate
 
             if cache.immediate:
                 sql = 'BEGIN IMMEDIATE TRANSACTION'
-                if core.debug: log_orm(sql)
+                if core.local.debug: log_orm(sql)
                 cursor.execute(sql)
                 cache.in_transaction = True
-            elif core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+            elif core.local.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
         finally:
             if cache.immediate and not cache.in_transaction:
                 provider.transaction_lock.release()
@@ -346,7 +346,7 @@ class SQLiteProvider(DBAPIProvider):
                 try:
                     cursor = connection.cursor()
                     sql = 'PRAGMA foreign_keys = true'
-                    if core.debug: log_orm(sql)
+                    if core.local.debug: log_orm(sql)
                     cursor.execute(sql)
                 except:
                     provider.pool.drop(connection)

@@ -205,14 +205,14 @@ class DBAPIProvider(object):
     @wrap_dbapi_exceptions
     def commit(provider, connection, cache=None):
         core = pony.orm.core
-        if core.debug: core.log_orm('COMMIT')
+        if core.local.debug: core.log_orm('COMMIT')
         connection.commit()
         if cache is not None: cache.in_transaction = False
 
     @wrap_dbapi_exceptions
     def rollback(provider, connection, cache=None):
         core = pony.orm.core
-        if core.debug: core.log_orm('ROLLBACK')
+        if core.local.debug: core.log_orm('ROLLBACK')
         connection.rollback()
         if cache is not None: cache.in_transaction = False
 
@@ -222,20 +222,20 @@ class DBAPIProvider(object):
         if cache is not None and cache.db_session is not None and cache.db_session.ddl:
             provider.drop(connection, cache)
         else:
-            if core.debug: core.log_orm('RELEASE CONNECTION')
+            if core.local.debug: core.log_orm('RELEASE CONNECTION')
             provider.pool.release(connection)
 
     @wrap_dbapi_exceptions
     def drop(provider, connection, cache=None):
         core = pony.orm.core
-        if core.debug: core.log_orm('CLOSE CONNECTION')
+        if core.local.debug: core.log_orm('CLOSE CONNECTION')
         provider.pool.drop(connection)
         if cache is not None: cache.in_transaction = False
 
     @wrap_dbapi_exceptions
     def disconnect(provider):
         core = pony.orm.core
-        if core.debug: core.log_orm('DISCONNECT')
+        if core.local.debug: core.log_orm('DISCONNECT')
         provider.pool.disconnect()
 
     @wrap_dbapi_exceptions
@@ -311,10 +311,10 @@ class Pool(localbase):
             pool.con = pool.pid = None
         core = pony.orm.core
         if pool.con is None:
-            if core.debug: core.log_orm('GET NEW CONNECTION')
+            if core.local.debug: core.log_orm('GET NEW CONNECTION')
             pool._connect()
             pool.pid = pid
-        elif core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
+        elif core.local.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
         return pool.con
     def _connect(pool):
         pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
