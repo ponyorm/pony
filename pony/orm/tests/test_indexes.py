@@ -14,7 +14,7 @@ class TestIndexes(unittest.TestCase):
             composite_key(name, 'age')
         db.generate_mapping(create_tables=True)
 
-        [ i1, i2 ] = Person._indexes_
+        i1, i2 = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
         self.assertEqual(i1.is_pk, True)
         self.assertEqual(i1.is_unique, True)
@@ -38,7 +38,7 @@ class TestIndexes(unittest.TestCase):
             composite_index(name, 'age')
         db.generate_mapping(create_tables=True)
 
-        [ i1, i2 ] = Person._indexes_
+        i1, i2 = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
         self.assertEqual(i1.is_pk, True)
         self.assertEqual(i1.is_unique, True)
