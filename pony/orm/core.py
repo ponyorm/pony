@@ -356,9 +356,10 @@ def rollback():
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
-    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable', 'strict'
+    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable', 'strict', \
+                'sql_debug', 'show_values'
     def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False,
-                 retry_exceptions=(TransactionError,), allowed_exceptions=()):
+                 retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
@@ -377,6 +378,8 @@ class DBSessionContextManager(object):
         db_session.strict = strict
         db_session.retry_exceptions = retry_exceptions
         db_session.allowed_exceptions = allowed_exceptions
+        db_session.sql_debug = sql_debug
+        db_session.show_values = show_values
     def __call__(db_session, *args, **kwargs):
         if not args and not kwargs: return db_session
         if len(args) > 1: throw(TypeError,
@@ -401,7 +404,11 @@ class DBSessionContextManager(object):
         elif db_session.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
+        if db_session.sql_debug is not None:
+            local.push_debug_state(db_session.sql_debug, db_session.show_values)
     def __exit__(db_session, exc_type=None, exc=None, tb=None):
+        if db_session.sql_debug is not None:
+            local.pop_debug_state()
         local.db_context_counter -= 1
         if local.db_context_counter: return
         assert local.db_session is db_session
@@ -431,6 +438,8 @@ class DBSessionContextManager(object):
             if db_session.ddl and local.db_context_counter:
                 if isinstance(func, types.FunctionType): func = func.__name__ + '()'
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
+            if db_session.sql_debug is not None:
+                local.push_debug_state(db_session.sql_debug, db_session.show_values)
             exc = tb = None
             try:
                 for i in xrange(db_session.retry+1):
@@ -448,7 +457,10 @@ class DBSessionContextManager(object):
                         if not do_retry: raise
                     finally: db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
-            finally: del exc, tb
+            finally:
+                del exc, tb
+                if db_session.sql_debug is not None:
+                    local.pop_debug_state()
         return decorator(new_func, func)
     def _wrap_generator_function(db_session, gen_func):
         for option in ('ddl', 'retry', 'serializable'):
@@ -479,6 +491,8 @@ class DBSessionContextManager(object):
                 local.db_session = db_session
                 local.db2cache.update(db2cache_copy)
                 db2cache_copy.clear()
+                if db_session.sql_debug is not None:
+                    local.push_debug_state(db_session.sql_debug, db_session.show_values)
                 try:
                     try:
                         output = interact(iterator, input, exc_info)
@@ -495,6 +509,8 @@ class DBSessionContextManager(object):
                 else:
                     return output
                 finally:
+                    if db_session.sql_debug is not None:
+                        local.pop_debug_state()
                     db2cache_copy.update(local.db2cache)
                     local.db2cache.clear()
                     local.db_context_counter = 0
