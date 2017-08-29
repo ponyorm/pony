@@ -46,7 +46,7 @@ __all__ = [
     'DatabaseContainsIncorrectValue', 'DatabaseContainsIncorrectEmptyValue',
     'TranslationError', 'ExprEvalError', 'PermissionError',
 
-    'Database', 'sql_debug', 'sql_debugging', 'show',
+    'Database', 'sql_debug', 'set_sql_debug', 'sql_debugging', 'show',
 
     'PrimaryKey', 'Required', 'Optional', 'Set', 'Discriminator',
     'composite_key', 'composite_index',
@@ -70,8 +70,16 @@ __all__ = [
 suppress_debug_change = False
 
 def sql_debug(value):
+    # todo: make sql_debug deprecated
     if not suppress_debug_change:
         local.debug = value
+
+
+def set_sql_debug(debug=True, show_values=None):
+    if not suppress_debug_change:
+        local.debug = debug
+        local.show_values = show_values
+
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')
@@ -277,8 +285,9 @@ class Local(localbase):
         local.user_roles_cache = defaultdict(dict)
     def push_debug_state(local, debug, show_values):
         local.debug_stack.append((local.debug, local.show_values))
-        local.debug = debug
-        local.show_values = show_values
+        if not suppress_debug_change:
+            local.debug = debug
+            local.show_values = show_values
     def pop_debug_state(local):
         local.debug, local.show_values = local.debug_stack.pop()
 
