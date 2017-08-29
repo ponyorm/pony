@@ -158,12 +158,12 @@ class DBAPIProvider(object):
             if is_unique: template = 'unq_%(tname)s__%(cnames)s'
             elif m2m: template = 'idx_%(tname)s'
             else: template = 'idx_%(tname)s__%(cnames)s'
-            index_name = template % dict(tname=table_name,
+            index_name = template % dict(tname=provider.base_name(table_name),
                                          cnames='_'.join(name for name in column_names))
         return provider.normalize_name(index_name.lower())
 
     def get_default_fk_name(provider, child_table_name, parent_table_name, child_column_names):
-        fk_name = 'fk_%s__%s' % (child_table_name, '__'.join(child_column_names))
+        fk_name = 'fk_%s__%s' % (provider.base_name(child_table_name), '__'.join(child_column_names))
         return provider.normalize_name(fk_name.lower())
 
     def split_table_name(provider, table_name):
@@ -176,6 +176,13 @@ class DBAPIProvider(object):
                              % (provider.dialect, provider.name_before_table,
                                 size, 's' if size != 1 else '', table_name))
         return table_name[0], table_name[1]
+
+    def base_name(provider, name):
+        if not isinstance(name, basestring):
+            assert type(name) is tuple
+            name = name[-1]
+            assert isinstance(name, basestring)
+        return name
 
     def quote_name(provider, name):
         quote_char = provider.quote_char

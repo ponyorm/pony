@@ -66,9 +66,7 @@ class DBSchema(object):
         cursor = connection.cursor()
         split = provider.split_table_name
         for table in sorted(itervalues(schema.tables), key=lambda table: split(table.name)):
-            if isinstance(table.name, tuple): alias = table.name[-1]
-            elif isinstance(table.name, basestring): alias = table.name
-            else: assert False  # pragma: no cover
+            alias = provider.base_name(table.name)
             sql_ast = [ 'SELECT',
                         [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
                         [ 'FROM', [ alias, 'TABLE', table.name ] ],
