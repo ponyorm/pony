@@ -14,7 +14,7 @@ class TestIndexes(unittest.TestCase):
             composite_key(name, 'age')
         db.generate_mapping(create_tables=True)
 
-        [ i1, i2 ] = Person._indexes_
+        i1, i2 = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
         self.assertEqual(i1.is_pk, True)
         self.assertEqual(i1.is_unique, True)
@@ -38,7 +38,7 @@ class TestIndexes(unittest.TestCase):
             composite_index(name, 'age')
         db.generate_mapping(create_tables=True)
 
-        [ i1, i2 ] = Person._indexes_
+        i1, i2 = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
         self.assertEqual(i1.is_pk, True)
         self.assertEqual(i1.is_unique, True)
@@ -58,7 +58,7 @@ class TestIndexes(unittest.TestCase):
         index_sql = 'CREATE INDEX "idx_person__name_age" ON "Person" ("name", "age")'
         self.assertTrue(index_sql in create_script)
 
-    def test_2(self):
+    def test_3(self):
         db = Database('sqlite', ':memory:')
         class User(db.Entity):
             name = Required(str, unique=True)

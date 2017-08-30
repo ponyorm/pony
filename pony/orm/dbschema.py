@@ -31,7 +31,8 @@ class DBSchema(object):
     def order_tables_to_create(schema):
         tables = []
         created_tables = set()
-        tables_to_create = sorted(itervalues(schema.tables), key=lambda table: table.name)
+        split = schema.provider.split_table_name
+        tables_to_create = sorted(itervalues(schema.tables), key=lambda table: split(table.name))
         while tables_to_create:
             for table in tables_to_create:
                 if table.parent_tables.issubset(created_tables):
@@ -63,23 +64,22 @@ class DBSchema(object):
                                          'Try to delete %s %s first.' % (tn1, n1, tn2, n2, n2, tn2))
     def check_tables(schema, provider, connection):
         cursor = connection.cursor()
-        for table in sorted(itervalues(schema.tables), key=lambda table: table.name):
-            if isinstance(table.name, tuple): alias = table.name[-1]
-            elif isinstance(table.name, basestring): alias = table.name
-            else: assert False  # pragma: no cover
+        split = provider.split_table_name
+        for table in sorted(itervalues(schema.tables), key=lambda table: split(table.name)):
+            alias = provider.base_name(table.name)
             sql_ast = [ 'SELECT',
                         [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
                         [ 'FROM', [ alias, 'TABLE', table.name ] ],
                         [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
                       ]
             sql, adapter = provider.ast2sql(sql_ast)
-            if core.debug: log_sql(sql)
+            if core.local.debug: log_sql(sql)
             provider.execute(cursor, sql)
 
 class DBObject(object):
     def create(table, provider, connection):
         sql = table.get_create_command()
-        if core.debug: log_sql(sql)
+        if core.local.debug: log_sql(sql)
         cursor = connection.cursor()
         provider.execute(cursor, sql)
 
@@ -257,9 +257,9 @@ class DBIndex(Constraint):
             throw(DBSchemaError, 'Index %s cannot be created, name is already in use' % name)
         Constraint.__init__(index, name, schema)
         for column in columns:
-            column.is_pk = len(columns) == 1 and is_pk
-            column.is_pk_part = bool(is_pk)
-            column.is_unique = is_unique and len(columns) == 1
+            column.is_pk = column.is_pk or (len(columns) == 1 and is_pk)
+            column.is_pk_part = column.is_pk_part or bool(is_pk)
+            column.is_unique = column.is_unique or (is_unique and len(columns) == 1)
         table.indexes[columns] = index
         index.table = table
         index.columns = columns

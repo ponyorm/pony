@@ -261,7 +261,7 @@ class MySQLProvider(DBAPIProvider):
             if fk is not None: fk = (fk[1] == 'ON')
             if fk:
                 sql = 'SET foreign_key_checks = 0'
-                if core.debug: log_orm(sql)
+                if core.local.debug: log_orm(sql)
                 cursor.execute(sql)
             cache.saved_fk_state = bool(fk)
             cache.in_transaction = True
@@ -269,7 +269,7 @@ class MySQLProvider(DBAPIProvider):
         if db_session is not None and db_session.serializable:
             cursor = connection.cursor()
             sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
-            if core.debug: log_orm(sql)
+            if core.local.debug: log_orm(sql)
             cursor.execute(sql)
             cache.in_transaction = True
 
@@ -281,7 +281,7 @@ class MySQLProvider(DBAPIProvider):
                 try:
                     cursor = connection.cursor()
                     sql = 'SET foreign_key_checks = 1'
-                    if core.debug: log_orm(sql)
+                    if core.local.debug: log_orm(sql)
                     cursor.execute(sql)
                 except:
                     provider.pool.drop(connection)

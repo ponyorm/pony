@@ -4,8 +4,6 @@ import unittest
 from pony.orm import *
 from pony import orm
 
-import os
-
 
 class Test(unittest.TestCase):
 
@@ -36,9 +34,7 @@ class Test(unittest.TestCase):
 
     @db_session
     def test(self):
-        qu = left_join(
-            (s.name, s.user.name) for s in self.db.Server
-        )[:]
+        qu = left_join((s.name, s.user.name) for s in self.db.Server)[:]
         for server, user in qu:
             if user is None:
                 break

@@ -158,12 +158,12 @@ class DBAPIProvider(object):
             if is_unique: template = 'unq_%(tname)s__%(cnames)s'
             elif m2m: template = 'idx_%(tname)s'
             else: template = 'idx_%(tname)s__%(cnames)s'
-            index_name = template % dict(tname=table_name,
+            index_name = template % dict(tname=provider.base_name(table_name),
                                          cnames='_'.join(name for name in column_names))
         return provider.normalize_name(index_name.lower())
 
     def get_default_fk_name(provider, child_table_name, parent_table_name, child_column_names):
-        fk_name = 'fk_%s__%s' % (child_table_name, '__'.join(child_column_names))
+        fk_name = 'fk_%s__%s' % (provider.base_name(child_table_name), '__'.join(child_column_names))
         return provider.normalize_name(fk_name.lower())
 
     def split_table_name(provider, table_name):
@@ -176,6 +176,13 @@ class DBAPIProvider(object):
                              % (provider.dialect, provider.name_before_table,
                                 size, 's' if size != 1 else '', table_name))
         return table_name[0], table_name[1]
+
+    def base_name(provider, name):
+        if not isinstance(name, basestring):
+            assert type(name) is tuple
+            name = name[-1]
+            assert isinstance(name, basestring)
+        return name
 
     def quote_name(provider, name):
         quote_char = provider.quote_char
@@ -205,14 +212,14 @@ class DBAPIProvider(object):
     @wrap_dbapi_exceptions
     def commit(provider, connection, cache=None):
         core = pony.orm.core
-        if core.debug: core.log_orm('COMMIT')
+        if core.local.debug: core.log_orm('COMMIT')
         connection.commit()
         if cache is not None: cache.in_transaction = False
 
     @wrap_dbapi_exceptions
     def rollback(provider, connection, cache=None):
         core = pony.orm.core
-        if core.debug: core.log_orm('ROLLBACK')
+        if core.local.debug: core.log_orm('ROLLBACK')
         connection.rollback()
         if cache is not None: cache.in_transaction = False
 
@@ -222,20 +229,20 @@ class DBAPIProvider(object):
         if cache is not None and cache.db_session is not None and cache.db_session.ddl:
             provider.drop(connection, cache)
         else:
-            if core.debug: core.log_orm('RELEASE CONNECTION')
+            if core.local.debug: core.log_orm('RELEASE CONNECTION')
             provider.pool.release(connection)
 
     @wrap_dbapi_exceptions
     def drop(provider, connection, cache=None):
         core = pony.orm.core
-        if core.debug: core.log_orm('CLOSE CONNECTION')
+        if core.local.debug: core.log_orm('CLOSE CONNECTION')
         provider.pool.drop(connection)
         if cache is not None: cache.in_transaction = False
 
     @wrap_dbapi_exceptions
     def disconnect(provider):
         core = pony.orm.core
-        if core.debug: core.log_orm('DISCONNECT')
+        if core.local.debug: core.log_orm('DISCONNECT')
         provider.pool.disconnect()
 
     @wrap_dbapi_exceptions
@@ -311,10 +318,10 @@ class Pool(localbase):
             pool.con = pool.pid = None
         core = pony.orm.core
         if pool.con is None:
-            if core.debug: core.log_orm('GET NEW CONNECTION')
+            if core.local.debug: core.log_orm('GET NEW CONNECTION')
             pool._connect()
             pool.pid = pid
-        elif core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
+        elif core.local.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
         return pool.con
     def _connect(pool):
         pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)

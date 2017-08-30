@@ -46,7 +46,7 @@ __all__ = [
     'DatabaseContainsIncorrectValue', 'DatabaseContainsIncorrectEmptyValue',
     'TranslationError', 'ExprEvalError', 'PermissionError',
 
-    'Database', 'sql_debug', 'show',
+    'Database', 'sql_debug', 'set_sql_debug', 'sql_debugging', 'show',
 
     'PrimaryKey', 'Required', 'Optional', 'Set', 'Discriminator',
     'composite_key', 'composite_index',
@@ -67,20 +67,38 @@ __all__ = [
     'user_groups_getter', 'user_roles_getter', 'obj_labels_getter'
 ]
 
-debug = False
 suppress_debug_change = False
 
 def sql_debug(value):
-    global debug
-    if not suppress_debug_change: debug = value
+    # todo: make sql_debug deprecated
+    if not suppress_debug_change:
+        local.debug = value
+
+
+def set_sql_debug(debug=True, show_values=None):
+    if not suppress_debug_change:
+        local.debug = debug
+        local.show_values = show_values
+
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')
 
 orm_log_level = logging.INFO
 
+def has_handlers(logger):
+    if not PY2:
+        return logger.hasHandlers()
+    while logger:
+        if logger.handlers:
+            return True
+        elif not logger.propagate:
+            return False
+        logger = logger.parent
+    return False
+
 def log_orm(msg):
-    if logging.root.handlers:
+    if has_handlers(orm_logger):
         orm_logger.log(orm_log_level, msg)
     else:
         print(msg)
@@ -88,15 +106,18 @@ def log_orm(msg):
 def log_sql(sql, arguments=None):
     if type(arguments) is list:
         sql = 'EXECUTEMANY (%d)\n%s' % (len(arguments), sql)
-    if logging.root.handlers:
-        sql_logger.log(orm_log_level, sql)  # arguments can hold sensitive information
+    if has_handlers(sql_logger):
+        if local.show_values and arguments:
+            sql = '%s\n%s' % (sql, format_arguments(arguments))
+        sql_logger.log(orm_log_level, sql)
     else:
-        print(sql)
-        if not arguments: pass
-        elif type(arguments) is list:
-            for args in arguments: print(args2str(args))
-        else: print(args2str(arguments))
-        print()
+        if (local.show_values is None or local.show_values) and arguments:
+            sql = '%s\n%s' % (sql, format_arguments(arguments))
+        print(sql, end='\n\n')
+
+def format_arguments(arguments):
+    if type(arguments) is not list: return args2str(arguments)
+    return '\n'.join(args2str(args) for args in arguments)
 
 def args2str(args):
     if isinstance(args, (tuple, list)):
@@ -252,6 +273,9 @@ num_counter = itertools.count()
 
 class Local(localbase):
     def __init__(local):
+        local.debug = False
+        local.show_values = None
+        local.debug_stack = []
         local.db2cache = {}
         local.db_context_counter = 0
         local.db_session = None
@@ -259,6 +283,13 @@ class Local(localbase):
         local.perms_context = None
         local.user_groups_cache = {}
         local.user_roles_cache = defaultdict(dict)
+    def push_debug_state(local, debug, show_values):
+        local.debug_stack.append((local.debug, local.show_values))
+        if not suppress_debug_change:
+            local.debug = debug
+            local.show_values = show_values
+    def pop_debug_state(local):
+        local.debug, local.show_values = local.debug_stack.pop()
 
 local = Local()
 
@@ -334,9 +365,10 @@ def rollback():
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
-    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable', 'strict'
+    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable', 'strict', \
+                'sql_debug', 'show_values'
     def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False,
-                 retry_exceptions=(TransactionError,), allowed_exceptions=()):
+                 retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
@@ -355,6 +387,8 @@ class DBSessionContextManager(object):
         db_session.strict = strict
         db_session.retry_exceptions = retry_exceptions
         db_session.allowed_exceptions = allowed_exceptions
+        db_session.sql_debug = sql_debug
+        db_session.show_values = show_values
     def __call__(db_session, *args, **kwargs):
         if not args and not kwargs: return db_session
         if len(args) > 1: throw(TypeError,
@@ -379,7 +413,11 @@ class DBSessionContextManager(object):
         elif db_session.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
+        if db_session.sql_debug is not None:
+            local.push_debug_state(db_session.sql_debug, db_session.show_values)
     def __exit__(db_session, exc_type=None, exc=None, tb=None):
+        if db_session.sql_debug is not None:
+            local.pop_debug_state()
         local.db_context_counter -= 1
         if local.db_context_counter: return
         assert local.db_session is db_session
@@ -409,6 +447,8 @@ class DBSessionContextManager(object):
             if db_session.ddl and local.db_context_counter:
                 if isinstance(func, types.FunctionType): func = func.__name__ + '()'
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
+            if db_session.sql_debug is not None:
+                local.push_debug_state(db_session.sql_debug, db_session.show_values)
             exc = tb = None
             try:
                 for i in xrange(db_session.retry+1):
@@ -426,7 +466,10 @@ class DBSessionContextManager(object):
                         if not do_retry: raise
                     finally: db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
-            finally: del exc, tb
+            finally:
+                del exc, tb
+                if db_session.sql_debug is not None:
+                    local.pop_debug_state()
         return decorator(new_func, func)
     def _wrap_generator_function(db_session, gen_func):
         for option in ('ddl', 'retry', 'serializable'):
@@ -457,6 +500,8 @@ class DBSessionContextManager(object):
                 local.db_session = db_session
                 local.db2cache.update(db2cache_copy)
                 db2cache_copy.clear()
+                if db_session.sql_debug is not None:
+                    local.push_debug_state(db_session.sql_debug, db_session.show_values)
                 try:
                     try:
                         output = interact(iterator, input, exc_info)
@@ -473,6 +518,8 @@ class DBSessionContextManager(object):
                 else:
                     return output
                 finally:
+                    if db_session.sql_debug is not None:
+                        local.pop_debug_state()
                     db2cache_copy.update(local.db2cache)
                     local.db2cache.clear()
                     local.db_context_counter = 0
@@ -494,6 +541,70 @@ class DBSessionContextManager(object):
         return decorator(new_gen_func, gen_func)
 
 db_session = DBSessionContextManager()
+
+
+class SQLDebuggingContextManager(object):
+    def __init__(self, debug=True, show_values=None):
+        self.debug = debug
+        self.show_values = show_values
+    def __call__(self, *args, **kwargs):
+        if not kwargs and len(args) == 1 and callable(args[0]):
+            arg = args[0]
+            if not isgeneratorfunction(arg):
+                return self._wrap_function(arg)
+            return self._wrap_generator_function(arg)
+        return self.__class__(*args, **kwargs)
+    def __enter__(self):
+        local.push_debug_state(self.debug, self.show_values)
+    def __exit__(self, exc_type=None, exc=None, tb=None):
+        local.pop_debug_state()
+    def _wrap_function(self, func):
+        def new_func(func, *args, **kwargs):
+            self.__enter__()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                self.__exit__()
+        return decorator(new_func, func)
+    def _wrap_generator_function(self, gen_func):
+        def interact(iterator, input=None, exc_info=None):
+            if exc_info is None:
+                return next(iterator) if input is None else iterator.send(input)
+
+            if exc_info[0] is GeneratorExit:
+                close = getattr(iterator, 'close', None)
+                if close is not None: close()
+                reraise(*exc_info)
+
+            throw_ = getattr(iterator, 'throw', None)
+            if throw_ is None: reraise(*exc_info)
+            return throw_(*exc_info)
+
+        def new_gen_func(gen_func, *args, **kwargs):
+            def wrapped_interact(iterator, input=None, exc_info=None):
+                self.__enter__()
+                try:
+                    return interact(iterator, input, exc_info)
+                finally:
+                    self.__exit__()
+
+            gen = gen_func(*args, **kwargs)
+            iterator = iter(gen)
+            output = wrapped_interact(iterator)
+            try:
+                while True:
+                    try:
+                        input = yield output
+                    except:
+                        output = wrapped_interact(iterator, exc_info=sys.exc_info())
+                    else:
+                        output = wrapped_interact(iterator, input)
+            except StopIteration:
+                return
+        return decorator(new_gen_func, gen_func)
+
+sql_debugging = SQLDebuggingContextManager()
+
 
 def throw_db_session_is_over(action, obj, attr=None):
     msg = 'Cannot %s %s%s: the database session is over'
@@ -698,14 +809,14 @@ class Database(object):
         if start_transaction: cache.immediate = True
         connection = cache.prepare_connection_for_query_execution()
         cursor = connection.cursor()
-        if debug: log_sql(sql, arguments)
+        if local.debug: log_sql(sql, arguments)
         provider = database.provider
         t = time()
         try: new_id = provider.execute(cursor, sql, arguments, returning_id)
         except Exception as e:
             connection = cache.reconnect(e)
             cursor = connection.cursor()
-            if debug: log_sql(sql, arguments)
+            if local.debug: log_sql(sql, arguments)
             t = time()
             new_id = provider.execute(cursor, sql, arguments, returning_id)
         if cache.immediate: cache.in_transaction = True
@@ -867,16 +978,16 @@ class Database(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns, attr.index)
+                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns, attr.index)
                     if attr.symmetric:
                         child_columns = get_columns(m2m_table, attr.reverse_columns)
-                        m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
+                        m2m_table.add_foreign_key(attr.reverse_fk_name, child_columns, table, parent_columns)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(None, child_columns, parent_table, parent_columns, attr.index)
+                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index)
                 elif attr.index and attr.columns:
                     columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
@@ -932,7 +1043,7 @@ class Database(object):
                     'Cannot drop table %s because it is not empty. Specify option '
                     'with_all_data=True if you want to drop table with all data' % table_name)
         for table_name in existed_tables:
-            if debug: log_orm('DROPPING TABLE %s' % table_name)
+            if local.debug: log_orm('DROPPING TABLE %s' % table_name)
             provider.drop_table(connection, table_name)
     @cut_traceback
     @db_session(ddl=True)
@@ -1513,7 +1624,7 @@ class SessionCache(object):
         if exc is not None:
             exc = getattr(exc, 'original_exc', exc)
             if not provider.should_reconnect(exc): reraise(*sys.exc_info())
-            if debug: log_orm('CONNECTION FAILED: %s' % exc)
+            if local.debug: log_orm('CONNECTION FAILED: %s' % exc)
             connection = cache.connection
             assert connection is not None
             cache.connection = None
@@ -1742,7 +1853,7 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic'
+                'optimistic', 'fk_name'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1801,6 +1912,7 @@ class Attribute(object):
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
         attr.index = kwargs.pop('index', None)
+        attr.fk_name = kwargs.pop('fk_name', None)
         attr.col_paths = []
         attr._columns_checked = False
         attr.composite_keys = []
@@ -1874,6 +1986,11 @@ class Attribute(object):
             if reverse.is_collection: throw(TypeError,
                 "'cascade_delete' option cannot be set for attribute %s, "
                 "because reverse attribute %s is collection" % (attr, reverse))
+        if attr.is_collection and not reverse.is_collection:
+            if attr.fk_name is not None:
+                throw(TypeError, 'You should specify fk_name in %s instead of %s' % (reverse, attr))
+        for option in attr.kwargs:
+            throw(TypeError, 'Attribute %s has unknown option %r' % (attr, option))
     @cut_traceback
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
@@ -2387,7 +2504,7 @@ class PrimaryKey(Required):
 class Collection(Attribute):
     __slots__ = 'table', 'wrapper_class', 'symmetric', 'reverse_column', 'reverse_columns', \
                 'nplus1_threshold', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', \
-                'cached_count_sql', 'cached_empty_sql'
+                'cached_count_sql', 'cached_empty_sql', 'reverse_fk_name'
     def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
         table = kwargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -2420,8 +2537,9 @@ class Collection(Attribute):
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
         else: attr.reverse_columns = []
 
+        attr.reverse_fk_name = kwargs.pop('reverse_fk_name', None)
+
         attr.nplus1_threshold = kwargs.pop('nplus1_threshold', 1)
-        for option in attr.kwargs: throw(TypeError, 'Unknown option %r' % option)
         attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
