@@ -978,16 +978,16 @@ class Database(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns, attr.index)
+                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns, attr.index)
                     if attr.symmetric:
                         child_columns = get_columns(m2m_table, attr.reverse_columns)
-                        m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
+                        m2m_table.add_foreign_key(attr.reverse_fk_name, child_columns, table, parent_columns)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(None, child_columns, parent_table, parent_columns, attr.index)
+                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index)
                 elif attr.index and attr.columns:
                     columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
@@ -1853,7 +1853,7 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic'
+                'optimistic', 'fk_name'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1912,6 +1912,7 @@ class Attribute(object):
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
         attr.index = kwargs.pop('index', None)
+        attr.fk_name = kwargs.pop('fk_name', None)
         attr.col_paths = []
         attr._columns_checked = False
         attr.composite_keys = []
@@ -1985,6 +1986,9 @@ class Attribute(object):
             if reverse.is_collection: throw(TypeError,
                 "'cascade_delete' option cannot be set for attribute %s, "
                 "because reverse attribute %s is collection" % (attr, reverse))
+        if attr.is_collection and not reverse.is_collection:
+            if attr.fk_name is not None:
+                throw(TypeError, 'You should specify fk_name in %s instead of %s' % (reverse, attr))
         for option in attr.kwargs:
             throw(TypeError, 'Attribute %s has unknown option %r' % (attr, option))
     @cut_traceback
@@ -2500,7 +2504,7 @@ class PrimaryKey(Required):
 class Collection(Attribute):
     __slots__ = 'table', 'wrapper_class', 'symmetric', 'reverse_column', 'reverse_columns', \
                 'nplus1_threshold', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', \
-                'cached_count_sql', 'cached_empty_sql'
+                'cached_count_sql', 'cached_empty_sql', 'reverse_fk_name'
     def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
         table = kwargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -2532,6 +2536,8 @@ class Collection(Attribute):
                     throw(TypeError, "Parameter 'reverse_columns' must be a list of strings. Got: %r" % attr.reverse_columns)
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
         else: attr.reverse_columns = []
+
+        attr.reverse_fk_name = kwargs.pop('reverse_fk_name', None)
 
         attr.nplus1_threshold = kwargs.pop('nplus1_threshold', 1)
         attr.cached_load_sql = {}
