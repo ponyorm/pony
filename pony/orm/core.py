@@ -1985,6 +1985,8 @@ class Attribute(object):
             if reverse.is_collection: throw(TypeError,
                 "'cascade_delete' option cannot be set for attribute %s, "
                 "because reverse attribute %s is collection" % (attr, reverse))
+        for option in attr.kwargs:
+            throw(TypeError, 'Attribute %s has unknown option %r' % (attr, option))
     @cut_traceback
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
@@ -2532,7 +2534,6 @@ class Collection(Attribute):
         else: attr.reverse_columns = []
 
         attr.nplus1_threshold = kwargs.pop('nplus1_threshold', 1)
-        for option in attr.kwargs: throw(TypeError, 'Unknown option %r' % option)
         attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
