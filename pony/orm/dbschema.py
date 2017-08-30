@@ -31,7 +31,8 @@ class DBSchema(object):
     def order_tables_to_create(schema):
         tables = []
         created_tables = set()
-        tables_to_create = sorted(itervalues(schema.tables), key=lambda table: table.name)
+        split = schema.provider.split_table_name
+        tables_to_create = sorted(itervalues(schema.tables), key=lambda table: split(table.name))
         while tables_to_create:
             for table in tables_to_create:
                 if table.parent_tables.issubset(created_tables):
@@ -63,7 +64,8 @@ class DBSchema(object):
                                          'Try to delete %s %s first.' % (tn1, n1, tn2, n2, n2, tn2))
     def check_tables(schema, provider, connection):
         cursor = connection.cursor()
-        for table in sorted(itervalues(schema.tables), key=lambda table: table.name):
+        split = provider.split_table_name
+        for table in sorted(itervalues(schema.tables), key=lambda table: split(table.name)):
             if isinstance(table.name, tuple): alias = table.name[-1]
             elif isinstance(table.name, basestring): alias = table.name
             else: assert False  # pragma: no cover
