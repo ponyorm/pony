@@ -18,7 +18,7 @@ from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, inline_list
+from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
 
 from pony.migrate.operations import Op, OperationBatch
 
@@ -40,97 +40,45 @@ class SQLiteTable(dbschema.Table):
         ops.append(Op('PRAGMA foreign_keys = false', obj=None, type='pragma_foreign_keys'))
         return [ OperationBatch(ops, type='rename') ]
 
-    def get_alter_ops(table, prev, new_tables, executor, renamed_columns=None):
-        current_schema = executor.schema
-        operations = executor.operations
-
-        # table name before possible rename
-        table_name_before = executor.renamed_tables.get(table.name)
-        if not table_name_before:
-            table_name_before = table.name
-
-        if not current_schema.tables.get(table_name_before):
-            raise StopIteration
-
-        def is_deleted(col_name):
-            for op in operations:
-                if op.type != 'drop' or not isinstance(op.obj, table.schema.column_class):
-                    continue
-                col = op.obj
-                if col.name == col_name:
-                    return True
-            if col_name in prev.column_dict and col_name not in table.column_dict:
-                return True
-
-        @inline_list
-        def cols_to_create():
-            for col in table.column_list:
-                yield col
-            actual_table = current_schema.tables[table_name_before]
-            for col in actual_table.column_list:
-                if col.name not in table.column_dict:
-                    yield col
-
-        cols_to_create = [c for c in cols_to_create if not is_deleted(c.name)]
-
-        quote_name = table.schema.provider.quote_name
-        name = quote_name(table.name)
-        name__new = quote_name(''.join((table.name, '__new')))
-
+    def get_alter_ops(table):
         batch = OperationBatch(type='rename')
-
-        batch.append(
-            Op('PRAGMA foreign_keys = false', obj=None, type='pragma_foreign_keys')
-        )
-
         index_ops = []
 
-        table_columns = table.column_list
-        table_name = table.name
-        try:
-            table.column_list = cols_to_create
-            table.name = ''.join((table.name, '__new'))
-            for op in table.get_create_ops():
-                batch.append(op)
+        original_table_name = table.name
+        tmp_name = table.name + '__new'
 
-            # Got to copy all indices to the fresh created table
-            for index in prev.indexes.values():
-                if index.is_pk or index.is_unique:
-                    continue
-                sql = index.get_create_command()
-                index_ops.append(
-                    Op(sql, obj=index, type='create')
-                )
-        finally:
-            table.column_list = table_columns
-            table.name = table_name
+        table.name = tmp_name
+        batch.extend(table.get_create_ops())
+        for index in table.prev.indexes.values():
+            if index.is_pk or index.is_unique and len(index.col_names) > 1:
+                continue
+            sql = index.get_create_command()
+            index_ops.append(Op(sql, obj=index, type='create'))
+        table.name = original_table_name
 
-        copy_cols = [quote_name(c.name) for c in cols_to_create]
+        quote_name = table.schema.provider.quote_name
 
-        cols = ', '.join(copy_cols)
-        insert_sql = 'INSERT INTO {} ({}) SELECT {} FROM {}'.format(name__new, cols, cols, name)
+        new_col_names = []
+        prev_values = []
+        for c in table.column_list:
+            new_col_names.append(quote_name(c.name))
+            if c.prev is not None:
+                prev_values.append(quote_name(c.prev.name))
+            else:
+                prev_values.append('NULL')
 
-        op = Op(insert_sql, obj=table, type='insert')
-        batch.append(op)
+        insert_sql = 'INSERT INTO {} ({}) SELECT {} FROM {}'.format(
+            quote_name(tmp_name), ', '.join(new_col_names), ', '.join(prev_values), quote_name(table.prev.name))
+        batch.append(Op(insert_sql, obj=table, type='insert'))
 
-        drop_sql = 'DROP TABLE {}'.format(name)
-        op = Op(drop_sql, obj=table, type='drop')
-        batch.append(op)
+        drop_sql = 'DROP TABLE {}'.format(quote_name(table.prev.name))
+        batch.append(Op(drop_sql, obj=table, type='drop'))
 
-        rename_sql = 'ALTER TABLE {} RENAME TO {}'.format(name__new, name)
-        op = Op(rename_sql, obj=table, type='rename')
-        batch.append(op)
+        rename_sql = 'ALTER TABLE {} RENAME TO {}'.format(tmp_name, quote_name(table.prev.name))
+        batch.append(Op(rename_sql, obj=table, type='rename'))
 
         batch.extend(index_ops)
-
-        with orm.db_session:
-            cache = executor.db._get_cache()
-        if cache.saved_fk_state:
-            batch.append(
-                Op('PRAGMA foreign_keys = true', obj=None, type='pragma_foreign_keys')
-            )
-
-        yield batch
+        return [ batch ]
 
 class SQLiteIndex(dbschema.DBIndex):
     def can_be_renamed(index):

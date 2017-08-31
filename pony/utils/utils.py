@@ -556,17 +556,3 @@ def unpickle_ast(pickled):
 def copy_ast(tree):
     return unpickle_ast(pickle_ast(tree))
 
-def inline_list(gen_func):
-    li = []
-    for item in gen_func():
-        li.append(item)
-    return li
-
-def inline_dict(gen_func):
-    dic = {}
-    for k, v in gen_func():
-        dic[k] = v
-    return dic
-
-class ToHashable(object):
-    'TODO'
