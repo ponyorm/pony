@@ -41,9 +41,6 @@ class MySQLIndex(dbschema.DBIndex):
     rename_sql_template = 'ALTER TABLE %(table_name)s RENAME INDEX %(prev_name)s TO %(new_name)s'
     drop_sql_template = 'DROP INDEX %(name)s ON %(table_name)s'
 
-    def get_pk_alter_ops(index, prev):
-        return ()
-
     def get_drop_ops(index):
         table = index.table
         schema = table.schema

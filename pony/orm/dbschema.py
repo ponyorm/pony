@@ -111,7 +111,7 @@ class DBObject(object):
         provider.execute(cursor, sql)
     def get_create_ops(db_object):
         sql = db_object.get_create_command()
-        yield Op(sql, obj=db_object, type='create')
+        return [ Op(sql, obj=db_object, type='create') ]
 
 class Table(DBObject):
     typename = 'Table'

@@ -129,13 +129,7 @@ class OraForeignKey(ForeignKey):
         return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
 class OraDBIndex(DBIndex):
-
-    def get_pk_alter_ops(index, prev):
-        table_name = index.table.name
-        sql = index.rename_sql_template % dict(
-                    table_name=table_name, prev_name=prev.name, new_name=index.name)
-        yield Op(sql, index, type='rename')
-
+    pass
 
 class OraSchema(DBSchema):
     table_class = OraTable
