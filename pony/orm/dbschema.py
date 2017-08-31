@@ -163,15 +163,6 @@ class Table(DBObject):
         schema.tables.pop(table.name)
         table.name = new_name
         schema.tables[new_name] = table
-    def get_rename_sql(table, new_name):
-        quote_name = table.schema.provider.quote_name
-        return 'ALTER TABLE %s RENAME TO %s' \
-               % (quote_name(table.name), quote_name(new_name))
-    def get_rename_column_sql(table, old_name, new_name):
-        schema = table.schema
-        quote_name = schema.provider.quote_name
-        return ('ALTER TABLE %s %s %s RENAME TO %s'
-               % (quote_name(table.name), schema.ALTER_COLUMN, quote_name(old_name), quote_name(new_name)))
     def get_create_command(table):
         schema = table.schema
         case = schema.case
