@@ -120,6 +120,8 @@ class SQLiteBuilder(SQLBuilder):
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        assert False
     def SELECT_FOR_UPDATE(builder, nowait, *sections):
         assert not builder.indent and not nowait
         return builder.SELECT(*sections)

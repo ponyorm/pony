@@ -133,9 +133,7 @@ class Executor(object):
                 value_class = provider.sqlbuilder_cls.value_class
                 op.sql += ' DEFAULT %s' % value_class(provider.paramstyle, new_attr.initial)  # fix Oracle?
 
-                schema = col.table.schema
-                drop_default_clause = 'DROP DEFAULT' if provider.dialect != 'Oracle' else 'DEFAULT NULL'
-                sql = '%s %s %s' % (schema.ALTER_COLUMN_DEFAULT, quote_name(col.name), schema.case(drop_default_clause))
+                sql, _ = provider.ast2sql([ 'ALTER_COLUMN_DEFAULT', col.name ])
                 ops.append(Op(sql, obj=col, type='alter', prefix=alter_table(col.table)))
 
         for op in self.entity_ops:

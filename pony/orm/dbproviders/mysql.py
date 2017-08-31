@@ -102,6 +102,8 @@ class MySQLValue(Value):
 
 class MySQLBuilder(SQLBuilder):
     value_class = MySQLValue
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        return 'ALTER COLUMN ', builder.quote_name(column), ' DROP DEFAULT'
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', imap(builder, args)), ')'
     def TRIM(builder, expr, chars=None):

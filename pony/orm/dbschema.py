@@ -20,7 +20,7 @@ class DBSchema(object):
     upgrades = []
 
     ADD_COLUMN = 'ADD COLUMN'
-    ALTER_COLUMN = ALTER_COLUMN_DEFAULT = 'ALTER COLUMN'
+    ALTER_COLUMN = 'ALTER COLUMN'
 
     def __init__(schema, provider, uppercase=True):
         schema.provider = provider
@@ -422,6 +422,9 @@ class Column(object):
         table = column.table
         schema = column.table.schema
         sql = '%s %s' % (schema.ALTER_COLUMN, column.get_sql())
+
+        provider = table.schema.provider
+        sql, _ = provider.ast2sql(['ALTER COLUMN'])
         return [ Op(sql, obj=column, type='alter', prefix=alter_table(table)) ]
 
     def get_drop_ops(column):

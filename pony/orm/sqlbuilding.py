@@ -211,6 +211,8 @@ class SQLBuilder(object):
 ##            else:
 ##                del traceback
 ##                raise
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        return 'ALTER COLUMN ', builder.quote_name(column), ' DROP DEFAULT'
     def INSERT(builder, table_name, columns, values, returning=None):
         return [ 'INSERT INTO ', builder.quote_name(table_name), ' (',
                  join(', ', [builder.quote_name(column) for column in columns ]),

@@ -136,7 +136,7 @@ class OraSchema(DBSchema):
     column_class = OraColumn
     fk_class = OraForeignKey
     index_class = OraDBIndex
-    ALTER_COLUMN = ALTER_COLUMN_DEFAULT = 'MODIFY'
+    ALTER_COLUMN = 'MODIFY'
     ADD_COLUMN = 'ADD'
 
 class OraNoneMonad(sqltranslation.NoneMonad):
@@ -173,6 +173,8 @@ class OraValue(Value):
 
 class OraBuilder(SQLBuilder):
     value_class = OraValue
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        return 'MODIFY ', builder.quote_name(column), ' DEFAULT NULL'
     def INSERT(builder, table_name, columns, values, returning=None):
         result = SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
