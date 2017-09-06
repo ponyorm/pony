@@ -301,14 +301,12 @@ class PreTranslator(ASTTranslator):
 getattr_cache = {}
 extractors_cache = {}
 
-def create_extractors(code_key, tree, filter_num, globals, locals,
-                      special_functions, const_functions, additional_internal_names=()):
+def create_extractors(code_key, tree, globals, locals, special_functions, const_functions, additional_internal_names=()):
     result = None
-    getattr_key = code_key, filter_num
-    getattr_extractors = getattr_cache.get(getattr_key)
+    getattr_extractors = getattr_cache.get(code_key)
     if getattr_extractors:
         getattr_attrname_values = tuple(eval(code, globals, locals) for src, code in getattr_extractors)
-        extractors_key = (code_key, filter_num, getattr_attrname_values)
+        extractors_key = (code_key, getattr_attrname_values)
         try:
             result = extractors_cache.get(extractors_key)
         except TypeError:
@@ -325,14 +323,14 @@ def create_extractors(code_key, tree, filter_num, globals, locals,
             src = node.src = ast2src(node)
             if src == '.0': code = None
             else: code = compile(src, src, 'eval')
-            extractors[filter_num, src] = code
+            extractors[src] = code
 
         getattr_extractors = {}
         getattr_attrname_dict = {}
         for node in pretranslator.getattr_nodes:
             if node in pretranslator.externals:
                 src = node.src
-                code = extractors[filter_num, src]
+                code = extractors[src]
                 getattr_extractors[src] = code
                 attrname_value = eval(code, globals, locals)
                 getattr_attrname_dict[src] = attrname_value
@@ -342,10 +340,10 @@ def create_extractors(code_key, tree, filter_num, globals, locals,
             if not isinstance(attrname_value, basestring): throw(TypeError,
                 '%s: attribute name must be string. Got: %r' % (ast2src(node.parent_node), attrname_value))
             node._attrname_value = attrname_value
-        getattr_cache[getattr_key] = tuple(sorted(getattr_extractors.items()))
+        getattr_cache[code_key] = tuple(sorted(getattr_extractors.items()))
 
         varnames = list(sorted(extractors))
         getattr_attrname_values = tuple(val for key, val in sorted(getattr_attrname_dict.items()))
-        extractors_key = (code_key, filter_num, getattr_attrname_values)
+        extractors_key = (code_key, getattr_attrname_values)
         result = extractors_cache[extractors_key] = extractors, varnames, tree, extractors_key
     return result

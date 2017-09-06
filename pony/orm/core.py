@@ -5151,15 +5151,15 @@ def raw_sql(sql, result_type=None):
     locals = sys._getframe(1).f_locals
     return RawSQL(sql, globals, locals, result_type)
 
-def extract_vars(extractors, globals, locals, cells=None):
+def extract_vars(filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
             locals[name] = cell.cell_contents
     vars = {}
     vartypes = {}
-    for key, code in iteritems(extractors):
-        filter_num, src = key
+    for src, code in iteritems(extractors):
+        key = filter_num, src
         if src == '.0': value = locals['.0']
         else:
             try: value = eval(code, globals, locals)
@@ -5189,11 +5189,12 @@ class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree, pretranslator_key = create_extractors(
-            code_key, tree, 0, globals, locals, special_functions, const_functions)
-        vars, vartypes = extract_vars(extractors, globals, locals, cells)
+            code_key, tree, globals, locals, special_functions, const_functions)
+        filter_num = 0
+        vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
-        origin = vars[0, node.src]
+        origin = vars[filter_num, node.src]
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
@@ -5204,7 +5205,7 @@ class Query(object):
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
         query._vars = vars
-        query._key = pretranslator_key, tuple(vartypes[name] for name in varnames), left_join
+        query._key = pretranslator_key, tuple(vartypes[filter_num, name] for name in varnames), left_join
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -5505,14 +5506,14 @@ class Query(object):
 
         filter_num = len(query._filters) + 1
         extractors, varnames, func_ast, pretranslator_key = create_extractors(
-            func_id, func_ast, filter_num, globals, locals, special_functions, const_functions,
+            func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
-            vars, vartypes = extract_vars(extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
-            sorted_vartypes = tuple(vartypes[name] for name in varnames)
+            sorted_vartypes = tuple(vartypes[filter_num, name] for name in varnames)
         else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
         new_key = query._key + (('order_by' if order_by else 'filter', pretranslator_key, sorted_vartypes),)
