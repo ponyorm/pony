@@ -13,9 +13,8 @@ class Op(object):
 
 def alter_table(table):
     schema = table.schema
-    case = schema.case
     quote_name = schema.provider.quote_name
-    return '%s %s' % (case('ALTER TABLE'), quote_name(table.name))
+    return '%s %s' % ('ALTER TABLE', quote_name(table.name))
 
 
 class OperationBatch(list):

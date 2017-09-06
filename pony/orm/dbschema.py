@@ -22,21 +22,16 @@ class DBSchema(object):
     ADD_COLUMN = 'ADD COLUMN'
     ALTER_COLUMN = 'ALTER COLUMN'
 
-    def __init__(schema, provider, uppercase=True):
+    def __init__(schema, provider):
         schema.provider = provider
         schema.tables = {}
         schema.constraints = {}
         schema.indent = '  '
         schema.command_separator = ';\n\n'
-        schema.uppercase = uppercase
         schema.names = {}
     def names_row(schema, col_names):
         quote_name = schema.provider.quote_name
         return '(%s)' % ', '.join(imap(quote_name, col_names))
-    def case(schema, s):
-        if schema.uppercase: return s.upper().replace('%S', '%s') \
-            .replace(')S', ')s').replace('%R', '%r').replace(')R', ')r')
-        else: return s.lower()
     def add_table(schema, table_name, entity=None, **kwargs):
         return schema.table_class(schema, table_name, entity, **kwargs)
     def order_tables_to_create(schema):
@@ -165,13 +160,12 @@ class Table(DBObject):
         schema.tables[new_name] = table
     def get_create_command(table):
         schema = table.schema
-        case = schema.case
         provider = schema.provider
         quote_name = provider.quote_name
         if_not_exists = False # provider.table_if_not_exists_syntax and provider.index_if_not_exists_syntax
         cmd = []
-        if not if_not_exists: cmd.append(case('CREATE TABLE %s (') % quote_name(table.name))
-        else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % quote_name(table.name))
+        if not if_not_exists: cmd.append('CREATE TABLE %s (' % quote_name(table.name))
+        else: cmd.append('CREATE TABLE IF NOT EXISTS %s (' % quote_name(table.name))
         for column in table.column_list:
             cmd.append(schema.indent + column.get_sql() + ',')
         if len(table.pk_index.col_names) > 1:
@@ -200,10 +194,9 @@ class Table(DBObject):
 
     def get_rename_ops(table):
         schema = table.schema
-        case = schema.case
         provider = schema.provider
         quote_name = provider.quote_name
-        sql = '%s %s' % (case('RENAME TO'), quote_name(table.new.name))
+        sql = '%s %s' % ('RENAME TO', quote_name(table.new.name))
         return [ Op(sql, obj=table, type='rename', prefix=alter_table(table)) ]
     def get_alter_ops(table):
         schema = table.schema
@@ -237,9 +230,8 @@ class Table(DBObject):
         return drops + ops
     def get_drop_ops(table):
         schema = table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
-        sql = case('DROP TABLE {}').format(quote_name(table.name))
+        sql = 'DROP TABLE %s' % quote_name(table.name)
         return [ Op(sql, obj=table, type='drop') ]
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
@@ -380,40 +372,39 @@ class Column(object):
         table = column.table
         schema = table.schema
         quote_name = schema.provider.quote_name
-        case = schema.case
         result = []
         append = result.append
         if column.is_pk:
             constraint_name = quote_name(column.table.pk_index.name)
-            pk_constraint_template = case(column.pk_constraint_template) % {
-                case('constraint_name'): constraint_name
+            pk_constraint_template = column.pk_constraint_template % {
+                'constraint_name': constraint_name
             }
         if column.is_pk == 'auto' and column.auto_template:
-            append(case(column.auto_template) % {
-                case('type'): case(column.sql_type),
-                case('pk_constraint_template'): pk_constraint_template,
+            append(column.auto_template % {
+                'type': column.sql_type,
+                'pk_constraint_template': pk_constraint_template,
             })
         else:
-            append(case(column.sql_type))
+            append(column.sql_type)
             if column.is_pk:
-                if schema.provider.dialect == 'SQLite': append(case('NOT NULL'))
+                if schema.provider.dialect == 'SQLite': append('NOT NULL')
                 append(pk_constraint_template)
-                append(case('PRIMARY KEY'))
+                append('PRIMARY KEY')
             else:
                 if schema.provider.dialect == 'Oracle' \
                         and column.sql_default not in (None, True, False):
-                    append(case('DEFAULT'))
+                    append('DEFAULT')
                     append(column.sql_default)
-                if column.is_unique: append(case('UNIQUE'))
-                if column.is_not_null: append(case('NOT NULL'))
+                if column.is_unique: append('UNIQUE')
+                if column.is_not_null: append('NOT NULL')
         if column.sql_default not in (None, True, False) and schema.provider.dialect != 'Oracle':
-            append(case('DEFAULT'))
+            append('DEFAULT')
             append(column.sql_default)
         if schema.inline_fk_syntax and not schema.named_foreign_keys:
             fk = table.foreign_keys.get((column.name,))
             if fk is not None:
                 parent_table = fk.parent_table
-                append(case('REFERENCES'))
+                append('REFERENCES')
                 append(quote_name(parent_table.name))
                 append(schema.names_row(fk.parent_col_names))
         return ' '.join(result)
@@ -431,7 +422,7 @@ class Column(object):
         table = column.table
         schema = table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP COLUMN {}').format(quote_name(column.name))
+        sql = 'DROP COLUMN %s' % quote_name(column.name)
         return [ Op(sql, obj=column, type='drop', prefix=alter_table(table)) ]
 
 class Constraint(DBObject):
@@ -535,35 +526,34 @@ class DBIndex(Constraint):
         return index._get_create_sql(inside_table=False)
     def _get_create_sql(index, inside_table):
         schema = index.table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
         cmd = []
         append = cmd.append
         if not inside_table:
             if index.is_pk: throw(DBSchemaError,
                 'Primary key index cannot be defined outside of table definition')
-            append(case('CREATE'))
-            if index.is_unique: append(case('UNIQUE'))
-            append(case('INDEX'))
+            append('CREATE')
+            if index.is_unique: append('UNIQUE')
+            append('INDEX')
             # if schema.provider.index_if_not_exists_syntax:
-            #     append(case('IF NOT EXISTS'))
+            #     append('IF NOT EXISTS')
             append(quote_name(index.name))
-            append(case('ON'))
+            append('ON')
             append(quote_name(index.table.name))
         else:
             if index.name:
-                append(case('CONSTRAINT'))
+                append('CONSTRAINT')
                 append(quote_name(index.name))
-            if index.is_pk: append(case('PRIMARY KEY'))
-            elif index.is_unique: append(case('UNIQUE'))
-            else: append(case('INDEX'))
+            if index.is_pk: append('PRIMARY KEY')
+            elif index.is_unique: append('UNIQUE')
+            else: append('INDEX')
         append(schema.names_row(index.col_names))
         return ' '.join(cmd)
     def get_drop_ops(index):
         table = index.table
         schema = table.schema
         quote_name = schema.provider.quote_name
-        sql = '%s %s' % (schema.case('DROP INDEX'), quote_name(index.name))
+        sql = '%s %s' % ('DROP INDEX', quote_name(index.name))
         return [ Op(sql, obj=index, type='drop') ]
 
 
@@ -622,28 +612,26 @@ class ForeignKey(Constraint):
         return fk._get_create_sql(inside_table=False)
     def _get_create_sql(fk, inside_table):
         schema = fk.table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
         cmd = []
         append = cmd.append
         if not inside_table:
-            append(case('ALTER TABLE'))
+            append('ALTER TABLE')
             append(quote_name(fk.table.name))
-            append(case('ADD'))
+            append('ADD')
         if schema.named_foreign_keys and fk.name:
-            append(case('CONSTRAINT'))
+            append('CONSTRAINT')
             append(quote_name(fk.name))
-        append(case('FOREIGN KEY'))
+        append('FOREIGN KEY')
         append(schema.names_row(fk.col_names))
-        append(case('REFERENCES'))
+        append('REFERENCES')
         append(quote_name(fk.parent_table.name))
         append(schema.names_row(fk.parent_col_names))
         return ' '.join(cmd)
     def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
-        sql = case('DROP FOREIGN KEY {}').format(quote_name(foreign_key.name))
+        sql = 'DROP FOREIGN KEY %s' % quote_name(foreign_key.name)
         return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
 DBSchema.table_class = Table

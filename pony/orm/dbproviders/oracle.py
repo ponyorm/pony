@@ -57,11 +57,11 @@ class OraSequence(DBObject):
     def get_create_command(sequence):
         schema = sequence.table.schema
         seq_name = schema.provider.quote_name(sequence.name)
-        return schema.case('CREATE SEQUENCE %s NOCACHE') % seq_name
+        return 'CREATE SEQUENCE %s NOCACHE' % seq_name
     def get_drop_ops(sequence):
         schema = sequence.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP SEQUENCE {}').format(quote_name(sequence.name))
+        sql = 'DROP SEQUENCE %s' % quote_name(sequence.name)
         return [ Op(sql, obj=sequence, type='drop') ]
 
 trigger_template = """
@@ -100,11 +100,11 @@ class OraTrigger(Trigger):
         table_name = quote_name(trigger.table.name)
         column_name = quote_name(trigger.column.name)
         seq_name = quote_name(trigger.sequence.name)
-        return schema.case(trigger_template) % (trigger_name, table_name, column_name, seq_name, column_name)
+        return trigger_template % (trigger_name, table_name, column_name, seq_name, column_name)
     def get_drop_ops(trigger):
         schema = trigger.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP TRIGGER {}').format(quote_name(trigger.name))
+        sql = 'DROP TRIGGER %s' % quote_name(trigger.name)
         return [ Op(sql, trigger, type='drop') ]
 
 class OraColumn(Column):
@@ -113,11 +113,10 @@ class OraColumn(Column):
     def get_rename_ops(column):
         prev_table = column.table
         schema = prev_table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
         prev_name = quote_name(column.name)
         new_name = quote_name(column.new.name)
-        sql = case('RENAME COLUMN {} TO {}').format(prev_name, new_name)
+        sql = 'RENAME COLUMN %s TO %s' % (prev_name, new_name)
         return [ Op(sql, column, type='rename', prefix=alter_table(prev_table)) ]
 
 
@@ -125,7 +124,7 @@ class OraForeignKey(ForeignKey):
     def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP CONSTRAINT {}').format(quote_name(foreign_key.name))
+        sql = 'DROP CONSTRAINT %s' % quote_name(foreign_key.name)
         return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
 class OraDBIndex(DBIndex):

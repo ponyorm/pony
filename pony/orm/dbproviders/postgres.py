@@ -42,11 +42,10 @@ class PGColumn(dbschema.Column):
         table = column.table
         provider = table.schema.provider
         quote_name = provider.quote_name
-        case = table.schema.case
         prefix = '%s %s' % (table.schema.ALTER_COLUMN, quote_name(column.name))
         ops = []
         if column.sql_type != column.prev.sql_type:
-            sql = case('{} TYPE {}').format(prefix, column.sql_type)
+            sql = '%s TYPE %s' % (prefix, column.sql_type)
             ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
 
         if column.is_not_null and not column.prev.is_not_null:
@@ -70,11 +69,10 @@ class PGColumn(dbschema.Column):
     def get_rename_ops(column):
         prev_table = column.table
         schema = prev_table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
         prev_name = quote_name(column.name)
         new_name = quote_name(column.new.name)
-        sql = case('RENAME {} TO {}').format(prev_name, new_name)
+        sql = 'RENAME %s TO %s' % (prev_name, new_name)
         return [ Op(sql, column, type='rename', prefix=alter_table(prev_table)) ]
 
 
@@ -92,7 +90,7 @@ class PGForeignKey(dbschema.ForeignKey):
     def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP CONSTRAINT {}').format(quote_name(foreign_key.name))
+        sql = 'DROP CONSTRAINT %s' % quote_name(foreign_key.name)
         return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
 
 

@@ -45,7 +45,7 @@ class MySQLIndex(dbschema.DBIndex):
         table = index.table
         schema = table.schema
         quote_name = schema.provider.quote_name
-        sql = schema.case('DROP INDEX {} ON {}').format(quote_name(index.name), quote_name(table.name))
+        sql = 'DROP INDEX %s ON %s' % (quote_name(index.name), quote_name(table.name))
         return [ Op(sql, obj=index, type='drop') ]
 
     def can_be_renamed(index):
@@ -65,10 +65,9 @@ class MySQLColumn(dbschema.Column):
     def get_rename_ops(column):
         prev_table = column.table
         schema = prev_table.schema
-        case = schema.case
         quote_name = schema.provider.quote_name
         prev_name = quote_name(column.name)
-        sql = '%s %s %s' % (case('CHANGE'), prev_name, column.new.get_sql())
+        sql = '%s %s %s' % ('CHANGE', prev_name, column.new.get_sql())
         return [ Op(sql, obj=column, type='rename', prefix=alter_table(prev_table)) ]
 
     def db_rename(column, cursor):
