@@ -205,7 +205,7 @@ class Table(DBObject):
         for column in table.column_list:
             if column.prev is None:
                 sql = '%s %s' % (schema.ADD_COLUMN, column.get_sql())
-                ops.append(Op(sql, column, type='create', prefix=alter_table(table)))
+                ops.append(Op(sql, obj=column, type='create', prefix=alter_table(table)))
             elif column.get_definition() != column.prev.get_definition():
                 ops.extend(column.get_alter_ops())
         for cols, fkey in table.foreign_keys.items():

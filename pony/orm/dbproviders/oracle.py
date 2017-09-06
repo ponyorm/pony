@@ -105,7 +105,7 @@ class OraTrigger(Trigger):
         schema = trigger.table.schema
         quote_name = schema.provider.quote_name
         sql = 'DROP TRIGGER %s' % quote_name(trigger.name)
-        return [ Op(sql, trigger, type='drop') ]
+        return [ Op(sql, obj=trigger, type='drop') ]
 
 class OraColumn(Column):
     auto_template = None
@@ -117,7 +117,7 @@ class OraColumn(Column):
         prev_name = quote_name(column.name)
         new_name = quote_name(column.new.name)
         sql = 'RENAME COLUMN %s TO %s' % (prev_name, new_name)
-        return [ Op(sql, column, type='rename', prefix=alter_table(prev_table)) ]
+        return [ Op(sql, obj=column, type='rename', prefix=alter_table(prev_table)) ]
 
 
 class OraForeignKey(ForeignKey):

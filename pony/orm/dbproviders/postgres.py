@@ -73,7 +73,7 @@ class PGColumn(dbschema.Column):
         prev_name = quote_name(column.name)
         new_name = quote_name(column.new.name)
         sql = 'RENAME %s TO %s' % (prev_name, new_name)
-        return [ Op(sql, column, type='rename', prefix=alter_table(prev_table)) ]
+        return [ Op(sql, obj=column, type='rename', prefix=alter_table(prev_table)) ]
 
 
 class PGTable(dbschema.Table):
