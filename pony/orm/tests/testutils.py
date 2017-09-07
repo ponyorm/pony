@@ -96,7 +96,9 @@ class TestDatabase(Database):
     real_provider_name = None
     raw_server_version = None
     sql = None
-    def bind(self, provider_name, *args, **kwargs):
+    def bind(self, provider, *args, **kwargs):
+        provider_name = provider
+        assert isinstance(provider_name, basestring)
         if self.real_provider_name is not None:
             provider_name = self.real_provider_name
         self.provider_name = provider_name
@@ -118,6 +120,7 @@ class TestDatabase(Database):
             server_version = int('%d%02d%02d' % server_version)
 
         class TestProvider(provider_cls):
+            json1_available = False  # for SQLite
             def inspect_connection(provider, connection):
                 pass
         TestProvider.server_version = server_version

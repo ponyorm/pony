@@ -214,6 +214,8 @@ class OraBuilder(SQLBuilder):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):
         return 'dbms_random.value'
+    def MOD(builder, a, b):
+        return 'MOD(', builder(a), ', ', builder(b), ')'
     def DATE_ADD(builder, expr, delta):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
