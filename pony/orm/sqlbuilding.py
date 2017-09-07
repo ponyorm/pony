@@ -400,6 +400,9 @@ class SQLBuilder(object):
     DIV = make_binary_op(' / ', True)
     FLOORDIV = make_binary_op(' / ', True)
 
+    def MOD(builder, a, b):
+        symbol = ' %% ' if builder.paramstyle in ('format', 'pyformat') else ' % '
+        return '(', builder(a), symbol, builder(b), ')'
     def FLOAT_EQ(builder, a, b):
         a, b = builder(a), builder(b)
         return 'abs(', a, ' - ', b, ') / coalesce(nullif(greatest(abs(', a, '), abs(', b, ')), 0), 1) <= 1e-14'

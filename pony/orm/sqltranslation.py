@@ -690,6 +690,8 @@ class SQLTranslator(ASTTranslator):
         return node.left.monad / node.right.monad
     def postFloorDiv(translator, node):
         return node.left.monad // node.right.monad
+    def postMod(translator, node):
+        return node.left.monad % node.right.monad
     def postPower(translator, node):
         return node.left.monad ** node.right.monad
     def postUnarySub(translator, node):
@@ -1247,6 +1249,7 @@ class NumericMixin(MonadMixin):
     __mul__ = make_numeric_binop('*', 'MUL')
     __truediv__ = make_numeric_binop('/', 'DIV')
     __floordiv__ = make_numeric_binop('//', 'FLOORDIV')
+    __mod__ = make_numeric_binop('%', 'MOD')
     def __pow__(monad, monad2):
         translator = monad.translator
         if not isinstance(monad2, translator.NumericMixin):

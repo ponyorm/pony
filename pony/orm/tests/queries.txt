@@ -888,3 +888,29 @@ PostgreSQL:
 
 SELECT DISTINCT upper("s"."name")
 FROM "student" "s"
+
+# Test modulo division operator
+
+>>> select(s for s in Student if s.id % 2 == 0)
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE ("s"."id" % 2) = 0
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."id" %% 2) = 0
+
+MySQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."id" %% 2) = 0
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE MOD("s"."ID", 2) = 0
