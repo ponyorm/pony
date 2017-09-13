@@ -328,7 +328,8 @@ def create_extractors(code_key, tree, filter_num, globals, locals,
         getattr_attrname_values = {}
         for node in pretranslator.getattr_nodes:
             if node in pretranslator.externals:
-                code = extractors[filter_num, node.src]
+                src = node.src
+                code = extractors[filter_num, src]
                 getattr_extractors[src] = code
                 attrname_value = eval(code, globals, locals)
                 getattr_attrname_values[src] = attrname_value
