@@ -4949,7 +4949,9 @@ class Entity(with_metaclass(EntityMeta)):
             obj.__class__._delete_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
-        database._exec_sql(sql, arguments, start_transaction=True)
+        cursor = database._exec_sql(sql, arguments, start_transaction=True)
+        if cursor.rowcount != 1:
+            throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
     def _save_(obj, dependent_objects=None):
