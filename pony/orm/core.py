@@ -4889,7 +4889,7 @@ class Entity(with_metaclass(EntityMeta)):
                 val = obj._vals_[attr]
                 values.extend(attr.get_raw_values(val))
             cache = obj._session_cache_
-            if obj not in cache.for_update:
+            if not cache.db_session.serializable and obj not in cache.for_update:
                 optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                     obj._construct_optimistic_criteria_()
                 values.extend(optimistic_values)
@@ -4926,7 +4926,7 @@ class Entity(with_metaclass(EntityMeta)):
         values = []
         values.extend(obj._get_raw_pkval_())
         cache = obj._session_cache_
-        if obj not in cache.for_update:
+        if not cache.db_session.serializable and obj not in cache.for_update:
             optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                 obj._construct_optimistic_criteria_()
             values.extend(optimistic_values)
