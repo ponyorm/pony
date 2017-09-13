@@ -325,14 +325,14 @@ def create_extractors(code_key, tree, filter_num, globals, locals,
             extractors[filter_num, src] = code
 
         getattr_extractors = {}
-        getattr_attrname_values = {}
+        getattr_attrname_dict = {}
         for node in pretranslator.getattr_nodes:
             if node in pretranslator.externals:
                 src = node.src
                 code = extractors[filter_num, src]
                 getattr_extractors[src] = code
                 attrname_value = eval(code, globals, locals)
-                getattr_attrname_values[src] = attrname_value
+                getattr_attrname_dict[src] = attrname_value
             elif isinstance(node, ast.Const):
                 attrname_value = node.value
             else: throw(TypeError, '`%s` should be either external expression or constant.' % ast2src(node))
@@ -342,7 +342,7 @@ def create_extractors(code_key, tree, filter_num, globals, locals,
         getattr_cache[getattr_key] = tuple(sorted(getattr_extractors.items()))
 
         varnames = list(sorted(extractors))
-        getattr_attrname_values = tuple(val for key, val in sorted(getattr_attrname_values.items()))
+        getattr_attrname_values = tuple(val for key, val in sorted(getattr_attrname_dict.items()))
         extractors_key = (code_key, filter_num, getattr_attrname_values)
         result = extractors_cache[extractors_key] = extractors, varnames, tree, extractors_key
     return result
