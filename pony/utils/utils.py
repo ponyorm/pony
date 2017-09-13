@@ -533,3 +533,6 @@ def unpickle_ast(pickled):
     unpickler = pickle.Unpickler(pickled)
     unpickler.persistent_load = _persistent_load
     return unpickler.load()
+
+def copy_ast(tree):
+    return unpickle_ast(pickle_ast(tree))
