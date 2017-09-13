@@ -5,7 +5,7 @@ from functools import update_wrapper
 
 from pony.thirdparty.compiler import ast
 
-from pony.utils import throw
+from pony.utils import throw, copy_ast
 
 class TranslationError(Exception): pass
 
@@ -313,6 +313,9 @@ def create_extractors(code_key, tree, filter_num, globals, locals,
             result = extractors_cache.get(extractors_key)
         except TypeError:
             pass # unhashable type
+        if not result:
+            tree = copy_ast(tree)
+
     if not result:
         pretranslator = PreTranslator(
             tree, globals, locals, special_functions, const_functions, additional_internal_names)
