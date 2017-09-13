@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, pickle, with_metaclass
+from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass
 
 import types, sys, re, itertools
 from decimal import Decimal
@@ -12,7 +12,7 @@ from uuid import UUID
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, reraise, concat
+from pony.utils import is_ident, throw, reraise, concat, pickle_ast, unpickle_ast
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
@@ -596,8 +596,8 @@ class SQLTranslator(ASTTranslator):
         return translator
     def apply_lambda(translator, filter_num, order_by, func_ast, argnames, extractors, vartypes):
         translator = deepcopy(translator)
-        pickled_func_ast = pickle.dumps(func_ast, 2)
-        func_ast = pickle.loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+        pickled_func_ast = pickle_ast(func_ast)
+        func_ast = unpickle_ast(pickled_func_ast)  # func_ast = deepcopy(func_ast)
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)

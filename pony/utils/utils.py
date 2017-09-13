@@ -1,9 +1,9 @@
 #coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import PY2, imap, basestring, unicode
+from pony.py23compat import PY2, imap, basestring, unicode, pickle
 
-import re, os, os.path, sys, datetime, inspect, types, linecache, warnings, json
+import io, re, os, os.path, sys, datetime, inspect, types, linecache, warnings, json
 
 from itertools import count as _count
 from inspect import isfunction, ismethod
@@ -511,3 +511,25 @@ def concat(*args):
 
 def is_utf8(encoding):
     return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')
+
+def _persistent_id(obj):
+    if obj is Ellipsis:
+        return "Ellipsis"
+
+def _persistent_load(persid):
+    if persid == "Ellipsis":
+        return Ellipsis
+    raise pickle.UnpicklingError("unsupported persistent object")
+
+def pickle_ast(val):
+    pickled = io.BytesIO()
+    pickler = pickle.Pickler(pickled)
+    pickler.persistent_id = _persistent_id
+    pickler.dump(val)
+    return pickled
+
+def unpickle_ast(pickled):
+    pickled.seek(0)
+    unpickler = pickle.Unpickler(pickled)
+    unpickler.persistent_load = _persistent_load
+    return unpickler.load()

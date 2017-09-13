@@ -1,8 +1,8 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
-                            basestring, unicode, buffer, int_types, builtins, pickle, with_metaclass
+                            basestring, unicode, buffer, int_types, builtins, with_metaclass
 
-import io, json, re, sys, types, datetime, logging, itertools, warnings
+import json, re, sys, types, datetime, logging, itertools, warnings
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -27,7 +27,7 @@ from pony.orm.dbapiprovider import (
     )
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
-     deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
+     pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
 
 __all__ = [
     'pony',
@@ -5184,29 +5184,6 @@ def extract_vars(extractors, globals, locals, cells=None):
 
 def unpickle_query(query_result):
     return query_result
-
-def persistent_id(obj):
-    if obj is Ellipsis:
-        return "Ellipsis"
-
-def persistent_load(persid):
-    if persid == "Ellipsis":
-        return Ellipsis
-    raise pickle.UnpicklingError("unsupported persistent object")
-
-def pickle_ast(val):
-    pickled = io.BytesIO()
-    pickler = pickle.Pickler(pickled)
-    pickler.persistent_id = persistent_id
-    pickler.dump(val)
-    return pickled
-
-def unpickle_ast(pickled):
-    pickled.seek(0)
-    unpickler = pickle.Unpickler(pickled)
-    unpickler.persistent_load = persistent_load
-    return unpickler.load()
-
 
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
