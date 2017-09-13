@@ -4919,7 +4919,7 @@ class Entity(with_metaclass(EntityMeta)):
             else: sql, adapter = cached_sql
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments, start_transaction=True)
-            if cursor.rowcount != 1:
+            if cursor.rowcount == 0:
                 throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
@@ -4950,7 +4950,7 @@ class Entity(with_metaclass(EntityMeta)):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments, start_transaction=True)
-        if cursor.rowcount != 1:
+        if cursor.rowcount == 0:
             throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
