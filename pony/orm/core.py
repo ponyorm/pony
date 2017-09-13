@@ -365,9 +365,10 @@ def rollback():
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
-    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable', 'strict', \
+    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', \
+                'immediate', 'ddl', 'serializable', 'strict', 'optimistic', \
                 'sql_debug', 'show_values'
-    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False,
+    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False, optimistic=True,
                  retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
@@ -383,8 +384,9 @@ class DBSessionContextManager(object):
         db_session.retry = retry
         db_session.ddl = ddl
         db_session.serializable = serializable
-        db_session.immediate = immediate or ddl or serializable
+        db_session.immediate = immediate or ddl or serializable or not optimistic
         db_session.strict = strict
+        db_session.optimistic = optimistic and not serializable
         db_session.retry_exceptions = retry_exceptions
         db_session.allowed_exceptions = allowed_exceptions
         db_session.sql_debug = sql_debug
@@ -4889,7 +4891,8 @@ class Entity(with_metaclass(EntityMeta)):
                 val = obj._vals_[attr]
                 values.extend(attr.get_raw_values(val))
             cache = obj._session_cache_
-            if not cache.db_session.serializable and obj not in cache.for_update:
+            optimistic_session = cache.db_session is None or cache.db_session.optimistic
+            if optimistic_session and obj not in cache.for_update:
                 optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                     obj._construct_optimistic_criteria_()
                 values.extend(optimistic_values)
@@ -4926,7 +4929,8 @@ class Entity(with_metaclass(EntityMeta)):
         values = []
         values.extend(obj._get_raw_pkval_())
         cache = obj._session_cache_
-        if not cache.db_session.serializable and obj not in cache.for_update:
+        optimistic_session = cache.db_session is None or cache.db_session.optimistic
+        if optimistic_session and obj not in cache.for_update:
             optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                 obj._construct_optimistic_criteria_()
             values.extend(optimistic_values)
