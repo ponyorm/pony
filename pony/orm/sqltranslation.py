@@ -875,8 +875,8 @@ class Subquery(object):
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
         tableref.subquery = subquery
-        tableref.name_path = name
         tableref.alias = subquery.make_alias(name)
+        tableref.name_path = tableref.alias
         tableref.entity = entity
         tableref.joined = False
         tableref.can_affect_distinct = True
