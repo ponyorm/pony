@@ -1415,6 +1415,12 @@ class StringMixin(MonadMixin):
             index_sql = [ 'ADD', inner_sql, [ 'CASE', None, [ (['GE', inner_sql, [ 'VALUE', 0 ]], [ 'VALUE', 1 ]) ], [ 'VALUE', 0 ] ] ]
         sql = [ 'SUBSTR', expr_sql, index_sql, [ 'VALUE', 1 ] ]
         return translator.StringExprMonad(translator, monad.type, sql)
+    def negate(monad):
+        sql = monad.getsql()[0]
+        translator = monad.translator
+        result = translator.BoolExprMonad(translator, [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result.aggregated = monad.aggregated
+        return result
     def nonzero(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
