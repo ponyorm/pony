@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, pickle, with_metaclass
+from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass
 
 import types, sys, re, itertools
 from decimal import Decimal
@@ -12,7 +12,7 @@ from uuid import UUID
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, reraise, concat
+from pony.utils import is_ident, throw, reraise, concat, copy_ast
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
@@ -596,8 +596,7 @@ class SQLTranslator(ASTTranslator):
         return translator
     def apply_lambda(translator, filter_num, order_by, func_ast, argnames, extractors, vartypes):
         translator = deepcopy(translator)
-        pickled_func_ast = pickle.dumps(func_ast, 2)
-        func_ast = pickle.loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+        func_ast = copy_ast(func_ast)  # func_ast = deepcopy(func_ast)
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
@@ -875,8 +874,8 @@ class Subquery(object):
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
         tableref.subquery = subquery
-        tableref.name_path = name
         tableref.alias = subquery.make_alias(name)
+        tableref.name_path = tableref.alias
         tableref.entity = entity
         tableref.joined = False
         tableref.can_affect_distinct = True
@@ -1416,6 +1415,12 @@ class StringMixin(MonadMixin):
             index_sql = [ 'ADD', inner_sql, [ 'CASE', None, [ (['GE', inner_sql, [ 'VALUE', 0 ]], [ 'VALUE', 1 ]) ], [ 'VALUE', 0 ] ] ]
         sql = [ 'SUBSTR', expr_sql, index_sql, [ 'VALUE', 1 ] ]
         return translator.StringExprMonad(translator, monad.type, sql)
+    def negate(monad):
+        sql = monad.getsql()[0]
+        translator = monad.translator
+        result = translator.BoolExprMonad(translator, [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result.aggregated = monad.aggregated
+        return result
     def nonzero(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
@@ -1618,8 +1623,25 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             parent_subquery = parent_monad.tableref.subquery
             monad.tableref = parent_subquery.add_tableref(name_path, parent_monad.tableref, attr)
 
+class StringAttrMonad(StringMixin, AttrMonad):
+    def negate(monad):
+        sql = monad.getsql()[0]
+        translator = monad.translator
+        result_sql = [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
+        if monad.attr.nullable:
+            result_sql = [ 'OR', result_sql, [ 'IS_NULL', sql ] ]
+        result = translator.BoolExprMonad(translator, result_sql)
+        result.aggregated = monad.aggregated
+        return result
+    def nonzero(monad):
+        sql = monad.getsql()[0]
+        translator = monad.translator
+        result_sql = [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
+        result = translator.BoolExprMonad(translator,  result_sql)
+        result.aggregated = monad.aggregated
+        return result
+
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
-class StringAttrMonad(StringMixin, AttrMonad): pass
 class DateAttrMonad(DateMixin, AttrMonad): pass
 class TimeAttrMonad(TimeMixin, AttrMonad): pass
 class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad): pass

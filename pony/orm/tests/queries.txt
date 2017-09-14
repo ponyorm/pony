@@ -905,9 +905,9 @@ WHERE ("s"."id" %% 2) = 0
 
 MySQL:
 
-SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
-FROM "student" "s"
-WHERE ("s"."id" %% 2) = 0
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE (`s`.`id` %% 2) = 0
 
 Oracle:
 

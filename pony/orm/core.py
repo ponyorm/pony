@@ -1,8 +1,8 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
-                            basestring, unicode, buffer, int_types, builtins, pickle, with_metaclass
+                            basestring, unicode, buffer, int_types, builtins, with_metaclass
 
-import io, json, re, sys, types, datetime, logging, itertools, warnings
+import json, re, sys, types, datetime, logging, itertools, warnings
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -27,7 +27,7 @@ from pony.orm.dbapiprovider import (
     )
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
-     deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
+     pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
 
 __all__ = [
     'pony',
@@ -365,9 +365,10 @@ def rollback():
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
-    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable', 'strict', \
+    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', \
+                'immediate', 'ddl', 'serializable', 'strict', 'optimistic', \
                 'sql_debug', 'show_values'
-    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False,
+    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False, optimistic=True,
                  retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
@@ -383,8 +384,9 @@ class DBSessionContextManager(object):
         db_session.retry = retry
         db_session.ddl = ddl
         db_session.serializable = serializable
-        db_session.immediate = immediate or ddl or serializable
+        db_session.immediate = immediate or ddl or serializable or not optimistic
         db_session.strict = strict
+        db_session.optimistic = optimistic and not serializable
         db_session.retry_exceptions = retry_exceptions
         db_session.allowed_exceptions = allowed_exceptions
         db_session.sql_debug = sql_debug
@@ -4889,7 +4891,8 @@ class Entity(with_metaclass(EntityMeta)):
                 val = obj._vals_[attr]
                 values.extend(attr.get_raw_values(val))
             cache = obj._session_cache_
-            if obj not in cache.for_update:
+            optimistic_session = cache.db_session is None or cache.db_session.optimistic
+            if optimistic_session and obj not in cache.for_update:
                 optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                     obj._construct_optimistic_criteria_()
                 values.extend(optimistic_values)
@@ -4916,8 +4919,8 @@ class Entity(with_metaclass(EntityMeta)):
             else: sql, adapter = cached_sql
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments, start_transaction=True)
-            if cursor.rowcount != 1:
-                throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
+            if cursor.rowcount == 0:
+                throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
@@ -4926,7 +4929,8 @@ class Entity(with_metaclass(EntityMeta)):
         values = []
         values.extend(obj._get_raw_pkval_())
         cache = obj._session_cache_
-        if obj not in cache.for_update:
+        optimistic_session = cache.db_session is None or cache.db_session.optimistic
+        if optimistic_session and obj not in cache.for_update:
             optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                 obj._construct_optimistic_criteria_()
             values.extend(optimistic_values)
@@ -4945,9 +4949,60 @@ class Entity(with_metaclass(EntityMeta)):
             obj.__class__._delete_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
-        database._exec_sql(sql, arguments, start_transaction=True)
+        cursor = database._exec_sql(sql, arguments, start_transaction=True)
+        if cursor.rowcount == 0:
+            throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
+
+    def find_updated_attributes(obj):
+        entity = obj.__class__
+        attrs_to_select = []
+        attrs_to_select.extend(entity._pk_attrs_)
+        discr = entity._discriminator_attr_
+        if discr is not None and discr.pk_offset is None:
+            attrs_to_select.append(discr)
+        for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._rbits_):
+            optimistic = attr.optimistic if attr.optimistic is not None else attr.converters[0].optimistic
+            if optimistic:
+                attrs_to_select.append(attr)
+
+        optimistic_converters = []
+        attr_offsets = {}
+        select_list = [ 'ALL' ]
+        for attr in attrs_to_select:
+            optimistic_converters.extend(attr.converters)
+            attr_offsets[attr] = offsets = []
+            for columns in attr.columns:
+                select_list.append([ 'COLUMN', None, columns])
+                offsets.append(len(select_list) - 2)
+
+        from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ] ]
+        pk_columns = entity._pk_columns_
+        pk_converters = entity._pk_converters_
+        criteria_list = [ [ converter.EQ, [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ]
+                          for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
+        sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
+        database = entity._database_
+        sql, adapter = database._ast2sql(sql_ast)
+        arguments = adapter(obj._get_raw_pkval_())
+        cursor = database._exec_sql(sql, arguments)
+        row = cursor.fetchone()
+        if row is None:
+            return "Object %s was deleted outside of current transaction" % safe_repr(obj)
+
+        real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
+        diff = []
+        for attr, new_dbval in avdict.items():
+            old_dbval = obj._dbvals_[attr]
+            converter = attr.converters[0]
+            if old_dbval != new_dbval and (
+                    attr.reverse or not converter.dbvals_equal(old_dbval, new_dbval)):
+                diff.append('%s (%r -> %r)' % (attr.name, old_dbval, new_dbval))
+
+        return "Object %s was updated outside of current transaction%s" % (
+            safe_repr(obj), ('. Changes: %s' % ', '.join(diff) if diff else ''))
+
     def _save_(obj, dependent_objects=None):
         status = obj._status_
         if status in ('created', 'modified'):
@@ -5151,15 +5206,15 @@ def raw_sql(sql, result_type=None):
     locals = sys._getframe(1).f_locals
     return RawSQL(sql, globals, locals, result_type)
 
-def extract_vars(extractors, globals, locals, cells=None):
+def extract_vars(filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
             locals[name] = cell.cell_contents
     vars = {}
     vartypes = {}
-    for key, code in iteritems(extractors):
-        filter_num, src = key
+    for src, code in iteritems(extractors):
+        key = filter_num, src
         if src == '.0': value = locals['.0']
         else:
             try: value = eval(code, globals, locals)
@@ -5185,38 +5240,16 @@ def extract_vars(extractors, globals, locals, cells=None):
 def unpickle_query(query_result):
     return query_result
 
-def persistent_id(obj):
-    if obj is Ellipsis:
-        return "Ellipsis"
-
-def persistent_load(persid):
-    if persid == "Ellipsis":
-        return Ellipsis
-    raise pickle.UnpicklingError("unsupported persistent object")
-
-def pickle_ast(val):
-    pickled = io.BytesIO()
-    pickler = pickle.Pickler(pickled)
-    pickler.persistent_id = persistent_id
-    pickler.dump(val)
-    return pickled
-
-def unpickle_ast(pickled):
-    pickled.seek(0)
-    unpickler = pickle.Unpickler(pickled)
-    unpickler.persistent_load = persistent_load
-    return unpickler.load()
-
-
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree, pretranslator_key = create_extractors(
-            code_key, tree, 0, globals, locals, special_functions, const_functions)
-        vars, vartypes = extract_vars(extractors, globals, locals, cells)
+            code_key, tree, globals, locals, special_functions, const_functions)
+        filter_num = 0
+        vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
-        origin = vars[0, node.src]
+        origin = vars[filter_num, node.src]
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
@@ -5227,7 +5260,7 @@ class Query(object):
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
         query._vars = vars
-        query._key = pretranslator_key, tuple(vartypes[name] for name in varnames), left_join
+        query._key = pretranslator_key, tuple(vartypes[filter_num, name] for name in varnames), left_join
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -5528,14 +5561,14 @@ class Query(object):
 
         filter_num = len(query._filters) + 1
         extractors, varnames, func_ast, pretranslator_key = create_extractors(
-            func_id, func_ast, filter_num, globals, locals, special_functions, const_functions,
+            func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
-            vars, vartypes = extract_vars(extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
-            sorted_vartypes = tuple(vartypes[name] for name in varnames)
+            sorted_vartypes = tuple(vartypes[filter_num, name] for name in varnames)
         else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
         new_key = query._key + (('order_by' if order_by else 'filter', pretranslator_key, sorted_vartypes),)

@@ -33,17 +33,18 @@ class Test(unittest.TestCase):
         db.generate_mapping(check_tables=True, create_tables=True)
 
         with orm.db_session:
-            pop = Genre(name='pop')
+            pop = Genre(name='Pop')
             Artist(name='Sia', age=40, genres=[pop])
+            Hobby(name='Swimming')
 
         pony.options.INNER_JOIN_SYNTAX = True
     
     @db_session
     def test_no_caching(self):
-        for attr, type in zip(['name', 'age'], [basestring, int]):
-            val = select(getattr(x, attr) for x in self.db.Artist).first()
-            self.assertIsInstance(val, type)
-    
+        for attr_name, attr_type in zip(['name', 'age'], [basestring, int]):
+            val = select(getattr(x, attr_name) for x in self.db.Artist).first()
+            self.assertIsInstance(val, attr_type)
+
     @db_session
     def test_simple(self):
         val = select(getattr(x, 'age') for x in self.db.Artist).first()
@@ -88,4 +89,18 @@ class Test(unittest.TestCase):
         name = 1
         select(getattr(x, name) for x in self.db.Artist)
 
+    @db_session
+    def test_lambda_1(self):
+        for name, value in [('name', 'Sia'), ('age', 40), ('name', 'Sia')]:
+            result = self.db.Artist.select(lambda a: getattr(a, name) == value)
+            self.assertEqual(set(obj.name for obj in result), {'Sia'})
 
+    @db_session
+    def test_lambda_2(self):
+        for entity, name, value in [
+                (self.db.Genre, 'name', 'Pop'),
+                (self.db.Artist, 'age', 40),
+                (self.db.Hobby, 'name', 'Swimming'),
+        ]:
+            result = entity.select(lambda a: getattr(a, name) == value)
+            self.assertEqual(set(result[:]), {entity.select().first()})
