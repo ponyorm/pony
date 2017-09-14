@@ -500,6 +500,12 @@ def avg(iter):
     if not count: return None
     return sum / count
 
+def coalesce(*args):
+    for arg in args:
+        if arg is not None:
+            return arg
+    return None
+
 def distinct(iter):
     d = defaultdict(int)
     for item in iter:

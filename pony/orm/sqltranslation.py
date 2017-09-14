@@ -12,7 +12,7 @@ from uuid import UUID
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, reraise, concat, copy_ast
+from pony.utils import is_ident, throw, reraise, concat, copy_ast, coalesce
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
@@ -2119,6 +2119,19 @@ class FuncAvgMonad(FuncMonad):
     func = utils.avg, core.avg
     def call(monad, x):
         return x.aggregate('AVG')
+
+class FuncCoalesceMonad(FuncMonad):
+    func = coalesce
+    def call(monad, *args):
+        if len(args) < 2: throw(TranslationError, 'coalesce() function requires at least two arguments')
+        translator = args[0].translator
+        result_ast = [ 'COALESCE' ]
+        t = None
+        for arg in args:
+            if t is None: t = arg.type
+            elif arg.type is not t: throw(TypeError, 'All arguments of coalesce() function should have the same type')
+            result_ast.append(arg.getsql()[0])
+        return translator.ExprMonad.new(translator, unicode, result_ast)
 
 class FuncDistinctMonad(FuncMonad):
     func = utils.distinct, core.distinct
