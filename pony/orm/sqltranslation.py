@@ -1623,8 +1623,25 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             parent_subquery = parent_monad.tableref.subquery
             monad.tableref = parent_subquery.add_tableref(name_path, parent_monad.tableref, attr)
 
+class StringAttrMonad(StringMixin, AttrMonad):
+    def negate(monad):
+        sql = monad.getsql()[0]
+        translator = monad.translator
+        result_sql = [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
+        if monad.attr.nullable:
+            result_sql = [ 'OR', result_sql, [ 'IS_NULL', sql ] ]
+        result = translator.BoolExprMonad(translator, result_sql)
+        result.aggregated = monad.aggregated
+        return result
+    def nonzero(monad):
+        sql = monad.getsql()[0]
+        translator = monad.translator
+        result_sql = [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
+        result = translator.BoolExprMonad(translator,  result_sql)
+        result.aggregated = monad.aggregated
+        return result
+
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
-class StringAttrMonad(StringMixin, AttrMonad): pass
 class DateAttrMonad(DateMixin, AttrMonad): pass
 class TimeAttrMonad(TimeMixin, AttrMonad): pass
 class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad): pass
