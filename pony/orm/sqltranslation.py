@@ -1719,6 +1719,7 @@ class ExprMonad(Monad):
         elif type is timedelta: cls = translator.TimedeltaExprMonad
         elif type is datetime: cls = translator.DatetimeExprMonad
         elif type is Json: cls = translator.JsonExprMonad
+        elif isinstance(type, EntityMeta): cls = translator.ObjectExprMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
     def __new__(cls, *args):
@@ -1729,6 +1730,10 @@ class ExprMonad(Monad):
         monad.sql = sql
     def getsql(monad, subquery=None):
         return [ monad.sql ]
+
+class ObjectExprMonad(ObjectMixin, ExprMonad):
+    def getsql(monad, subquery=None):
+        return monad.sql
 
 class StringExprMonad(StringMixin, ExprMonad): pass
 class NumericExprMonad(NumericMixin, ExprMonad): pass
@@ -2125,13 +2130,16 @@ class FuncCoalesceMonad(FuncMonad):
     def call(monad, *args):
         if len(args) < 2: throw(TranslationError, 'coalesce() function requires at least two arguments')
         translator = args[0].translator
-        result_ast = [ 'COALESCE' ]
-        t = None
-        for arg in args:
-            if t is None: t = arg.type
-            elif arg.type is not t: throw(TypeError, 'All arguments of coalesce() function should have the same type')
-            result_ast.append(arg.getsql()[0])
-        return translator.ExprMonad.new(translator, unicode, result_ast)
+        arg = args[0]
+        t = arg.type
+        result = [ [ sql ] for sql in arg.getsql() ]
+        for arg in args[1:]:
+            if arg.type is not t: throw(TypeError, 'All arguments of coalesce() function should have the same type')
+            for i, sql in enumerate(arg.getsql()):
+                result[i].append(sql)
+        sql = [ [ 'COALESCE' ] + coalesce_args for coalesce_args in result ]
+        if not isinstance(t, EntityMeta): sql = sql[0]
+        return translator.ExprMonad.new(translator, t, sql)
 
 class FuncDistinctMonad(FuncMonad):
     func = utils.distinct, core.distinct
