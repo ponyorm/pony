@@ -4920,7 +4920,7 @@ class Entity(with_metaclass(EntityMeta)):
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments, start_transaction=True)
             if cursor.rowcount == 0:
-                throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
+                throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
@@ -4951,9 +4951,58 @@ class Entity(with_metaclass(EntityMeta)):
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments, start_transaction=True)
         if cursor.rowcount == 0:
-            throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
+            throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
+
+    def find_updated_attributes(obj):
+        entity = obj.__class__
+        attrs_to_select = []
+        attrs_to_select.extend(entity._pk_attrs_)
+        discr = entity._discriminator_attr_
+        if discr is not None and discr.pk_offset is None:
+            attrs_to_select.append(discr)
+        for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._rbits_):
+            optimistic = attr.optimistic if attr.optimistic is not None else attr.converters[0].optimistic
+            if optimistic:
+                attrs_to_select.append(attr)
+
+        optimistic_converters = []
+        attr_offsets = {}
+        select_list = [ 'ALL' ]
+        for attr in attrs_to_select:
+            optimistic_converters.extend(attr.converters)
+            attr_offsets[attr] = offsets = []
+            for columns in attr.columns:
+                select_list.append([ 'COLUMN', None, columns])
+                offsets.append(len(select_list) - 2)
+
+        from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ] ]
+        pk_columns = entity._pk_columns_
+        pk_converters = entity._pk_converters_
+        criteria_list = [ [ converter.EQ, [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ]
+                          for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
+        sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
+        database = entity._database_
+        sql, adapter = database._ast2sql(sql_ast)
+        arguments = adapter(obj._get_raw_pkval_())
+        cursor = database._exec_sql(sql, arguments)
+        row = cursor.fetchone()
+        if row is None:
+            return "Object %s was deleted outside of current transaction" % safe_repr(obj)
+
+        real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
+        diff = []
+        for attr, new_dbval in avdict.items():
+            old_dbval = obj._dbvals_[attr]
+            converter = attr.converters[0]
+            if old_dbval != new_dbval and (
+                    attr.reverse or not converter.dbvals_equal(old_dbval, new_dbval)):
+                diff.append('%s (%r -> %r)' % (attr.name, old_dbval, new_dbval))
+
+        return "Object %s was updated outside of current transaction%s" % (
+            safe_repr(obj), ('. Changes: %s' % ', '.join(diff) if diff else ''))
+
     def _save_(obj, dependent_objects=None):
         status = obj._status_
         if status in ('created', 'modified'):
