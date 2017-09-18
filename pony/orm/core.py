@@ -5618,7 +5618,9 @@ class Query(object):
         entity = query._translator.expr_type
         if not isinstance(entity, EntityMeta): throw(TypeError,
             'Keyword arguments are not allowed: since query result type is not an entity, filter() method can accept only lambda')
-
+        return query._apply_kwargs(kwargs)
+    def _apply_kwargs(query, kwargs):
+        entity = query._translator.expr_type
         get_attr = entity._adict_.get
         filterattrs = []
         value_dict = {}
