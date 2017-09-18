@@ -77,6 +77,8 @@ class PythonTranslator(ASTTranslator):
         return src
     def postGenExprIf(translator, node):
         return 'if %s' % node.test.src
+    def postIfExp(translator, node):
+        return '%s if %s else %s' % (node.then.src, node.test.src, node.else_.src)
     @priority(14)
     def postOr(translator, node):
         return ' or '.join(expr.src for expr in node.nodes)
