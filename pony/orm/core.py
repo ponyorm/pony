@@ -5596,7 +5596,7 @@ class Query(object):
                 translator = translator.without_order()
             elif len(tup) == 1:
                 attrnames = tup[0]
-                translator.apply_kwfilters(attrnames)
+                translator = translator.apply_kwfilters(attrnames)
             elif len(tup) == 2:
                 numbers, args = tup
                 if numbers: translator = translator.order_by_numbers(args)
