@@ -218,6 +218,7 @@ class SQLTranslator(ASTTranslator):
                 tableref = TableRef(subquery, name, entity)
                 tablerefs[name] = tableref
                 tableref.make_join()
+                node.monad = translator.ObjectIterMonad(translator, tableref, entity)
             else:
                 attr_names = []
                 while isinstance(node, ast.Getattr):
@@ -578,29 +579,34 @@ class SQLTranslator(ASTTranslator):
                 new_order.append(desc_wrapper([ 'COLUMN', alias, column]))
         order[:0] = new_order
         return translator
-    def apply_kwfilters(translator, filterattrs):
-        entity = translator.expr_type
-        if not isinstance(entity, EntityMeta):
-            throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
+    def apply_kwfilters(translator, filterattrs, original_names=False):
         translator = deepcopy(translator)
-        expr_monad = translator.tree.expr.monad
+        if original_names:
+            object_monad = translator.tree.quals[0].iter.monad
+            assert isinstance(object_monad.type, EntityMeta)
+        else:
+            object_monad = translator.tree.expr.monad
+            if not isinstance(object_monad.type, EntityMeta):
+                throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
+
         monads = []
         none_monad = translator.NoneMonad(translator)
         for attr, id, is_none in filterattrs:
-            attr_monad = expr_monad.getattr(attr.name)
+            attr_monad = object_monad.getattr(attr.name)
             if is_none: monads.append(CmpMonad('is', attr_monad, none_monad))
             else:
                 param_monad = translator.ParamMonad.new(translator, attr.py_type, (id, None, None))
                 monads.append(CmpMonad('==', attr_monad, param_monad))
         for m in monads: translator.conditions.extend(m.getsql())
         return translator
-    def apply_lambda(translator, filter_num, order_by, func_ast, argnames, extractors, vartypes):
+    def apply_lambda(translator, filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes):
         translator = deepcopy(translator)
         func_ast = copy_ast(func_ast)  # func_ast = deepcopy(func_ast)
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
         translator.argnames = list(argnames)
+        translator.original_names = original_names
         translator.dispatch(func_ast)
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
         else: nodes = (func_ast,)
@@ -671,7 +677,7 @@ class SQLTranslator(ASTTranslator):
         t = translator
         while t is not None:
             argnames = t.argnames
-            if argnames is not None and name in argnames:
+            if argnames is not None and not t.original_names and name in argnames:
                 i = argnames.index(name)
                 return t.expr_monads[i]
             t = t.parent
