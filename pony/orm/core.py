@@ -4582,9 +4582,22 @@ class Entity(with_metaclass(EntityMeta)):
             undo_funcs.append(undo_func)
             try:
                 for attr in obj._attrs_:
-                    reverse = attr.reverse
-                    if not reverse: continue
+                    if not attr.is_collection: continue
+                    if isinstance(attr, Set):
+                        set_wrapper = attr.__get__(obj)
+                        if not set_wrapper.__nonzero__(): pass
+                        elif attr.cascade_delete:
+                            for robj in set_wrapper: robj._delete_(undo_funcs)
+                        elif not attr.reverse.is_required: attr.__set__(obj, (), undo_funcs)
+                        else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
+                                                     "and 'cascade_delete' option of %s is not set"
+                                                     % (obj, attr.name, attr))
+                    else: throw(NotImplementedError)
+
+                for attr in obj._attrs_:
                     if not attr.is_collection:
+                        reverse = attr.reverse
+                        if not reverse: continue
                         if not reverse.is_collection:
                             val = get_val(attr) if attr in obj._vals_ else attr.load(obj)
                             if val is None: continue
@@ -4599,16 +4612,6 @@ class Entity(with_metaclass(EntityMeta)):
                             if val is None: continue
                             reverse.reverse_remove((val,), obj, undo_funcs)
                         else: throw(NotImplementedError)
-                    elif isinstance(attr, Set):
-                        set_wrapper = attr.__get__(obj)
-                        if not set_wrapper.__nonzero__(): pass
-                        elif attr.cascade_delete:
-                            for robj in set_wrapper: robj._delete_(undo_funcs)
-                        elif not reverse.is_required: attr.__set__(obj, (), undo_funcs)
-                        else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
-                                                     "and 'cascade_delete' option of %s is not set"
-                                                     % (obj, attr.name, attr))
-                    else: throw(NotImplementedError)
 
                 cache_indexes = cache.indexes
                 for attr in obj._simple_keys_:
@@ -5501,7 +5504,7 @@ class Query(object):
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
-            tup = ((),)
+            tup = (('without_order',),)
             new_key = query._key + tup
             new_filters = query._filters + tup
             new_translator = query._database._translator_cache.get(new_key)
@@ -5525,15 +5528,17 @@ class Query(object):
             else: throw(TypeError, "order_by() method receive an argument of invalid type: %r" % arg)
         if numbers and attributes:
             throw(TypeError, 'order_by() method receive invalid combination of arguments')
-        new_key = query._key + ('order_by', args,)
-        new_filters = query._filters + ((numbers, args),)
+
+        tup = (('order_by_numbers' if numbers else 'order_by_attributes', args),)
+        new_key = query._key + tup
+        new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             if numbers: new_translator = query._translator.order_by_numbers(args)
             else: new_translator = query._translator.order_by_attributes(args)
             query._database._translator_cache[new_key] = new_translator
         return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
-    def _process_lambda(query, func, globals, locals, order_by):
+    def _process_lambda(query, func, globals, locals, order_by=False, original_names=False):
         prev_translator = query._translator
         argnames = ()
         if isinstance(func, basestring):
@@ -5553,11 +5558,16 @@ class Query(object):
         else: assert False  # pragma: no cover
 
         if argnames:
-            expr_type = prev_translator.expr_type
-            expr_count = len(expr_type) if type(expr_type) is tuple else 1
-            if len(argnames) != expr_count:
-                throw(TypeError, 'Incorrect number of lambda arguments. '
-                                 'Expected: %d, got: %d' % (expr_count, len(argnames)))
+            if original_names:
+                for name in argnames:
+                    if name not in prev_translator.subquery.tablerefs: throw(TypeError,
+                        'Lambda argument %s does not correspond to any loop variable in original query' % name)
+            else:
+                expr_type = prev_translator.expr_type
+                expr_count = len(expr_type) if type(expr_type) is tuple else 1
+                if len(argnames) != expr_count:
+                    throw(TypeError, 'Incorrect number of lambda arguments. '
+                                     'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
         extractors, varnames, func_ast, pretranslator_key = create_extractors(
@@ -5571,12 +5581,12 @@ class Query(object):
             sorted_vartypes = tuple(vartypes[filter_num, name] for name in varnames)
         else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
-        new_key = query._key + (('order_by' if order_by else 'filter', pretranslator_key, sorted_vartypes),)
-        new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
+        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', pretranslator_key, sorted_vartypes),)
+        new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
-            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
+            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
@@ -5587,23 +5597,14 @@ class Query(object):
                     new_translator = translator_cls(tree, prev_extractors, prev_vartypes,
                                                     left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
-                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
+                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
         return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
-        for i, tup in enumerate(query._filters):
-            if not tup:
-                translator = translator.without_order()
-            elif len(tup) == 1:
-                attrnames = tup[0]
-                translator.apply_kwfilters(attrnames)
-            elif len(tup) == 2:
-                numbers, args = tup
-                if numbers: translator = translator.order_by_numbers(args)
-                else: translator = translator.order_by_attributes(args)
-            else:
-                order_by, func_ast, argnames, extractors, vartypes = tup
-                translator = translator.apply_lambda(i+1, order_by, func_ast, argnames, extractors, vartypes)
+        for tup in query._filters:
+            method_name, args = tup[0], tup[1:]
+            translator_method = getattr(translator, method_name)
+            translator = translator_method(*args)
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
@@ -5618,7 +5619,29 @@ class Query(object):
         entity = query._translator.expr_type
         if not isinstance(entity, EntityMeta): throw(TypeError,
             'Keyword arguments are not allowed: since query result type is not an entity, filter() method can accept only lambda')
+        return query._apply_kwargs(kwargs)
+    @cut_traceback
+    def where(query, *args, **kwargs):
+        if args:
+            if isinstance(args[0], RawSQL):
+                raw = args[0]
+                return query.where(lambda: raw)
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
+            return query._process_lambda(func, globals, locals, order_by=False, original_names=True)
+        if not kwargs: return query
 
+        if len(query._translator.tree.quals) > 1: throw(TypeError,
+            'Keyword arguments are not allowed: query iterates over more than one entity')
+        return query._apply_kwargs(kwargs, original_names=True)
+    def _apply_kwargs(query, kwargs, original_names=False):
+        translator = query._translator
+        if original_names:
+            tablerefs = translator.subquery.tablerefs
+            alias = translator.tree.quals[0].assign.name
+            tableref = tablerefs[alias]
+            entity = tableref.entity
+        else:
+            entity = translator.expr_type
         get_attr = entity._adict_.get
         filterattrs = []
         value_dict = {}
@@ -5637,11 +5660,12 @@ class Query(object):
             value_dict[id] = val
 
         filterattrs = tuple(filterattrs)
-        new_key = query._key + ('filter', filterattrs)
-        new_filters = query._filters + ((filterattrs,),)
+        tup = (('apply_kwfilters', filterattrs, original_names),)
+        new_key = query._key + tup
+        new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
-            new_translator = query._translator.apply_kwfilters(filterattrs)
+            new_translator = translator.apply_kwfilters(filterattrs, original_names)
             query._database._translator_cache[new_key] = new_translator
         new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
                                  _next_kwarg_id=next_id, _vars=query._vars.copy())
