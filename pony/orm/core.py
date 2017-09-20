@@ -5574,7 +5574,7 @@ class Query(object):
         else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
         new_key = query._key + (('order_by' if order_by else 'filter', pretranslator_key, sorted_vartypes),)
-        new_filters = query._filters + (('apply_lambda', order_by, func_ast, argnames, extractors, vartypes),)
+        new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
@@ -5593,23 +5593,10 @@ class Query(object):
             query._database._translator_cache[new_key] = new_translator
         return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
-        for i, tup in enumerate(query._filters):
-            cmd = tup[0]
-            if cmd == 'without_order':
-                translator = translator.without_order()
-            elif cmd == 'apply_kwfilters':
-                attrnames = tup[1]
-                translator = translator.apply_kwfilters(attrnames)
-            elif cmd == 'order_by_numbers':
-                args = tup[1]
-                translator = translator.order_by_numbers(args)
-            elif cmd == 'order_by_attributes':
-                args = tup[1]
-                translator = translator.order_by_attributes(args)
-            elif cmd == 'apply_lambda':
-                order_by, func_ast, argnames, extractors, vartypes = tup[1:]
-                translator = translator.apply_lambda(i+1, order_by, func_ast, argnames, extractors, vartypes)
-            else: assert False, cmd
+        for tup in query._filters:
+            method_name, args = tup[0], tup[1:]
+            translator_method = getattr(translator, method_name)
+            translator = translator_method(*args)
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
