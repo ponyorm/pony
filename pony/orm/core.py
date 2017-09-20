@@ -5578,7 +5578,7 @@ class Query(object):
             sorted_vartypes = tuple(vartypes[filter_num, name] for name in varnames)
         else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
-        new_key = query._key + (('order_by' if order_by else 'filter', pretranslator_key, sorted_vartypes),)
+        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', pretranslator_key, sorted_vartypes),)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
