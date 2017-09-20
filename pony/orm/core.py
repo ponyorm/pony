@@ -5501,9 +5501,9 @@ class Query(object):
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
-            tup = ('without_order',)
-            new_key = query._key + (tup,)
-            new_filters = query._filters + (tup,)
+            tup = (('without_order',),)
+            new_key = query._key + tup
+            new_filters = query._filters + tup
             new_translator = query._database._translator_cache.get(new_key)
             if new_translator is None:
                 new_translator = query._translator.without_order()
@@ -5526,9 +5526,9 @@ class Query(object):
         if numbers and attributes:
             throw(TypeError, 'order_by() method receive invalid combination of arguments')
 
-        tup = ('order_by_numbers' if numbers else 'order_by_attributes', args)
-        new_key = query._key + (tup,)
-        new_filters = query._filters + (tup,)
+        tup = (('order_by_numbers' if numbers else 'order_by_attributes', args),)
+        new_key = query._key + tup
+        new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             if numbers: new_translator = query._translator.order_by_numbers(args)
@@ -5645,9 +5645,9 @@ class Query(object):
             value_dict[id] = val
 
         filterattrs = tuple(filterattrs)
-        tup = ('apply_kwfilters', filterattrs)
-        new_key = query._key + (tup,)
-        new_filters = query._filters + (tup,)
+        tup = (('apply_kwfilters', filterattrs),)
+        new_key = query._key + tup
+        new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             new_translator = query._translator.apply_kwfilters(filterattrs)
