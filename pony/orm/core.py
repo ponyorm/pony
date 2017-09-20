@@ -5501,9 +5501,9 @@ class Query(object):
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
-            tup = ((),)
-            new_key = query._key + tup
-            new_filters = query._filters + tup
+            tup = ('without_order',)
+            new_key = query._key + (tup,)
+            new_filters = query._filters + (tup,)
             new_translator = query._database._translator_cache.get(new_key)
             if new_translator is None:
                 new_translator = query._translator.without_order()
@@ -5525,8 +5525,10 @@ class Query(object):
             else: throw(TypeError, "order_by() method receive an argument of invalid type: %r" % arg)
         if numbers and attributes:
             throw(TypeError, 'order_by() method receive invalid combination of arguments')
-        new_key = query._key + ('order_by', args,)
-        new_filters = query._filters + ((numbers, args),)
+
+        tup = ('order_by_numbers' if numbers else 'order_by_attributes', args)
+        new_key = query._key + (tup,)
+        new_filters = query._filters + (tup,)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             if numbers: new_translator = query._translator.order_by_numbers(args)
@@ -5572,7 +5574,7 @@ class Query(object):
         else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
         new_key = query._key + (('order_by' if order_by else 'filter', pretranslator_key, sorted_vartypes),)
-        new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
+        new_filters = query._filters + (('apply_lambda', order_by, func_ast, argnames, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
@@ -5592,18 +5594,22 @@ class Query(object):
         return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for i, tup in enumerate(query._filters):
-            if not tup:
+            cmd = tup[0]
+            if cmd == 'without_order':
                 translator = translator.without_order()
-            elif len(tup) == 1:
-                attrnames = tup[0]
+            elif cmd == 'apply_kwfilters':
+                attrnames = tup[1]
                 translator = translator.apply_kwfilters(attrnames)
-            elif len(tup) == 2:
-                numbers, args = tup
-                if numbers: translator = translator.order_by_numbers(args)
-                else: translator = translator.order_by_attributes(args)
-            else:
-                order_by, func_ast, argnames, extractors, vartypes = tup
+            elif cmd == 'order_by_numbers':
+                args = tup[1]
+                translator = translator.order_by_numbers(args)
+            elif cmd == 'order_by_attributes':
+                args = tup[1]
+                translator = translator.order_by_attributes(args)
+            elif cmd == 'apply_lambda':
+                order_by, func_ast, argnames, extractors, vartypes = tup[1:]
                 translator = translator.apply_lambda(i+1, order_by, func_ast, argnames, extractors, vartypes)
+            else: assert False, cmd
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
@@ -5639,8 +5645,9 @@ class Query(object):
             value_dict[id] = val
 
         filterattrs = tuple(filterattrs)
-        new_key = query._key + ('filter', filterattrs)
-        new_filters = query._filters + ((filterattrs,),)
+        tup = ('apply_kwfilters', filterattrs)
+        new_key = query._key + (tup,)
+        new_filters = query._filters + (tup,)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             new_translator = query._translator.apply_kwfilters(filterattrs)
