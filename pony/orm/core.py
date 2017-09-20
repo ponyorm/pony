@@ -4582,9 +4582,22 @@ class Entity(with_metaclass(EntityMeta)):
             undo_funcs.append(undo_func)
             try:
                 for attr in obj._attrs_:
-                    reverse = attr.reverse
-                    if not reverse: continue
+                    if not attr.is_collection: continue
+                    if isinstance(attr, Set):
+                        set_wrapper = attr.__get__(obj)
+                        if not set_wrapper.__nonzero__(): pass
+                        elif attr.cascade_delete:
+                            for robj in set_wrapper: robj._delete_(undo_funcs)
+                        elif not attr.reverse.is_required: attr.__set__(obj, (), undo_funcs)
+                        else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
+                                                     "and 'cascade_delete' option of %s is not set"
+                                                     % (obj, attr.name, attr))
+                    else: throw(NotImplementedError)
+
+                for attr in obj._attrs_:
                     if not attr.is_collection:
+                        reverse = attr.reverse
+                        if not reverse: continue
                         if not reverse.is_collection:
                             val = get_val(attr) if attr in obj._vals_ else attr.load(obj)
                             if val is None: continue
@@ -4599,16 +4612,6 @@ class Entity(with_metaclass(EntityMeta)):
                             if val is None: continue
                             reverse.reverse_remove((val,), obj, undo_funcs)
                         else: throw(NotImplementedError)
-                    elif isinstance(attr, Set):
-                        set_wrapper = attr.__get__(obj)
-                        if not set_wrapper.__nonzero__(): pass
-                        elif attr.cascade_delete:
-                            for robj in set_wrapper: robj._delete_(undo_funcs)
-                        elif not reverse.is_required: attr.__set__(obj, (), undo_funcs)
-                        else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
-                                                     "and 'cascade_delete' option of %s is not set"
-                                                     % (obj, attr.name, attr))
-                    else: throw(NotImplementedError)
 
                 cache_indexes = cache.indexes
                 for attr in obj._simple_keys_:
