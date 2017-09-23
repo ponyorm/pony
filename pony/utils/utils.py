@@ -71,7 +71,8 @@ def cut_traceback(func, *args, **kwargs):
                     last_pony_tb = tb
                 tb = tb.tb_next
             if last_pony_tb is None: raise
-            if tb.tb_frame.f_globals.get('__name__').startswith('pony.utils') and tb.tb_frame.f_code.co_name == 'throw':
+            module_name = tb.tb_frame.f_globals.get('__name__') or ''
+            if module_name.startswith('pony.utils') and tb.tb_frame.f_code.co_name == 'throw':
                 reraise(exc_type, exc, last_pony_tb)
             reraise(exc_type, exc, full_tb)
         finally:

@@ -4,7 +4,7 @@ from pony.py23compat import itervalues, basestring
 from operator import attrgetter
 
 from pony.orm import core
-from pony.orm.core import log_sql, DBSchemaError
+from pony.orm.core import log_sql, DBSchemaError, MappingError
 from pony.utils import throw
 
 class DBSchema(object):
@@ -26,8 +26,8 @@ class DBSchema(object):
         if schema.uppercase: return s.upper().replace('%S', '%s') \
             .replace(')S', ')s').replace('%R', '%r').replace(')R', ')r')
         else: return s.lower()
-    def add_table(schema, table_name):
-        return schema.table_class(table_name, schema)
+    def add_table(schema, table_name, entity=None):
+        return schema.table_class(table_name, schema, entity)
     def order_tables_to_create(schema):
         tables = []
         created_tables = set()
@@ -85,7 +85,7 @@ class DBObject(object):
 
 class Table(DBObject):
     typename = 'Table'
-    def __init__(table, name, schema):
+    def __init__(table, name, schema, entity=None):
         if name in schema.tables:
             throw(DBSchemaError, "Table %r already exists in database schema" % name)
         if name in schema.names:
@@ -102,12 +102,24 @@ class Table(DBObject):
         table.parent_tables = set()
         table.child_tables = set()
         table.entities = set()
+        table.options = {}
+        if entity is not None:
+            table.entities.add(entity)
+            table.options = entity._table_options_
         table.m2m = set()
     def __repr__(table):
         table_name = table.name
         if isinstance(table_name, tuple):
             table_name = '.'.join(table_name)
         return '<Table(%s)>' % table_name
+    def add_entity(table, entity):
+        for e in table.entities:
+            if e._root_ is not entity._root_:
+                throw(MappingError, "Entities %s and %s cannot be mapped to table %s "
+                                   "because they don't belong to the same hierarchy"
+                                   % (e, entity, table.name))
+        assert '_table_options_' not in entity.__dict__
+        table.entities.add(entity)
     def exists(table, provider, connection, case_sensitive=True):
         return provider.table_exists(connection, table.name, case_sensitive)
     def get_create_command(table):
@@ -134,7 +146,16 @@ class Table(DBObject):
                 cmd.append(schema.indent+foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.append(')')
+        for name, value in sorted(table.options.items()):
+            option = table.format_option(name, value)
+            if option: cmd.append(option)
         return '\n'.join(cmd)
+    def format_option(table, name, value):
+        if value is True:
+            return name
+        if value is False:
+            return None
+        return '%s %s' % (name, value)
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
         created_tables.add(table)

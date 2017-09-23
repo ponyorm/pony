@@ -838,6 +838,8 @@ class Database(object):
             entity._resolve_attr_types_()
         for entity in entities:
             entity._link_reverse_attrs_()
+        for entity in entities:
+            entity._check_table_options_()
 
         def get_columns(table, column_names):
             column_dict = table.column_dict
@@ -858,14 +860,8 @@ class Database(object):
             else: assert isinstance(table_name, (basestring, tuple))
 
             table = schema.tables.get(table_name)
-            if table is None: table = schema.add_table(table_name)
-            elif table.entities:
-                for e in table.entities:
-                    if e._root_ is not entity._root_:
-                        throw(MappingError, "Entities %s and %s cannot be mapped to table %s "
-                                           "because they don't belong to the same hierarchy"
-                                           % (e, entity, table_name))
-            table.entities.add(entity)
+            if table is None: table = schema.add_table(table_name, entity)
+            else: table.add_entity(entity)
 
             for attr in entity._new_attrs_:
                 if attr.is_collection:
@@ -3657,6 +3653,12 @@ class EntityMeta(type):
             attr2.reverse = attr
             attr.linked()
             attr2.linked()
+    def _check_table_options_(entity):
+        if entity._root_ is not entity:
+            if '_table_options_' in entity.__dict__: throw(TypeError,
+                'Cannot redefine %s options in %s entity' % (entity._root_.__name__, entity.__name__))
+        elif not hasattr(entity, '_table_options_'):
+            entity._table_options_ = {}
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []
