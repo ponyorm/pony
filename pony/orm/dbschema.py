@@ -102,8 +102,10 @@ class Table(DBObject):
         table.parent_tables = set()
         table.child_tables = set()
         table.entities = set()
+        table.options = {}
         if entity is not None:
             table.entities.add(entity)
+            table.options = entity._table_options_
         table.m2m = set()
     def __repr__(table):
         table_name = table.name
@@ -116,6 +118,7 @@ class Table(DBObject):
                 throw(MappingError, "Entities %s and %s cannot be mapped to table %s "
                                    "because they don't belong to the same hierarchy"
                                    % (e, entity, table.name))
+        assert '_table_options_' not in entity.__dict__
         table.entities.add(entity)
     def exists(table, provider, connection, case_sensitive=True):
         return provider.table_exists(connection, table.name, case_sensitive)
@@ -143,7 +146,16 @@ class Table(DBObject):
                 cmd.append(schema.indent+foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.append(')')
+        for name, value in sorted(table.options.items()):
+            option = table.format_option(name, value)
+            if option: cmd.append(option)
         return '\n'.join(cmd)
+    def format_option(table, name, value):
+        if value is True:
+            return name
+        if value is False:
+            return None
+        return '%s %s' % (name, value)
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
         created_tables.add(table)
