@@ -858,14 +858,8 @@ class Database(object):
             else: assert isinstance(table_name, (basestring, tuple))
 
             table = schema.tables.get(table_name)
-            if table is None: table = schema.add_table(table_name)
-            elif table.entities:
-                for e in table.entities:
-                    if e._root_ is not entity._root_:
-                        throw(MappingError, "Entities %s and %s cannot be mapped to table %s "
-                                           "because they don't belong to the same hierarchy"
-                                           % (e, entity, table_name))
-            table.entities.add(entity)
+            if table is None: table = schema.add_table(table_name, entity)
+            else: table.add_entity(entity)
 
             for attr in entity._new_attrs_:
                 if attr.is_collection:
