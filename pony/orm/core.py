@@ -2414,7 +2414,7 @@ class Attribute(object):
                 value_class = provider.sqlbuilder_cls.value_class
                 value = converter.py2sql(attr.default)
                 value = value_class(provider.paramstyle, value)
-                default = str(value)
+                default = unicode(value)
             table.add_column(columns[0], converter.get_sql_type(attr),
                              converter, not attr.nullable, default)
         elif columns:
