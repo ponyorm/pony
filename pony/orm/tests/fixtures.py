@@ -533,11 +533,9 @@ class SeparateProcess(object):
             if f.KEY == 'db' and f.provider_key in ('sqlserver', 'oracle'):
                 return True
 
-from concurrent.futures import wait, ThreadPoolExecutor
 
 @provider(fixture='parallel')
 class Parallel(object):
-
     enabled = False
 
     def __init__(self, Test):
@@ -545,6 +543,8 @@ class Parallel(object):
 
     def __call__(self, func):
         def wrapper(Test):
+            from concurrent.futures import wait, ThreadPoolExecutor
+
             with ThreadPoolExecutor(max_workers=1) as exe:
                 fu = exe.submit(func, Test)
 
