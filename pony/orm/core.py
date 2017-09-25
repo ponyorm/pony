@@ -3607,6 +3607,9 @@ class EntityMeta(type):
             if '__slots__' in cls_dict: throw(TypeError, 'Entity classes cannot contain __slots__ variable')
             cls_dict['__slots__'] = ()
 
+        if PY2 and isinstance(name, unicode):
+            try: name = str(name)
+            except: throw(TypeError, 'In Python2 entity name should not contains non-ascii symbols. Got: %r' % name)
         result = super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
         result._deconstructed = meta, name, bases, dict(cls_dict)
         return result
