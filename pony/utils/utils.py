@@ -516,6 +516,9 @@ def distinct(iter):
 def concat(*args):
     return ''.join(tostring(arg) for arg in args)
 
+def between(a, x, y):
+    return a <= x <= y
+
 def is_utf8(encoding):
     return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')
 

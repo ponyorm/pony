@@ -12,7 +12,7 @@ from uuid import UUID
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, reraise, concat, copy_ast, coalesce
+from pony.utils import is_ident, throw, reraise, copy_ast, between, concat, coalesce
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
@@ -2081,6 +2081,17 @@ class FuncDatetimeMonad(FuncDateMonad):
     def call_now(monad):
         translator = monad.translator
         return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
+
+class FuncBetweenMonad(FuncMonad):
+    func = between
+    def call(monad, x, a, b):
+        check_comparable(x, a, '<')
+        check_comparable(x, b, '<')
+        if isinstance(x.type, EntityMeta): throw(TypeError,
+            '%s instance cannot be argument of between() function: {EXPR}' % x.type.__name__)
+        translator = x.translator
+        sql = [ 'BETWEEN', x.getsql()[0], a.getsql()[0], b.getsql()[0] ]
+        return translator.BoolExprMonad(translator, sql)
 
 class FuncConcatMonad(FuncMonad):
     func = concat

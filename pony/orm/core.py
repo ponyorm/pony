@@ -27,7 +27,8 @@ from pony.orm.dbapiprovider import (
     )
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
-     pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat, coalesce
+     pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
+     between, concat, coalesce
 
 __all__ = [
     'pony',
@@ -58,7 +59,7 @@ __all__ = [
 
     'count', 'sum', 'min', 'max', 'avg', 'distinct',
 
-    'JOIN', 'desc', 'concat', 'coalesce', 'raw_sql',
+    'JOIN', 'desc', 'between', 'concat', 'coalesce', 'raw_sql',
 
     'buffer', 'unicode',
 
@@ -5839,5 +5840,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr, int, coalesce}
+special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr, int, between, coalesce}
 const_functions = {buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta}
