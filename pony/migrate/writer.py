@@ -19,6 +19,10 @@ def indent(text, prefix):
     return '\n'.join(new_lines)
 
 
+def get_entities(db):
+    return {entity_name: entity for entity_name, entity in db.entities.items() if entity_name != 'Migration'}
+
+
 class MigrationWriter(object):
 
     def __init__(self, deps, db_prev, db):
@@ -26,10 +30,6 @@ class MigrationWriter(object):
         self.db_prev = db_prev
         self.db = db
         self.questioner = InteractiveMigrationQuestioner()
-
-    def _get_entities(self, db):
-        return {k: v for k, v in db.entities.items()
-                if k != 'Migration'}
 
     def _items(self, dic):
         return sorted(
@@ -43,8 +43,8 @@ class MigrationWriter(object):
 
     def _get_ops(self):
         result = []
-        entities = self._get_entities(self.db)
-        entities_prev = self._get_entities(self.db_prev)
+        entities = get_entities(self.db)
+        entities_prev = get_entities(self.db_prev)
 
         eadded = {}
         emodified = {}
@@ -353,7 +353,7 @@ class MigrationWriter(object):
             ctx = {}
         define_ctx = dict(ctx, has_db_var=True)
 
-        for _, entity in self._by_id(self._get_entities(self.db)):
+        for _, entity in self._by_id(get_entities(self.db)):
             e, im = EntityDeclarationSerializer(entity, ctx=define_ctx).serialize()
             entities.append(e)
             imports.update(im)
