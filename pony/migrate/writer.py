@@ -3,6 +3,7 @@ from pony.py23compat import unicode
 
 from datetime import datetime
 from itertools import chain
+from operator import attrgetter
 from contextlib import contextmanager
 
 import pony
@@ -36,11 +37,6 @@ class MigrationWriter(object):
             dic.items(), key=lambda item: item[0]
         )
 
-    def _by_id(self, dic):
-        return sorted(
-            dic.items(), key=lambda item: item[1]._id_
-        )
-
     def _get_ops(self):
         result = []
         entities = get_entities(self.db)
@@ -49,14 +45,14 @@ class MigrationWriter(object):
         eadded = {}
         emodified = {}
 
-        for ename, entity in self._by_id(entities):
-            if ename not in entities_prev:
+        for ename, entity in self.db.entities.items():
+            if ename not in self.db_prev.entities:
                 eadded[ename] = sorted((a.name, a) for a in entity._new_attrs_)
 
         eremoved = {}
 
-        for ename, prev_entity in entities_prev.items():
-            if ename not in entities:
+        for ename, prev_entity in self.db_prev.entities.items():
+            if ename not in self.db.entities:
                 eremoved[ename] = sorted((a.name, a) for a in prev_entity._new_attrs_)
 
         entity_renames = {}
@@ -90,8 +86,9 @@ class MigrationWriter(object):
                             del eremoved[rem_ename]
 
         with apply_renames(entity_renames):
-            for ename, entity in self._by_id(entities):
-                if ename not in entities_prev:
+            for entity in sorted(self.db.entities.values(), key=attrgetter('_id_')):
+                ename = entity.__name__
+                if ename == 'Migration' or ename not in entities_prev:
                     continue
 
                 prev_entity = entities_prev[ename]
@@ -353,10 +350,11 @@ class MigrationWriter(object):
             ctx = {}
         define_ctx = dict(ctx, has_db_var=True)
 
-        for _, entity in self._by_id(get_entities(self.db)):
-            e, im = EntityDeclarationSerializer(entity, ctx=define_ctx).serialize()
-            entities.append(e)
-            imports.update(im)
+        for entity in sorted(self.db.entities.values(), key=attrgetter('_id_')):
+            if entity.__name__ != 'Migration':
+                e, im = EntityDeclarationSerializer(entity, ctx=define_ctx).serialize()
+                entities.append(e)
+                imports.update(im)
 
         if not entities:
             entities.append('pass')
