@@ -41,12 +41,7 @@ class MigrationWriter(object):
             dic.items(), key=lambda item: item[1]._id_
         )
 
-    def _new_attrs(self, entity):
-        return {a.name: a for a in entity._new_attrs_}
-
     def _get_ops(self):
-        new_attrs = self._new_attrs
-
         result = []
         entities = self._get_entities(self.db)
         entities_prev = self._get_entities(self.db_prev)
@@ -56,13 +51,13 @@ class MigrationWriter(object):
 
         for ename, entity in self._by_id(entities):
             if ename not in entities_prev:
-                eadded[ename] = self._items(new_attrs(entity))
+                eadded[ename] = sorted((a.name, a) for a in entity._new_attrs_)
 
         eremoved = {}
 
         for ename, prev_entity in entities_prev.items():
             if ename not in entities:
-                eremoved[ename] = self._items(new_attrs(prev_entity))
+                eremoved[ename] = sorted((a.name, a) for a in prev_entity._new_attrs_)
 
         entity_renames = {}
 
@@ -136,8 +131,11 @@ class MigrationWriter(object):
             result.extend(
                 self._get_entity_ops(ename, aadded, aremoved, amodified)
             )
-            adict = new_attrs(entities[ename])
-            prev_adict = new_attrs(entities_prev[ename])
+            new_entity = entities[ename]
+            adict = {a.name: a for a in new_entity._new_attrs_}
+
+            prev_entity = entities_prev[ename]
+            prev_adict = {a.name: a for a in prev_entity._new_attrs_}
 
             for aname in chain(aadded, amodified):
                 attr = adict[aname]
@@ -152,7 +150,7 @@ class MigrationWriter(object):
                     pair = (attr and attr.reverse, attr), (prev_attr, prev_attr.reverse)
                 elif attr.reverse.name in prev_adict:
                     attr = attr.reverse
-                    prev_attr = getattr(entities_prev[ename], attr.name)
+                    prev_attr = getattr(prev_entity, attr.name)
                     pair = (attr, attr.reverse), (prev_attr, prev_attr.reverse)
                 else:
                     pair = (attr, attr.reverse), None
@@ -213,7 +211,8 @@ class MigrationWriter(object):
                 prev_entity = entities_prev.get(attr.reverse.entity.__name__)
                 prev_attr = None
                 if prev_entity:
-                    prev_attr = new_attrs(prev_entity).get(attr.reverse.name)
+                    prev_attr = prev_entity._adict_.get(attr.reverse.name)
+                    if prev_attr.entity is not prev_entity: assert False, 'Not implemented'
                     if prev_attr and not prev_attr.reverse:
                         prev_attr = None
                 if prev_attr:
@@ -237,7 +236,8 @@ class MigrationWriter(object):
                 entity = entities.get(prev_attr.reverse.entity.__name__)
                 attr = None
                 if entity:
-                    attr = new_attrs(entity).get(prev_attr.reverse.name)
+                    attr = entity._adict_.get(prev_attr.reverse.name)
+                    if attr.entity is not entity: assert False, 'Not implemented'
                     if attr and not attr.reverse:
                         attr = None
                 if attr:
@@ -325,7 +325,7 @@ class MigrationWriter(object):
             if attr.reverse:
                 continue
             E_prev = self.db_prev.entities[ename]
-            attr_prev = self._new_attrs(E_prev)[aname]
+            attr_prev = E_prev._adict_[aname]
             if not attr_prev.reverse:
                 yield ops.ModifyAttr(ename, aname, attr)
             else:
