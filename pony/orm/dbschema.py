@@ -213,15 +213,16 @@ class Table(DBObject):
             prev_fkey = table.prev.foreign_keys.get(cols)
             if prev_fkey is None:
                 ops.append(Op(sql, obj=fkey, type='create'))
-            if sql != prev_fkey.get_create_command():
+            elif sql != prev_fkey.get_create_command():
                 drops.extend(prev_fkey.get_drop_ops())
                 ops.append(Op(sql, obj=fkey, type='create'))
         for cols, index in table.indexes.items():
+            if index.is_pk: continue
             sql = index.get_create_command()
             prev_index = table.prev.indexes.get(cols)
             if prev_index is None:
                 ops.append(Op(sql, obj=index, type='create', prefix=alter_table(index.table)))
-            if sql != prev_index.get_create_command():
+            elif sql != prev_index.get_create_command():
                 drops.extend(prev_index.get_drop_ops())
                 ops.append(Op(sql, obj=index, type='create'))
         for column in table.prev.column_list:
