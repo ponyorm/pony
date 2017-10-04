@@ -56,6 +56,16 @@ class Executor(object):
         for entity_name, prev_entity in entities.items():
             new_entity = prev_entity._new_entity_
             if new_entity is not None:
+                for prev_attr in prev_entity._new_attrs_:
+                    if prev_attr.new_attr is None:
+                        new_attr = new_entity._adict_.get(prev_attr.name)
+                        if new_attr is not None and new_attr.prev_attr is None:
+                            prev_attr.new_attr = new_attr
+                            new_attr.prev_attr = prev_attr
+
+        for entity_name, prev_entity in entities.items():
+            new_entity = prev_entity._new_entity_
+            if new_entity is not None:
                 assert prev_entity._table_object_.new is new_entity._table_object_
                 assert new_entity._table_object_.prev is prev_entity._table_object_
                 for prev_attr in prev_entity._new_attrs_:
@@ -112,7 +122,8 @@ class Executor(object):
                 extra_ops.extend(prev_table.get_rename_ops())
             if self.new_schema.provider.dialect != 'SQLite':
                 for prev_col in prev_table.column_list:
-                    if prev_col.name != prev_col.new.name:
+                    new_col = prev_col.new
+                    if new_col is not None and prev_col.name != new_col.name:
                         extra_ops.extend(prev_col.get_rename_ops())
         ops = extra_ops + ops
 
