@@ -52,9 +52,9 @@ class BaseSimpleSerializer(BaseSerializer):
 class ByteTypeSerializer(BaseSerializer):
     def serialize(self):
         value_repr = repr(self.value)
-        if PY2:
-            # Prepend the `b` prefix since we're importing unicode_literals
-            value_repr = 'b' + value_repr
+        # if PY2:
+        #     # Prepend the `b` prefix since we're importing unicode_literals
+        #     value_repr = 'b' + value_repr
         return value_repr, set()
 
 
