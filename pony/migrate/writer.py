@@ -32,11 +32,6 @@ class MigrationWriter(object):
         self.db = db
         self.questioner = InteractiveMigrationQuestioner()
 
-    def _items(self, dic):
-        return sorted(
-            dic.items(), key=lambda item: item[0]
-        )
-
     def _get_ops(self):
         result = []
         entities = get_entities(self.db)
@@ -67,8 +62,8 @@ class MigrationWriter(object):
                 entity = entities[to_]
                 entity.__name__ = to_
 
-        for rem_ename, rem_attrs in self._items(eremoved):
-            for add_ename, add_attrs in self._items(eadded):
+        for rem_ename, rem_attrs in sorted(eremoved.items()):
+            for add_ename, add_attrs in sorted(eadded.items()):
                 with apply_renames({rem_ename: add_ename}):
                     for (add_aname, add_attr), (rem_aname, rem_attr) in zip(add_attrs, rem_attrs):
                         if add_aname != rem_aname:
@@ -93,8 +88,8 @@ class MigrationWriter(object):
 
                 prev_entity = entities_prev[ename]
                 aadded, aremoved, amodified = self._get_entity_changes(ename, entity, prev_entity)
-                for add_name, add_attr in self._items(aadded):
-                    for rem_name, rem_attr in self._items(aremoved):
+                for add_name, add_attr in sorted(aadded.items()):
+                    for rem_name, rem_attr in sorted(aremoved.items()):
                         try:
                             add_attr.name = rem_attr.name
                             if add_attr.get_declaration_id() == rem_attr.get_declaration_id() \
@@ -124,7 +119,7 @@ class MigrationWriter(object):
 
         pairs = {}
 
-        for ename, (aadded, aremoved, amodified) in self._items(emodified):
+        for ename, (aadded, aremoved, amodified) in sorted(emodified.items()):
             result.extend(
                 self._get_entity_ops(ename, aadded, aremoved, amodified)
             )
@@ -196,7 +191,7 @@ class MigrationWriter(object):
                 result.append(ops.RemoveRelation(ename(attr_prev), attr_prev.name))
 
 
-        for ename, attrs in self._items(eadded):
+        for ename, attrs in sorted(eadded.items()):
             bases = [c.__name__ for c in entities[ename].__bases__]
             regular = [(k, v) for k, v in attrs if not v.reverse]
             result.append(
@@ -223,7 +218,7 @@ class MigrationWriter(object):
                     result.append(ops.AddRelation(
                         ename, name(attr), attr, name(attr.reverse), attr.reverse
                     ))
-        for ename, attrs in self._items(eremoved):
+        for ename, attrs in sorted(eremoved.items()):
             result.append(
                 ops.RemoveEntity(ename)
             )
@@ -272,7 +267,7 @@ class MigrationWriter(object):
 
         E__new_attrs_ = as_dict(entity._new_attrs_)
         E_prev__new_attrs_ = as_dict(prev_entity._new_attrs_)
-        for aname, attr in self._items(E__new_attrs_):
+        for aname, attr in sorted(E__new_attrs_.items()):
             if aname in E_prev__new_attrs_:
                 attr_prev = E_prev__new_attrs_[aname]
                 if bool(attr.reverse) != bool(attr_prev.reverse):
@@ -289,7 +284,7 @@ class MigrationWriter(object):
                 added[aname] = attr
 
         removed = {}
-        for aname, prev_attr in self._items(E_prev__new_attrs_):
+        for aname, prev_attr in sorted(E_prev__new_attrs_.items()):
             if aname in E__new_attrs_:
                 attr = getattr(entity, aname)
                 if bool(attr.reverse) == bool(prev_attr.reverse):
@@ -299,7 +294,7 @@ class MigrationWriter(object):
         return added, removed, modified
 
     def _get_entity_ops(self, ename, added, removed, modified):
-        for aname, attr in self._items(added):
+        for aname, attr in sorted(added.items()):
             if attr.reverse:
                 continue
             if issubclass(attr.py_type, str) and isinstance(attr, orm.Optional):
@@ -313,12 +308,12 @@ class MigrationWriter(object):
                 attr.initial = attr._constructor_args[1]['initial'] = initial
             yield ops.AddAttr(ename, aname, attr)
 
-        for aname, attr in self._items(removed):
+        for aname, attr in sorted(removed.items()):
             if attr.reverse:
                 continue
             yield ops.RemoveAttr(ename, aname)
 
-        for aname, attr in self._items(modified):
+        for aname, attr in sorted(modified.items()):
             if attr.reverse:
                 continue
             E_prev = self.db_prev.entities[ename]
