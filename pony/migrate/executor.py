@@ -100,14 +100,14 @@ class Executor(object):
         ops = []
 
         created_new_tables = set()
-        for table in self.new_schema.order_tables_to_create():
-            for new_obj in table.get_objects_to_create(created_new_tables):
-                sql = new_obj.get_create_command()
-                prev_obj = new_obj.prev
-                if prev_obj is None:
+        for new_table in self.new_schema.order_tables_to_create():
+            prev_table = new_table.prev
+            if prev_table is None:
+                for new_obj in new_table.get_objects_to_create(created_new_tables):
+                    sql = new_obj.get_create_command()
                     ops.append(Op(sql, obj=new_obj, type='create'))
-                elif sql != prev_obj.get_create_command():
-                    ops.extend(new_obj.get_alter_ops())
+            else:
+                ops.extend(new_table.get_alter_ops())
 
         created_prev_tables = set()
         for table in self.prev_schema.order_tables_to_create():
