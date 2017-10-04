@@ -152,11 +152,11 @@ class ModifyRelation(Operation):
         op.reverse_name = reverse_name
         op.reverse_attr = reverse_attr
     def apply(op, db):
-        assert not 'implemented'
+        assert False, 'Not implemented'
         # entity = db.entities[op.entity_name]
         # attr = entity._adict_[op.attr_name]
-        attr._modify_relation_(op.new_name, _clone_attr(op.new_attr),
-                               op.reverse_name, _clone_attr(op.reverse_attr))
+        # attr._modify_relation_(op.new_name, _clone_attr(op.new_attr),
+        #                        op.reverse_name, _clone_attr(op.reverse_attr))
 
 
 class Custom(Operation):
