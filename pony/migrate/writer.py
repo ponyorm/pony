@@ -376,7 +376,7 @@ class MigrationWriter(object):
         ctx = {
             'version': pony.__version__,
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M"),
-            'deps': str([migration.name for migration in self.deps]),
+            'deps': '[%s]' % ', '.join(repr(migration.name).lstrip('u') for migration in self.deps),
         }
         imports = {
             'from pony import orm',
