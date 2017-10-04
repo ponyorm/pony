@@ -5840,5 +5840,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr, int, between, coalesce}
+special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr}
 const_functions = {buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta}
