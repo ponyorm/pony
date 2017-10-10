@@ -221,7 +221,7 @@ class Table(DBObject):
             sql = index.get_create_command()
             prev_index = table.prev.indexes.get(cols)
             if prev_index is None:
-                ops.append(Op(sql, obj=index, type='create', prefix=alter_table(index.table)))
+                ops.append(Op(sql, obj=index, type='create'))
             elif sql != prev_index.get_create_command():
                 drops.extend(prev_index.get_drop_ops())
                 ops.append(Op(sql, obj=index, type='create'))
