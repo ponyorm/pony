@@ -246,12 +246,7 @@ class EntitySerializer(DeconstructableSerializer):
     def serialize_deconstructed(self, meta, name, bases, cls_dict):
         if self.ctx.get('has_db_var'):
             return 'db.{}'.format(name), set()
-        module = self.value.__module__
-        imports = {"from  %s import %s" % (module, name)}
-        # TODO
-        assert self.ctx.get('ref_entities_by_name')
-        return repr(name), imports
-        # return 'lambda: {}'.format(name), imports
+        return repr(name), set()
 
 
 class EntityDeclarationSerializer(DeconstructableSerializer):
@@ -402,7 +397,6 @@ def serializer_factory(value, ctx=None):
     if ctx is None:
         ctx = {}
     if isinstance(value, core.Attribute):
-        ctx = dict(ctx, ref_entities_by_name=True)
         return AttributeSerializer(value, ctx=ctx)
     if isinstance(value, core.EntityMeta):
         return EntitySerializer(value, ctx=ctx)
