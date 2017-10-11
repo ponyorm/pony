@@ -70,7 +70,7 @@ class Executor(object):
                 assert new_entity._table_object_.prev is prev_entity._table_object_
                 for prev_attr in prev_entity._new_attrs_:
                     new_attr = prev_attr.new_attr
-                    if new_attr is not None:
+                    if new_attr is not None and not (prev_attr.is_collection or new_attr.is_collection):
                         assert len(prev_attr.columns) == len(new_attr.columns)
                         assert len(prev_attr.column_objects) == len(new_attr.column_objects)
                         for prev_col, new_col in zip(prev_attr.column_objects, new_attr.column_objects):
