@@ -755,7 +755,7 @@ class Database(object):
     def _rename_entity_(database, old_name, new_name):
         assert new_name not in database.entities
         entity = database.entities.pop(old_name)
-        entity.__name__ = new_name
+        entity.__name__ = str(new_name) if PY2 else new_name
         database.entities[new_name] = entity
         entity._table_ = entity._provided_table_
         schema = database.schema
