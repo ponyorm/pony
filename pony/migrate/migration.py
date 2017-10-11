@@ -318,7 +318,10 @@ class MigrationGraph(object):
 
         leaves = self.leaves()
         if len(leaves) > 1: throw(UnmergedMigrationsDetected, leaves)
-        assert leaves
+        if not leaves:
+            print('\nNo migrations were found.')
+            return
+
         leaf = leaves[0]
         forwards_plan = leaf.forwards_list()
         if name_exact:
