@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-from pony.py23compat import ExitStack, suppress
+from pony.py23compat import ExitStack
 
 import re, os, os.path
 from datetime import datetime
@@ -335,10 +335,7 @@ class MigrationGraph(object):
         else:
             migrations = forwards_plan
 
-        with ExitStack() as stack:
-            stack.enter_context(orm.db_session)
-            if dry_run:
-                stack.enter_context(suppress(orm.DatabaseError))
+        with orm.db_session:
             applied = set(orm.select(m.name for m in migration_db.Migration))
 
         applied_migrations = [m for m in migrations if m.name in applied]
