@@ -123,7 +123,8 @@ class MigrationWriter(object):
             result.extend(
                 self._get_entity_ops(ename, aadded, aremoved, amodified)
             )
-            new_entity = entities[ename]
+            new_entity = entities.get(ename) or entities.get(entity_renames.get(ename))
+            assert new_entity is not None
             adict = {a.name: a for a in new_entity._new_attrs_}
 
             prev_entity = entities_prev[ename]
