@@ -702,8 +702,13 @@ class Database(object):
         self.provider = provider_cls(*args, **kwargs)
     def _add_entity_(database, entity_name, base_names, attrs):
         assert entity_name not in database.entities
-        bases = tuple(database.Entity if name == 'Entity' else database.entities[name]
-                      for name in base_names) or (database.Entity,)
+        bases = []
+        for base_name in base_names:
+            base = database.Entity if base_name == 'Entity' else database.entities.get(base_name)
+            if base is None: throw(NameError, 'Error when defining %s entity: base entity %s is not defined'
+                                              % (entity_name, base_name))
+            bases.append(base)
+        bases = tuple(bases) or (database.Entity,)
         cls_dict = {name: attr for name, attr in attrs}
         entity = EntityMeta(entity_name, bases, cls_dict)
         schema = database.schema
