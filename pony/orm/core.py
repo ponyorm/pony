@@ -1,6 +1,6 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
-                            basestring, unicode, buffer, int_types, builtins, with_metaclass, suppress
+                            basestring, unicode, buffer, int_types, builtins, with_metaclass
 
 import json, re, os, sys, types, datetime, logging, itertools, warnings
 from operator import attrgetter, itemgetter
@@ -3844,10 +3844,8 @@ class EntityMeta(type):
             subentity._attrs_.remove(attr)
 
         for base in entity._all_bases_:
-            with suppress(ValueError):
-                base._subclass_attrs_.remove(attr)
-            with suppress(KeyError):
-                del base._subclass_adict_[attr_name]
+            base._subclass_attrs_.remove(attr)
+            del base._subclass_adict_[attr_name]
 
         if attr.is_unique or attr.index:
             indexes_to_remove = set(index for index in entity._indexes_ if attr in index.attrs)
