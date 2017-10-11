@@ -191,7 +191,7 @@ class MigrationWriter(object):
                 result.append(ops.RemoveRelation(ename(attr_prev), attr_prev.name))
 
 
-        for ename, attrs in sorted(eadded.items()):
+        for ename, attrs in sorted(eadded.items(), key=lambda x: entities[x[0]]._id_):
             bases = [c.__name__ for c in entities[ename].__bases__]
             regular = [(k, v) for k, v in attrs if not v.reverse]
             result.append(
