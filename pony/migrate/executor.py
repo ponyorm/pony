@@ -118,7 +118,8 @@ class Executor(object):
         # handle renames
         extra_ops = []
         for prev_name, prev_table in self.prev_schema.tables.items():
-            if prev_name != prev_table.new.name:
+            new_table = prev_table.new
+            if new_table is not None and prev_name != new_table.name:
                 extra_ops.extend(prev_table.get_rename_ops())
             if self.new_schema.provider.dialect != 'SQLite':
                 for prev_col in prev_table.column_list:
