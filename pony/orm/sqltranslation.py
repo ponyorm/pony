@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass
 
-import types, sys, re, itertools
+import types, sys, re, itertools, inspect
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from random import random
@@ -13,13 +13,15 @@ from pony.thirdparty.compiler import ast
 
 from pony import options, utils
 from pony.utils import is_ident, throw, reraise, copy_ast, between, concat, coalesce
-from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
+from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors
+from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
     Json
 from pony.orm import core
-from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
+from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper, \
+    special_functions, const_functions, extract_vars
 
 NoneType = type(None)
 
@@ -171,9 +173,12 @@ class SQLTranslator(ASTTranslator):
         translator.lambda_argnames = None
         translator.filter_num = translator.original_filter_num = filter_num
         translator.extractors = extractors
+        translator.method_argnames_mapping_stack = []
+        translator.func_extractors_map = {}
         translator.vars = vars.copy() if vars is not None else None
         translator.vartypes = vartypes.copy()
         translator.getattr_values = {}
+        translator.func_vartypes = {}
         translator.parent = parent_translator
         translator.left_join = left_join
         translator.optimize = optimize
@@ -235,9 +240,15 @@ class SQLTranslator(ASTTranslator):
                 node_name = node.name
                 attr_names.reverse()
                 name_path = node_name
-                parent_tableref = subquery.get_tableref(node_name)
-                if parent_tableref is None: throw(TranslationError, "Name %r must be defined in query" % node_name)
+
+                monad = translator.resolve_name(node_name)
+                if monad is None:
+                    throw(TranslationError, "Name %r must be defined in query" % node_name)
+                if not isinstance(monad, ObjectIterMonad):
+                    throw(NotImplementedError)
+                parent_tableref = monad.tableref
                 parent_entity = parent_tableref.entity
+
                 last_index = len(attr_names) - 1
                 for j, attrname in enumerate(attr_names):
                     attr = parent_entity._adict_.get(attrname)
@@ -699,9 +710,15 @@ class SQLTranslator(ASTTranslator):
     def postTuple(translator, node):
         return ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
-        name = node.name
+        monad = translator.resolve_name(node.name)
+        assert monad is not None
+        return monad
+    def resolve_name(translator, name):
         t = translator
         while t is not None:
+            stack = t.method_argnames_mapping_stack
+            if stack and name in stack[-1]:
+                return stack[-1][name]
             argnames = t.lambda_argnames
             if argnames is not None and not t.original_names and name in argnames:
                 i = argnames.index(name)
@@ -710,7 +727,7 @@ class SQLTranslator(ASTTranslator):
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return ObjectIterMonad(translator, tableref, tableref.entity)
-        else: assert False, name  # pragma: no cover
+        return None
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -1241,6 +1258,54 @@ class MethodMonad(Monad):
     def __neg__(monad): raise_forgot_parentheses(monad)
     def abs(monad): raise_forgot_parentheses(monad)
 
+class HybridMethodMonad(MethodMonad):
+    def __init__(monad, parent, attrname, func):
+        MethodMonad.__init__(monad, parent, attrname)
+        monad.func = func
+    def __call__(monad, *args, **kwargs):
+        translator = monad.translator
+        name_mapping = inspect.getcallargs(monad.func, monad.parent, *args, **kwargs)
+
+        func = monad.func
+        if PY2 and isinstance(func, types.UnboundMethodType):
+            func = func.im_func
+        func_id = id(func)
+        func_filter_num = translator.filter_num, 'func', id(func)
+        func_ast, external_names, cells = decompile(func)
+
+        func_ast, func_extractors = create_extractors(
+            func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
+
+        t = translator
+        while t.parent is not None:
+            t = t.parent
+        if func not in t.func_extractors_map:
+            func_vars, func_vartypes = extract_vars(func_filter_num, func_extractors, func.__globals__, {}, cells)
+            translator.database.provider.normalize_vars(func_vars, func_vartypes)
+            if func.__closure__:
+                translator.can_be_cached = False
+            if func_extractors:
+                t.func_extractors_map[func] = func_extractors
+                t.func_vartypes.update(func_vartypes)
+                t.vartypes.update(func_vartypes)
+                t.vars.update(func_vars)
+
+        stack = translator.method_argnames_mapping_stack
+        stack.append(name_mapping)
+        prev_filter_num = translator.filter_num
+        translator.filter_num = func_filter_num
+        func_ast = copy_ast(func_ast)
+        try:
+            translator.dispatch(func_ast)
+        except Exception as e:
+            if len(e.args) == 1 and isinstance(e.args[0], basestring):
+                msg = e.args[0] + ' (inside %s.%s)' % (monad.parent.type.__name__, monad.attrname)
+                e.args = (msg,)
+            raise
+        translator.filter_num = prev_filter_num
+        stack.pop()
+        return func_ast.monad
+
 class EntityMonad(Monad):
     def __init__(monad, translator, entity):
         Monad.__init__(monad, translator, SetType(entity))
@@ -1594,12 +1659,21 @@ class ObjectMixin(MonadMixin):
     def nonzero(monad):
         translator = monad.translator
         return CmpMonad('is not', monad, NoneMonad(translator))
-    def getattr(monad, name):
+    def getattr(monad, attrname):
         translator = monad.translator
         entity = monad.type
-        attr = entity._adict_.get(name) or entity._subclass_adict_.get(name)
-        if attr is None: throw(AttributeError,
-            'Entity %s does not have attribute %s: {EXPR}' % (entity.__name__, name))
+        attr = entity._adict_.get(attrname) or entity._subclass_adict_.get(attrname)
+        if attr is None:
+            if hasattr(entity, attrname):
+                attr = getattr(entity, attrname, None)
+                if isinstance(attr, property):
+                    new_monad = HybridMethodMonad(monad, attrname, attr.fget)
+                    return new_monad()
+                if callable(attr):
+                    func = getattr(attr, '__func__') if PY2 else attr
+                    if func is not None: return HybridMethodMonad(monad, attrname, func)
+                throw(NotImplementedError, '{EXPR} cannot be translated to SQL')
+            throw(AttributeError, 'Entity %s does not have attribute %s: {EXPR}' % (entity.__name__, attrname))
         if hasattr(monad, 'tableref'): monad.tableref.used_attrs.add(attr)
         if not attr.is_collection:
             return AttrMonad.new(monad, attr)

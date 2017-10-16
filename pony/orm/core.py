@@ -5298,11 +5298,11 @@ class Query(object):
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
 
-        query._vars = vars
         query._key = HashableDict(code_key=code_key, vartypes=vartypes, left_join=left_join, filters=())
         query._database = database
 
-        translator = query._get_translator(query._key, vars)
+        translator, vars = query._get_translator(query._key, vars)
+        query._vars = vars
 
         if translator is None:
             pickled_tree = pickle_ast(tree)
@@ -5335,16 +5335,27 @@ class Query(object):
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
     def _get_translator(query, query_key, vars):
+        new_vars = vars.copy()
         database = query._database
         translator = database._translator_cache.get(query_key)
         all_func_vartypes = {}
         if translator is not None:
+            if translator.func_extractors_map:
+                for func, func_extractors in iteritems(translator.func_extractors_map):
+                    func_filter_num = translator.filter_num, 'func', id(func)
+                    func_vars, func_vartypes = extract_vars(
+                        func_filter_num, func_extractors, func.__globals__, {}, func.__closure__)  # todo closures
+                    database.provider.normalize_vars(func_vars, func_vartypes)
+                    new_vars.update(func_vars)
+                    all_func_vartypes.update(func_vartypes)
+                if all_func_vartypes != translator.func_vartypes:
+                    return None, vars.copy()
             for key, attrname in iteritems(translator.getattr_values):
-                assert key in vars
-                if attrname != vars[key]:
+                assert key in new_vars
+                if attrname != new_vars[key]:
                     del database._translator_cache[query_key]
-                    return None
-        return translator
+                    return None, vars.copy()
+        return translator, new_vars
     def _construct_sql_and_arguments(query, range=None, aggr_func_name=None, aggr_func_distinct=None, sep=None):
         translator = query._translator
         expr_type = translator.expr_type
@@ -5573,7 +5584,7 @@ class Query(object):
             new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
             new_filters = query._filters + tup
 
-            new_translator = query._get_translator(new_key, query._vars)
+            new_translator, new_vars = query._get_translator(new_key, query._vars)
             if new_translator is None:
                 new_translator = query._translator.without_order()
                 query._database._translator_cache[new_key] = new_translator
@@ -5599,7 +5610,7 @@ class Query(object):
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
 
-        new_translator = query._get_translator(new_key, query._vars)
+        new_translator, new_vars = query._get_translator(new_key, query._vars)
         if new_translator is None:
             if numbers: new_translator = query._translator.order_by_numbers(args)
             else: new_translator = query._translator.order_by_attributes(args)
@@ -5648,7 +5659,7 @@ class Query(object):
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
 
-        new_translator = query._get_translator(new_key, new_vars)
+        new_translator, new_vars = query._get_translator(new_key, new_vars)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
             new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
@@ -5729,7 +5740,7 @@ class Query(object):
         new_filters = query._filters + tup
         new_vars = query._vars.copy()
         new_vars.update(value_dict)
-        new_translator = query._database._translator_cache.get(new_key)
+        new_translator, new_vars = query._get_translator(new_key, new_vars)
         if new_translator is None:
             new_translator = translator.apply_kwfilters(filterattrs, original_names)
             query._database._translator_cache[new_key] = new_translator
