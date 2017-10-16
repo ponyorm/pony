@@ -3819,9 +3819,9 @@ class EntityMeta(type):
                 get_val = avdict.get
                 vals = tuple(get_val(attr) for attr in attrs)
                 if None in vals: continue
+                unique = True
                 cache_index = cache_indexes.get(attrs)
                 if cache_index is None: continue
-                unique = True
                 obj = cache_index.get(vals)
                 if obj is not None: break
         if obj is None:
