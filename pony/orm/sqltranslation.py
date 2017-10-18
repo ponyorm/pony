@@ -164,7 +164,7 @@ class SQLTranslator(ASTTranslator):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
-        translator.argnames = None
+        translator.lambda_argnames = None
         translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
         translator.vartypes = vartypes
@@ -603,7 +603,7 @@ class SQLTranslator(ASTTranslator):
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
-        translator.argnames = list(argnames)
+        translator.lambda_argnames = list(argnames)
         translator.original_names = original_names
         translator.dispatch(func_ast)
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
@@ -676,7 +676,7 @@ class SQLTranslator(ASTTranslator):
         name = node.name
         t = translator
         while t is not None:
-            argnames = t.argnames
+            argnames = t.lambda_argnames
             if argnames is not None and not t.original_names and name in argnames:
                 i = argnames.index(name)
                 return t.expr_monads[i]
