@@ -101,7 +101,7 @@ class SQLTranslator(ASTTranslator):
             if not isinstance(obj, EntityMeta): throw(NotImplementedError)
             entity_monad = translator.EntityMonad(translator, obj)
             if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
-            monad = translator.MethodMonad(translator, entity_monad, func.__name__)
+            monad = translator.MethodMonad(entity_monad, func.__name__)
         elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
             value = True if node.name == 'True' else False
             monad = translator.ConstMonad.new(translator, value)
@@ -1017,7 +1017,7 @@ class Monad(with_metaclass(MonadMeta)):
             if not hasattr(monad, 'call_' + attrname):
                 throw(AttributeError, '%r object has no attribute %r' % (type2str(monad.type), attrname))
             translator = monad.translator
-            return translator.MethodMonad(translator, monad, attrname)
+            return translator.MethodMonad(monad, attrname)
         return property_method()
     def len(monad): throw(TypeError)
     def count(monad):
@@ -1169,8 +1169,8 @@ def raise_forgot_parentheses(monad):
     throw(TranslationError, 'You seems to forgot parentheses after %s' % ast2src(monad.node))
 
 class MethodMonad(Monad):
-    def __init__(monad, translator, parent, attrname):
-        Monad.__init__(monad, translator, 'METHOD')
+    def __init__(monad, parent, attrname):
+        Monad.__init__(monad, parent.translator, 'METHOD')
         monad.parent = parent
         monad.attrname = attrname
     def getattr(monad, attrname):
