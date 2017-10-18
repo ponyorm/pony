@@ -999,6 +999,7 @@ class Monad(with_metaclass(MonadMeta)):
     disable_distinct = False
     disable_ordering = False
     def __init__(monad, translator, type):
+        monad.node = None
         monad.translator = translator
         monad.type = type
         monad.mixin_init()
