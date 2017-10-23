@@ -3307,6 +3307,8 @@ class SetInstance(object):
         return wrapper.select().page(pagenum, pagesize)
     def order_by(wrapper, *args):
         return wrapper.select().order_by(*args)
+    def sort_by(wrapper, *args):
+        return wrapper.select().sort_by(*args)
     def random(wrapper, limit):
         return wrapper.select().random(limit)
 
@@ -5504,9 +5506,14 @@ class Query(object):
         return iter(query._fetch())
     @cut_traceback
     def order_by(query, *args):
-        if not args: throw(TypeError, 'order_by() method requires at least one argument')
+        return query._order_by('order_by', *args)
+    @cut_traceback
+    def sort_by(query, *args):
+        return query._order_by('sort_by', *args)
+    def _order_by(query, method_name, *args):
+        if not args: throw(TypeError, '%s() method requires at least one argument' % method_name)
         if args[0] is None:
-            if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
+            if len(args) > 1: throw(TypeError, 'When first argument of %s() method is None, it must be the only argument' % method_name)
             tup = (('without_order',),)
             new_key = query._key + tup
             new_filters = query._filters + tup
@@ -5517,7 +5524,7 @@ class Query(object):
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         if isinstance(args[0], (basestring, types.FunctionType)):
-            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=4)
             return query._process_lambda(func, globals, locals, order_by=True)
 
         if isinstance(args[0], RawSQL):
