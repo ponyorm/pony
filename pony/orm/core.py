@@ -5299,13 +5299,13 @@ class Query(object):
         translator = database._translator_cache.get(query._key)
         if translator is None:
             pickled_tree = pickle_ast(tree)
-            tree = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
+            tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
+            translator = translator_cls(tree_copy, extractors, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
-                tree = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
-                try: translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
+                tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
+                try: translator = translator_cls(tree_copy, extractors, vartypes, left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
             database._translator_cache[query._key] = translator
@@ -5624,11 +5624,11 @@ class Query(object):
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
-                    tree = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
+                    tree_copy = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = prev_translator.extractors
                     prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__
-                    new_translator = translator_cls(tree, prev_extractors, prev_vartypes,
+                    new_translator = translator_cls(tree_copy, prev_extractors, prev_vartypes,
                                                     left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
