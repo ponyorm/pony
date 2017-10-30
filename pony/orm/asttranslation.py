@@ -209,7 +209,7 @@ nonexternalizable_types = (ast.Keyword, ast.Sliceobj, ast.List, ast.Tuple)
 
 class PreTranslator(ASTTranslator):
     def __init__(translator, tree, globals, locals,
-                 special_functions, const_functions, additional_internal_names=()):
+                 special_functions, const_functions, outer_names=()):
         ASTTranslator.__init__(translator, tree)
         translator.getattr_nodes = set()
         translator.globals = globals
@@ -217,8 +217,8 @@ class PreTranslator(ASTTranslator):
         translator.special_functions = special_functions
         translator.const_functions = const_functions
         translator.contexts = []
-        if additional_internal_names:
-            translator.contexts.append(additional_internal_names)
+        if outer_names:
+            translator.contexts.append(outer_names)
         translator.externals = externals = set()
         translator.dispatch(tree)
         for node in externals.copy():
@@ -303,7 +303,7 @@ class PreTranslator(ASTTranslator):
 getattr_cache = {}
 extractors_cache = {}
 
-def create_extractors(code_key, tree, globals, locals, special_functions, const_functions, additional_internal_names=()):
+def create_extractors(code_key, tree, globals, locals, special_functions, const_functions, outer_names=()):
     result = None
     getattr_extractors = getattr_cache.get(code_key)
     if getattr_extractors:
@@ -319,7 +319,7 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
 
     if not result:
         pretranslator = PreTranslator(
-            tree, globals, locals, special_functions, const_functions, additional_internal_names)
+            tree, globals, locals, special_functions, const_functions, outer_names)
 
         extractors = {}
         for node in pretranslator.externals:
