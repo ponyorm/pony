@@ -354,7 +354,7 @@ class SQLiteProvider(DBAPIProvider):
         DBAPIProvider.release(provider, connection, cache)
 
     def get_pool(provider, filename, create_db=False, **kwargs):
-        if filename != ':memory:':
+        if filename != ':memory:' and not kwargs.get('uri'):
             # When relative filename is specified, it is considered
             # not relative to cwd, but to user module where
             # Database instance is created
@@ -516,14 +516,31 @@ def py_json_array_length(expr, path=None):
     return len(expr) if type(expr) is list else 0
 
 class SQLitePool(Pool):
+    @staticmethod
+    def _in_memory(filename, uri):
+        if filename.startswith('file:') and uri:
+            fn = filename[5:]
+        else:
+            fn = filename
+        result = fn == ':memory:'
+        try:
+            left, right = fn.split('?')
+            if left == ':memory:':
+                result = True
+            else:
+                result = 'mode=memory' in right.split('&')
+        except ValueError:
+            pass
+        return result
     def __init__(pool, filename, create_db, **kwargs): # called separately in each thread
         pool.filename = filename
+        pool.in_memory = pool._in_memory(filename, kwargs.get('uri'))
         pool.create_db = create_db
         pool.kwargs = kwargs
         pool.con = None
     def _connect(pool):
         filename = pool.filename
-        if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
+        if not pool.in_memory and not pool.create_db and not os.path.exists(filename):
             throw(IOError, "Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename, isolation_level=None, **pool.kwargs)
         con.text_factory = _text_factory
@@ -545,10 +562,10 @@ class SQLitePool(Pool):
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
     def disconnect(pool):
-        if pool.filename != ':memory:':
+        if not pool.in_memory:
             Pool.disconnect(pool)
     def drop(pool, con):
-        if pool.filename != ':memory:':
+        if not pool.in_memory:
             Pool.drop(pool, con)
         else:
             con.rollback()
