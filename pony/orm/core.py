@@ -5205,7 +5205,9 @@ def JOIN(expr):
 def desc(expr):
     if isinstance(expr, Attribute):
         return expr.desc
-    if isinstance(expr, int_types) and expr > 0:
+    if isinstance(expr, DescWrapper):
+        return expr.attr
+    if isinstance(expr, int_types):
         return -expr
     if isinstance(expr, basestring):
         return 'desc(%s)' % expr
