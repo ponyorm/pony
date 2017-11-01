@@ -8,8 +8,12 @@ from uuid import UUID
 try:
     import psycopg2
 except ImportError:
-    from psycopg2cffi import compat
-    compat.register()
+    try:
+        from psycopg2cffi import compat
+    except ImportError:
+        raise ImportError('In order to use PonyORM with PostgreSQL please install psycopg2 or psycopg2cffi')
+    else:
+        compat.register()
 
 from psycopg2 import extensions
 
