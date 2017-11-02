@@ -12,6 +12,8 @@ from importlib import import_module
 from .utils import COMPILED_REGEX_TYPE, RegexObject, utc
 
 from pony.orm import core
+from pony.orm.decompiling import decompile
+from pony.orm.asttranslation import ast2src
 
 try:
     import enum
@@ -158,41 +160,40 @@ class FrozensetSerializer(BaseSequenceSerializer):
 
 class FunctionTypeSerializer(BaseSerializer):
     def serialize(self):
-        if getattr(self.value, "__self__", None) and isinstance(self.value.__self__, type):
-            klass = self.value.__self__
+        func = self.value
+        if getattr(func, "__self__", None) and isinstance(func.__self__, type):
+            klass = func.__self__
             module = klass.__module__
-            return "%s.%s.%s" % (module, klass.__name__, self.value.__name__), {"import %s" % module}
+            return "%s.%s.%s" % (module, klass.__name__, func.__name__), {"import %s" % module}
         # Further error checking
-        if self.value.__name__ == '<lambda>':
-            result = self.value()
-            if issubclass(result, core.Entity):
-                return repr(result.__name__), set()
-            result, im = serializer_factory(result, ctx=self.ctx).serialize()
-            return "lambda: %s" % result, im
-        if self.value.__module__ is None:
-            raise ValueError("Cannot serialize function %r: No module" % self.value)
+        if func.__name__ == '<lambda>':
+            func_ast, external_names, cells = decompile(func)
+            # result, im = serializer_factory(result, ctx=self.ctx).serialize()
+            return 'lambda: %s' % ast2src(func_ast), set()
+        if func.__module__ is None:
+            raise ValueError("Cannot serialize function %r: No module" % func)
         # Python 3 is a lot easier, and only uses this branch if it's not local.
-        if getattr(self.value, "__qualname__", None) and getattr(self.value, "__module__", None):
-            if "<" not in self.value.__qualname__:  # Qualname can include <locals>
+        if getattr(func, "__qualname__", None) and getattr(func, "__module__", None):
+            if "<" not in func.__qualname__:  # Qualname can include <locals>
                 return "%s.%s" % \
-                    (self.value.__module__, self.value.__qualname__), {"import %s" % self.value.__module__}
+                    (func.__module__, func.__qualname__), {"import %s" % func.__module__}
         # Python 2/fallback version
-        module_name = self.value.__module__
+        module_name = func.__module__
         # Make sure it's actually there and not an unbound method
         module = import_module(module_name)
-        if not hasattr(module, self.value.__name__):
+        if not hasattr(module, func.__name__):
             raise ValueError(
                 "Could not find function %s in %s.\n"
                 "Please note that due to Python 2 limitations, you cannot "
                 "serialize unbound method functions (e.g. a method "
                 "declared and used in the same class body). Please move "
                 "the function into the main module body to use migrations."
-                % (self.value.__name__, module_name)
+                % (func.__name__, module_name)
             )
         # Needed on Python 2 only
         if module_name == '__builtin__':
-            return self.value.__name__, set()
-        return "%s.%s" % (module_name, self.value.__name__), {"import %s" % module_name}
+            return func.__name__, set()
+        return "%s.%s" % (module_name, func.__name__), {"import %s" % module_name}
 
 
 class FunctoolsPartialSerializer(BaseSerializer):
