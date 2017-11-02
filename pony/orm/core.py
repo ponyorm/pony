@@ -3159,6 +3159,8 @@ class SetInstance(object):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         if obj._vals_ is None: throw_db_session_is_over('read value of', obj, attr)
         if not isinstance(item, attr.py_type): return False
+        if item._session_cache_ is not obj._session_cache_:
+            throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
 
         reverse = attr.reverse
         if not reverse.is_collection:
@@ -5203,7 +5205,9 @@ def JOIN(expr):
 def desc(expr):
     if isinstance(expr, Attribute):
         return expr.desc
-    if isinstance(expr, int_types) and expr > 0:
+    if isinstance(expr, DescWrapper):
+        return expr.attr
+    if isinstance(expr, int_types):
         return -expr
     if isinstance(expr, basestring):
         return 'desc(%s)' % expr
