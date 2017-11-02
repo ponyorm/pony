@@ -96,9 +96,6 @@ class DeconstructableSerializer(BaseSerializer):
         return ", ".join(strings), imports
 
     def serialize_deconstructed(self, path, args, kwargs):
-        # TODO sometimes path is not required:
-        # Required(Decimal) gives unused import 'import decimal'
-        #
         name, imports = self._serialize_path(path)
         param, im = self._format_args(args, kwargs)
         imports.update(im)
@@ -171,7 +168,7 @@ class FunctionTypeSerializer(BaseSerializer):
             if issubclass(result, core.Entity):
                 return repr(result.__name__), set()
             result, im = serializer_factory(result, ctx=self.ctx).serialize()
-            return "lambda: {}".format(result), im
+            return "lambda: %s" % result, im
         if self.value.__module__ is None:
             raise ValueError("Cannot serialize function %r: No module" % self.value)
         # Python 3 is a lot easier, and only uses this branch if it's not local.
@@ -245,7 +242,7 @@ class EntitySerializer(DeconstructableSerializer):
 
     def serialize_deconstructed(self, meta, name, bases, cls_dict):
         if self.ctx.get('has_db_var'):
-            return 'db.{}'.format(name), set()
+            return 'db.%s' % name, set()
         return repr(name), set()
 
 
@@ -253,80 +250,39 @@ class EntityDeclarationSerializer(DeconstructableSerializer):
 
     def serialize_deconstructed(self, meta, name, bases, cls_dict):
         imports = set()
-        _bases, im = self._serialize_bases(bases)
-        imports.update(im)
-        cls_dict = {k: v for k, v in cls_dict.items()
-                    if self._filter_namespace(k)}
-        lines = [
-            'class {}({}):'.format(name, ', '.join(_bases))
-        ]
-        line = None
-        for line in self._declare_attrs(cls_dict, imports):
-            lines.append('    {}'.format(line))
-        if line is None:
-            lines.append('    pass')
-        return '\n'.join(lines), imports
-
-    def _filter_namespace(self, key):
-        if key in (
-            '__slots__', '__qualname__', '__module__', '_indexes_',
-        ):
-            return False
-        return True
-
-    def _declare_attrs(self, cls_dict, imports):
-        # TODO handle PY3 in a special way
-        attrs = []
-        regular = []
-        for k, v in cls_dict.items():
-            if not isinstance(v, core.Attribute):
-                regular.append((k, v))
-            else:
-                attrs.append((k, v))
-        attrs = sorted(attrs, key=lambda tupl: tupl[1].id)
-        # first go entity attrs
-        for k, v in attrs:
-            s, im = serializer_factory(v, ctx=self.ctx).serialize()
-            imports.update(im)
-            yield '{} = {}'.format(k, s)
-        # then primary key
-        if len(self.value._pk_attrs_) > 1:
-            s, im = self._serialize_pk(cls_dict)
-            imports.update(im)
-            yield s
-        # then regular attrs
-        for k, v in sorted(regular, key=lambda tupl: tupl[0]):
-            s, im = serializer_factory(v, ctx=self.ctx).serialize()
-            imports.update(im)
-            yield '{} = {}'.format(k, s)
-
-    def _serialize_pk(self, cls_dict):
-        imports = set()
-        def pk_attrs():
-            for pk in self.value._pk_attrs_:
-                if pk.name in cls_dict:
-                    yield pk.name
-                else:
-                    s, im = serializer_factory(pk, ctx=self.ctx).serialize()
-                    imports.update(im)
-                    yield s
-        return "orm.PrimaryKey(%s)" % ', '.join(pk_attrs()), imports
-
-
-    def _serialize_bases(self, bases):
-        imports = set()
-        ret = []
+        _bases = []
         for cls in bases:
-            if not issubclass(cls, core.Entity):
-                s, im = serializer_factory(cls).serialize()
-                ret.append(s)
+            if issubclass(cls, core.Entity):
+                s, im = EntitySerializer(cls, ctx=self.ctx).serialize()
                 imports.update(im)
-                continue
-            s, im = EntitySerializer(cls, ctx=self.ctx).serialize()
-            imports.update(im)
-            ret.append(s)
+                _bases.append(s)
 
-        return ret, imports
+        lines = [ 'class %s(%s):' % (name, ', '.join(_bases)) ]
+
+        for name, value in cls_dict.items():
+            if name in ('__slots__', '__qualname__', '__module__', '_indexes_'): continue
+            if isinstance(value, (core.Attribute, types.MethodType, types.FunctionType, property)): continue
+            s, im = serializer_factory(value, ctx=self.ctx).serialize()
+            imports.update(im)
+            lines.append('%s = %s' % (name, s))
+
+        entity = self.value
+        for attr in entity._new_attrs_:
+            s, im = serializer_factory(attr, ctx=self.ctx).serialize()
+            line = '%s = %s' % (attr.name, s)
+            if line in (
+                'id = orm.PrimaryKey(int, auto=True)',
+                "classtype = orm.Discriminator(str, column='classtype')"
+            ): continue
+            imports.update(im)
+            lines.append(line)
+
+        if len(entity._pk_attrs_) > 1:
+            lines.append('orm.PrimaryKey(%s)' % ', '.join(attr.name for attr in entity._pk_attrs_))
+
+        if len(lines) == 1:
+            lines.append('pass')
+        return '\n    '.join(lines), imports
 
 
 class RegexSerializer(BaseSerializer):

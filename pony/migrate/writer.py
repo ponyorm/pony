@@ -355,7 +355,7 @@ class MigrationWriter(object):
         if not entities:
             entities.append('pass')
 
-        entities = '\n\n\n'.join(entities)
+        entities = '\n\n'.join(entities)
         entities = indent(entities, '    ')
 
         # remove spaces
