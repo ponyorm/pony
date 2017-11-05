@@ -5,7 +5,7 @@ from pony import orm
 from pony.utils import cached_property
 
 from pony.migrate.diagram_ops import AddEntity
-from pony.migrate.serializer import serializer_factory
+from pony.migrate.serializer import serialize
 from pony.migrate.writer import MigrationWriter
 
 
@@ -14,12 +14,13 @@ class TestOperation(unittest.TestCase):
     def test(self):
         obj = AddEntity('MyE', ['MyParentE'],
                         {'int': orm.Required(int), 'str': orm.Optional(str)})
-        s, im = serializer_factory(obj).serialize()
+        imports = set()
+        s = serialize(obj, imports)
         self.assertEqual(s,
             "op.AddEntity('MyE', ['MyParentE'], "
             "{'int': orm.Required(int), 'str': orm.Optional(str)})"
         )
-        self.assertIn('from pony.migrate import diagram_ops as op', im)
+        self.assertIn('from pony.migrate import diagram_ops as op', imports)
 
 
 class TestWriter(unittest.TestCase):

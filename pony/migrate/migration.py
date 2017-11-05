@@ -15,7 +15,7 @@ from .exceptions import MergeAborted, MigrationFileCorrupted, \
     MigrationDirectoryNotFound, UnmergedMigrationsDetected, \
     MigrationFileNotFound, MultipleMigrationFilesFound
 from .operations import CustomOp
-from .serializer import serializer_factory
+from .serializer import serialize
 from .utils import run_path
 from .writer import MigrationWriter, MIGRATION_TEMPLATE
 from .executor import Executor
@@ -254,17 +254,14 @@ class MigrationGraph(object):
             if custom:
                 template_data['op_kwargs'] = 'forward=forward, final_state=final_state'
                 writer = MigrationWriter(None, None, db)
-                final_state_func = writer._get_define_entities_block(
-                        set(), func_name='final_state')
-                final_state_func = '\n'.join(('', final_state_func, ''))
-                template_data['final_state_func'] = final_state_func
+                final_state_func = writer._get_define_entities_block(set(), func_name='final_state')
+                template_data['final_state_func'] = '\n%s\n' % final_state_func
 
             imports = {
                 'from pony.orm import *',
                 'from pony.migrate import diagram_ops as op',
             }
-            database, im = serializer_factory(db).serialize()
-            imports.update(im)
+            database = serialize(db, imports=imports)
             imports.discard('from pony import orm')
 
             body = dedent('''

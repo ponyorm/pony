@@ -10,7 +10,7 @@ import pony
 from pony import orm
 
 from . import diagram_ops as ops
-from .serializer import serializer_factory, EntityDeclarationSerializer
+from .serializer import serialize, serialize_entity_declaration
 from .questioner import InteractiveMigrationQuestioner
 
 
@@ -327,30 +327,15 @@ class MigrationWriter(object):
 
     def _get_operations_block(self, imports):
         self.operations = self._get_ops()
+        lines = ',\n    '.join(serialize(op, imports=imports) for op in self.operations)
+        return 'operations = [\n    %s]' % lines
 
-        lines = []
-        for op in self.operations:
-            s, im = serializer_factory(op).serialize()
-            imports.update(im)
-            lines.append(
-                ''.join((s, ','))
-            )
-        lines = '\n'.join(lines)
-        lines = indent(lines, '    ')
-        return '\n'.join(['operations = [', lines, ']'])
-
-    def _get_define_entities_block(self, imports, ctx=None, func_name='define_entities'):
+    def _get_define_entities_block(self, imports, func_name='define_entities'):
         entities = []
-
-        if ctx is None:
-            ctx = {}
-        define_ctx = dict(ctx, has_db_var=True)
 
         for entity in sorted(self.db.entities.values(), key=attrgetter('_id_')):
             if entity.__name__ != 'Migration':
-                e, im = EntityDeclarationSerializer(entity, ctx=define_ctx).serialize()
-                entities.append(e)
-                imports.update(im)
+                entities.append(serialize_entity_declaration(entity, imports=imports))
 
         if not entities:
             entities.append('pass')
@@ -372,17 +357,14 @@ class MigrationWriter(object):
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M"),
             'deps': '[%s]' % ', '.join(repr(migration.name).lstrip('u') for migration in self.deps),
         }
-        imports = {
-            'from pony import orm',
-        }
+        imports = {'from pony import orm'}
         if self.db_prev is None:
-            body = self._get_define_entities_block(imports, ctx)
+            body = self._get_define_entities_block(imports)
         else:
             body = self._get_operations_block(imports)
 
         ctx['body'] = body
-        database, im = serializer_factory(self.db).serialize()
-        imports.update(im)
+        database = serialize(self.db, imports=imports)
         ctx['database'] = database
         ctx['imports'] = sorted(imports, key=lambda i: i.split()[1])
         ctx['imports'] = '\n'.join(ctx['imports'])

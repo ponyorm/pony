@@ -5,7 +5,7 @@ from inspect import isfunction
 from copy import deepcopy
 
 from .utils import deconstructible
-from .serializer import serializer_factory
+from .serializer import serialize
 
 
 @deconstructible
@@ -22,8 +22,7 @@ class Operation(object):
         return bool(forward)
 
     def __repr__(op):
-        s, im = serializer_factory(op).serialize()
-        return s
+        return serialize(op)
 
     def apply(op, db):
         assert False, 'abstract method'
