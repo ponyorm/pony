@@ -1910,6 +1910,8 @@ class Attribute(object):
         attr.kwargs = kwargs
         attr.converters = ()
         attr.initial = attr.kwargs.get('initial')
+        attr._constructor_args[1].pop('default', None)
+        attr._constructor_args[1].pop('py_check', None)
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
