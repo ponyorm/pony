@@ -73,9 +73,7 @@ class MigrationWriter(object):
                             break
                     else:
                         if self.questioner.ask_rename_model(rem_ename, add_ename):
-                            result.append(
-                                ops.RenameEntity(rem_ename, add_ename),
-                            )
+                            result.append(ops.RenameEntity(rem_ename, add_ename))
                             entity_renames[rem_ename] = add_ename
                             del eadded[add_ename]
                             del eremoved[rem_ename]
@@ -120,9 +118,27 @@ class MigrationWriter(object):
         pairs = {}
 
         for ename, (aadded, aremoved, amodified) in sorted(emodified.items()):
-            result.extend(
-                self._get_entity_ops(ename, aadded, aremoved, amodified)
-            )
+
+            # Get entity operations
+            for aname, attr in sorted(aadded.items()):
+                if not attr.reverse:
+                    if issubclass(attr.py_type, str) and isinstance(attr, orm.Optional):
+                        kwargs = attr._constructor_args[1]
+                        value_class = self.db.provider.sqlbuilder_cls.value_class
+                        value = value_class(self.db.provider.paramstyle, '')
+                        kwargs.update(sql_default=unicode(value))
+                    elif not attr.nullable and attr.initial is None and attr.default is None and not attr.is_pk:
+                        initial = self.questioner.ask_not_null_addition(aname, ename)
+                        attr.initial = attr._constructor_args[1]['initial'] = initial
+                    result.append(ops.AddAttr(ename, aname, attr))
+            for aname, attr in sorted(aremoved.items()):
+                if not attr.reverse:
+                    result.append(ops.RemoveAttr(ename, aname))
+            for aname, attr in sorted(amodified.items()):
+                if not attr.reverse:
+                    attr_prev = self.db_prev.entities[ename]._adict_[aname]
+                    result.append(ops.AddAttr(ename, aname, attr) if attr_prev.reverse else ops.ModifyAttr(ename, aname, attr))
+
             new_entity = entities.get(ename) or entities.get(entity_renames.get(ename))
             assert new_entity is not None
             adict = {a.name: a for a in new_entity._new_attrs_}
@@ -293,37 +309,6 @@ class MigrationWriter(object):
             removed[aname] = prev_attr
 
         return added, removed, modified
-
-    def _get_entity_ops(self, ename, added, removed, modified):
-        for aname, attr in sorted(added.items()):
-            if attr.reverse:
-                continue
-            if issubclass(attr.py_type, str) and isinstance(attr, orm.Optional):
-                kwargs = attr._constructor_args[1]
-                value_class = self.db.provider.sqlbuilder_cls.value_class
-                value = value_class(self.db.provider.paramstyle, '')
-                kwargs.update(sql_default=unicode(value))
-            elif not attr.nullable and attr.initial is None and attr.default is None \
-                    and not attr.is_pk:
-                initial = self.questioner.ask_not_null_addition(aname, ename)
-                attr.initial = attr._constructor_args[1]['initial'] = initial
-            yield ops.AddAttr(ename, aname, attr)
-
-        for aname, attr in sorted(removed.items()):
-            if attr.reverse:
-                continue
-            yield ops.RemoveAttr(ename, aname)
-
-        for aname, attr in sorted(modified.items()):
-            if attr.reverse:
-                continue
-            E_prev = self.db_prev.entities[ename]
-            attr_prev = E_prev._adict_[aname]
-            if not attr_prev.reverse:
-                yield ops.ModifyAttr(ename, aname, attr)
-            else:
-                yield ops.AddAttr(ename, aname, attr)
-
 
     def _get_operations_block(self, imports):
         self.operations = self._get_ops()
