@@ -679,7 +679,7 @@ class Database(object):
         if migration_dir is not None:
             os.environ['MIGRATIONS_DIR'] = migration_dir
         from pony.migrate.command import migrate
-        migrate(self, command)
+        return migrate(self, command)
     @cut_traceback
     def bind(self, *args, **kwargs):
         self._bind(*args, **kwargs)

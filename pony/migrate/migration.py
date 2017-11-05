@@ -208,10 +208,16 @@ class MigrationGraph(object):
             'imports': '',
         }
         generated = MIGRATION_TEMPLATE.format(**ctx)
-        migrations = get_migration_dir()
-        path = os.path.join(migrations, '%s.py' % migration_name)
+        self._write_migration_file(migration_name, generated)
+
+    @staticmethod
+    def _write_migration_file(name, generated):
+        path = os.path.join(get_migration_dir(), '%s.py' % name)
         with open(path, 'w') as f:
             f.write(generated)
+        filename = os.path.relpath(path)
+        print('Written: %s' % filename)
+        return filename
 
     def make(self, db, empty=False, custom=False, description=None):
         get_cmd_exitstack().callback(db.disconnect)
@@ -220,12 +226,7 @@ class MigrationGraph(object):
 
         if not leaves:
             generated = MigrationWriter(leaves, None, db).as_string()
-            name = '0001_initial'
-            path = os.path.join(get_migration_dir(), '%s.py' % name)
-            with open(path, 'w') as f:
-                f.write(generated)
-            print('Written: %s' % os.path.relpath(path))
-            return
+            return self._write_migration_file('0001_initial', generated)
 
         [leaf] = leaves
         plan = leaf.forwards_list()
@@ -285,11 +286,7 @@ class MigrationGraph(object):
                 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
             generated = MIGRATION_TEMPLATE.format(**ctx)
-            path = os.path.join(get_migration_dir(), '%s.py' % name)
-            with open(path, 'w') as f:
-                f.write(generated)
-            print('Written: %s' % os.path.relpath(path))
-            return
+            return self._write_migration_file(name, generated)
 
         writer = MigrationWriter(leaves, prev_db, db)
         generated = writer.as_string()
@@ -297,10 +294,7 @@ class MigrationGraph(object):
             print('No changes.')
             return
 
-        path = os.path.join(get_migration_dir(), '%s.py' % name)
-        with open(path, 'w') as f:
-            f.write(generated)
-        print('Written: %s' % os.path.relpath(path))
+        return self._write_migration_file(name, generated)
 
     def apply(self, db, dry_run=False, is_fake=False, name_start=None, name_end=None,
               name_exact=None):

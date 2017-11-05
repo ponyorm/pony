@@ -58,7 +58,7 @@ class drop_into_debugger(object):
 
 def migrate(db, argv=None):
     cmd, kwargs = parse_migrate_options(argv)
-    _migrate(db, cmd, **kwargs)
+    return _migrate(db, cmd, **kwargs)
 
 
 migrate_options = dict(
@@ -93,7 +93,7 @@ def _migrate(db, cmd, name=None, start=None, end=None,
     graph = MigrationGraph()
     with cmd_exitstack:
         if cmd == 'make':
-            graph.make(db=db, empty=empty, custom=custom, description=name)
+            return graph.make(db=db, empty=empty, custom=custom, description=name)
         elif cmd == 'list':
             show_migrations(db=db)
         elif cmd == 'apply':
