@@ -64,6 +64,19 @@ class Executor(object):
                 prev_constraint.new = new_constrant
                 new_constrant.prev = prev_constraint
 
+        for prev_table in self.prev_schema.tables.values():
+            if prev_table.m2m:
+                prev_attr = next(iter(prev_table.m2m))
+                new_attr = prev_attr.new_attr
+                if new_attr is not None:
+                    for new_table in self.new_schema.tables.values():
+                        if new_attr in new_table.m2m:
+                            prev_table.new = new_table
+                            new_table.prev = prev_table
+                            for prev_col, new_col in zip(prev_table.column_list, new_table.column_list):
+                                prev_col.new = new_col
+                                new_col.prev = prev_col
+
     def generate(self):
         ops = list(self._generate_ops())
         ops = self._sorted(ops)
