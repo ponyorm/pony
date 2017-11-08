@@ -58,6 +58,12 @@ class Executor(object):
                 if attr.initial is not None:
                     initials[attr] = attr.initial
 
+        for prev_constraint in self.prev_schema.constraints.values():
+            new_constrant = self.new_schema.constraints.get(prev_constraint.name)
+            if new_constrant is not None:
+                prev_constraint.new = new_constrant
+                new_constrant.prev = prev_constraint
+
     def generate(self):
         ops = list(self._generate_ops())
         ops = self._sorted(ops)
