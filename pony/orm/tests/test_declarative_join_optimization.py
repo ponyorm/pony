@@ -68,8 +68,10 @@ class TestM2MOptimization(unittest.TestCase):
     def test7(self):
         q = select(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
         objects = q[:]
-        self.assertEqual(str(q._translator.subquery.from_ast),
-            "['FROM', ['s', 'TABLE', 'Student'], ['group', 'TABLE', 'Group', ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group', 'number']]]]")
+        self.assertEqual(q._translator.subquery.from_ast,
+            ['FROM', ['s', 'TABLE', 'student'], ['group', 'TABLE', 'group', [
+                'EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group', 'number']
+            ]]])
 
 
 if __name__ == '__main__':

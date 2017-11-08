@@ -5,6 +5,9 @@ import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
+from time import time as get_time
+from hashlib import md5
+from functools import partial
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
@@ -73,14 +76,15 @@ def unexpected_args(attr, args):
         'Unexpected positional argument%s for attribute %s: %r'
         % ((args > 1 and 's' or ''), attr, ', '.join(repr(arg) for arg in args)))
 
-version_re = re.compile('[0-9\.]+')
+class Name(unicode):
+    __slots__ = ['obsolete_name']
+    def __new__(cls, name, obsolete_name=None):
+        result = unicode.__new__(cls, name)
+        result.obsolete_name = obsolete_name
+        return result
 
-def get_version_tuple(s):
-    m = version_re.match(s)
-    if m is not None:
-        components = m.group(0).split('.')
-        return tuple(int(component) for component in components)
-    return None
+def obsolete(name):
+    return getattr(name, 'obsolete_name', name)
 
 class DBAPIProvider(object):
     paramstyle = 'qmark'
@@ -107,6 +111,12 @@ class DBAPIProvider(object):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
+    pony_version_table_create_sql = 'CREATE TABLE pony_version (id INT PRIMARY KEY, pony_version VARCHAR(20) NOT NULL)'
+
+    table_has_data_sql_template = "SELECT 1 FROM %(table_name)s LIMIT 1"
+    drop_table_sql_template = "DROP TABLE %(table_name)s"
+    rename_table_sql_template = "ALTER TABLE %(prev_name)s RENAME TO %(new_name)s"
+
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         if pool_mockup: provider.pool = pool_mockup
@@ -119,8 +129,39 @@ class DBAPIProvider(object):
     def inspect_connection(provider, connection):
         pass
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len]
+    def get_pony_version(provider, connection):
+        cursor = connection.cursor()
+        if provider.table_exists(cursor, 'pony_version', case_sensitive=False):
+            cursor.execute('select pony_version from pony_version where id = 1')
+            row = cursor.fetchone()
+            if row is not None: return row[0]
+        return None
+
+    def make_pony_version_table(provider, connection, version=None):
+        cursor = connection.cursor()
+        provider.execute(cursor, provider.pony_version_table_create_sql)
+        insert_sql = "insert into pony_version values (1, '%s')" % (version or pony.__version__)
+        provider.execute(cursor, insert_sql)
+
+    def update_pony_version(provider, connection, to_version=None):
+        cursor = connection.cursor()
+        update_sql = "update pony_version set pony_version = '%s' where id = 1" % (to_version or pony.__version__)
+        provider.execute(cursor, update_sql)
+
+    def normalize_name_case(provider, name):
+        return name.lower()
+
+    def normalize_name(provider, name, obsolete_name=None):
+        name = provider.normalize_name_case(name)
+        if obsolete_name is not None:
+            obsolete_name = provider.normalize_name_case(obsolete_name)
+        max_len = provider.max_name_len
+        if len(name) > max_len:
+            hash = md5(name.encode('utf-8')).hexdigest()[:8]
+            normalized_name = '%s_%s' % (name[:max_len-9], hash)
+        else: normalized_name = name
+        normalized_obsolete_name = (obsolete_name or name)[:max_len]
+        return Name(normalized_name, obsolete_name=normalized_obsolete_name)
 
     def get_default_entity_table_name(provider, entity):
         return provider.normalize_name(entity.__name__)
@@ -128,31 +169,38 @@ class DBAPIProvider(object):
     def get_default_m2m_table_name(provider, attr, reverse):
         if attr.symmetric:
             assert reverse is attr
-            name = attr.entity.__name__ + '_' + attr.name
+            name = obsolete_name = '%s_%s' % (attr.entity.__name__, attr.name)
         else:
-            name = attr.entity.__name__ + '_' + reverse.entity.__name__
-        return provider.normalize_name(name)
+            first_attr = sorted((attr, reverse), key=lambda attr: (attr.entity.__name__, attr.name))[0]
+            name = '%s_%s' % (first_attr.entity.__name__, first_attr.name)
+            obsolete_name = '%s_%s' % tuple(sorted((attr.entity.__name__, reverse.entity.__name__)))
+        return provider.normalize_name(name, obsolete_name=obsolete_name)
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
         normalize = provider.normalize_name
         if reverse_pk_columns is None:
-            return [ normalize(attr.name) ]
+            return (normalize(attr.name),)
         elif len(reverse_pk_columns) == 1:
-            return [ normalize(attr.name) ]
+            return (normalize(attr.name),)
         else:
             prefix = attr.name + '_'
-            return [ normalize(prefix + column) for column in reverse_pk_columns ]
+            return tuple(normalize(prefix + column) for column in reverse_pk_columns)
 
     def get_default_m2m_column_names(provider, entity):
         normalize = provider.normalize_name
         columns = entity._get_pk_columns_()
         if len(columns) == 1:
-            return [ normalize(entity.__name__.lower()) ]
+            return (normalize(entity.__name__),)
         else:
-            prefix = entity.__name__.lower() + '_'
-            return [ normalize(prefix + column) for column in columns ]
+            prefix = entity.__name__ + '_'
+            return tuple(normalize(prefix + column) for column in columns)
 
     def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
+        name = provider._get_default_index_name(table_name, column_names, is_pk, is_unique, m2m)
+        obsolete_name = provider._get_default_index_name(obsolete(table_name), column_names, is_pk, is_unique, m2m)
+        return provider.normalize_name(name, obsolete_name)
+
+    def _get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
         if is_pk: index_name = 'pk_%s' % table_name
         else:
             if is_unique: template = 'unq_%(tname)s__%(cnames)s'
@@ -160,11 +208,16 @@ class DBAPIProvider(object):
             else: template = 'idx_%(tname)s__%(cnames)s'
             index_name = template % dict(tname=provider.base_name(table_name),
                                          cnames='_'.join(name for name in column_names))
-        return provider.normalize_name(index_name.lower())
+        return index_name
 
-    def get_default_fk_name(provider, child_table_name, parent_table_name, child_column_names):
-        fk_name = 'fk_%s__%s' % (provider.base_name(child_table_name), '__'.join(child_column_names))
-        return provider.normalize_name(fk_name.lower())
+    def get_default_fk_name(provider, table_name, col_names):
+        fk_name = provider._get_default_fk_name(table_name, col_names)
+        obsolete_fk_name = provider._get_default_fk_name(
+            obsolete(table_name), [obsolete(col_name) for col_name in col_names])
+        return provider.normalize_name(fk_name, obsolete_fk_name)
+
+    def _get_default_fk_name(provider, table_name, col_names):
+        return 'fk_%s__%s' % (provider.base_name(table_name), '__'.join(col_names))
 
     def split_table_name(provider, table_name):
         if isinstance(table_name, basestring): return provider.default_schema_name, table_name
@@ -247,6 +300,13 @@ class DBAPIProvider(object):
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
+        core = pony.orm.core
+        if core.local.debug: core.log_sql(sql, arguments)
+        start_time = get_time()
+        new_id = provider._execute(cursor, sql, arguments, returning_id)
+        return new_id, get_time() - start_time
+
+    def _execute(provider, cursor, sql, arguments=None, returning_id=False):
         if type(arguments) is list:
             assert arguments and not returning_id
             cursor.executemany(sql, arguments)
@@ -277,32 +337,37 @@ class DBAPIProvider(object):
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(provider, cursor, table_name, fk_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def table_has_data(provider, connection, table_name):
+    def table_has_data(provider, cursor, table_name):
         table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
+        cursor.execute(provider.table_has_data_sql_template % dict(table_name=table_name))
         return cursor.fetchone() is not None
 
-    def disable_fk_checks(provider, connection):
+    def disable_fk_checks(provider, cursor):
         pass
 
-    def enable_fk_checks(provider, connection, prev_state):
+    def enable_fk_checks(provider, cursor, prev_state):
         pass
 
-    def drop_table(provider, connection, table_name):
+    def drop_table(provider, cursor, table_name):
         table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        sql = 'DROP TABLE %s' % table_name
-        cursor.execute(sql)
+        sql = provider.drop_table_sql_template % dict(table_name=table_name)
+        provider.execute(cursor, sql)
+
+    def rename_table(provider, cursor, prev_name, new_name):
+        quote_name = provider.quote_name
+        prev_name = quote_name(prev_name)
+        new_name = quote_name(new_name)
+        sql = provider.rename_table_sql_template % dict(prev_name=prev_name, new_name=new_name)
+        provider.execute(cursor, sql)
 
 class Pool(localbase):
     forked_connections = []

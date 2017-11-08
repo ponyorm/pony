@@ -37,8 +37,8 @@ class TestOneToOne3(unittest.TestCase):
         select(p for p in self.db.Person if p.passport is None)[:]
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
-FROM "Person" "p"
-  LEFT JOIN "Passport" "passport"
+FROM "person" "p"
+  LEFT JOIN "passport" "passport"
     ON "p"."id" = "passport"."person"
 WHERE "passport"."id" IS NULL''')
 
@@ -47,8 +47,8 @@ WHERE "passport"."id" IS NULL''')
         select(p for p in self.db.Person if not p.passport)[:]
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
-FROM "Person" "p"
-  LEFT JOIN "Passport" "passport"
+FROM "person" "p"
+  LEFT JOIN "passport" "passport"
     ON "p"."id" = "passport"."person"
 WHERE "passport"."id" IS NULL''')
 
@@ -57,8 +57,8 @@ WHERE "passport"."id" IS NULL''')
         select(p for p in self.db.Person if p.passport)[:]
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
-FROM "Person" "p"
-  LEFT JOIN "Passport" "passport"
+FROM "person" "p"
+  LEFT JOIN "passport" "passport"
     ON "p"."id" = "passport"."person"
 WHERE "passport"."id" IS NOT NULL''')
 
@@ -68,7 +68,7 @@ WHERE "passport"."id" IS NOT NULL''')
         p.delete()
         flush()
         sql = self.db.last_sql
-        self.assertEqual(sql, '''DELETE FROM "Person"
+        self.assertEqual(sql, '''DELETE FROM "person"
 WHERE "id" = ?
   AND "name" = ?''')
 

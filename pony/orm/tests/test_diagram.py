@@ -97,10 +97,10 @@ class TestDiag(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
         db.generate_mapping(create_tables=True)
-        m2m_table = db.schema.tables['Entity1_Entity2']
+        m2m_table = db.schema.tables['entity1_attr1']
         col_names = {col.name for col in m2m_table.column_list}
         self.assertEqual(col_names, {'entity1', 'entity2'})
-        self.assertEqual(Entity1.attr1.get_m2m_columns(), ['entity1'])
+        self.assertEqual(Entity1.attr1.get_m2m_columns(), ('entity1',))
 
     def test_diagram9(self):
         db = Database('sqlite', ':memory:')
@@ -113,7 +113,7 @@ class TestDiag(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
         db.generate_mapping(create_tables=True)
-        m2m_table = db.schema.tables['Entity1_Entity2']
+        m2m_table = db.schema.tables['entity1_attr1']
         col_names = {col.name for col in m2m_table.column_list}
         self.assertEqual(col_names, {'entity1_a', 'entity1_b', 'entity2'})
 

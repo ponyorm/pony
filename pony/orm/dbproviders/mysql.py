@@ -29,26 +29,80 @@ except ImportError:
 
 from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
 from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions, obsolete
 from pony.orm.sqltranslation import SQLTranslator, TranslationError
 from pony.orm.sqlbuilding import Value, Param, SQLBuilder, join
-from pony.utils import throw
+from pony.utils import throw, get_version_tuple
 from pony.converting import str2timedelta, timedelta2str
 
+from pony.migrate.operations import Op, alter_table
+
+class MySQLIndex(dbschema.DBIndex):
+    rename_sql_template = 'ALTER TABLE %(table_name)s RENAME INDEX %(prev_name)s TO %(new_name)s'
+    drop_sql_template = 'DROP INDEX %(name)s ON %(table_name)s'
+
+    def get_drop_ops(index):
+        table = index.table
+        schema = table.schema
+        quote_name = schema.provider.quote_name
+        sql = 'DROP INDEX %s ON %s' % (quote_name(index.name), quote_name(table.name))
+        return [ Op(sql, obj=index, type='drop') ]
+
+    def can_be_renamed(index):
+        return index.table.schema.provider.server_version >= (5, 7)
+
+class MySQLForeignKey(dbschema.ForeignKey):
+    drop_sql_template = 'ALTER TABLE %(table_name)s DROP FOREIGN KEY %(name)s'
+
+    def can_be_renamed(fk):
+        return False
+
 class MySQLColumn(dbschema.Column):
+    pk_constraint_template = ''
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
+    rename_sql_template = 'ALTER TABLE %(table_name)s CHANGE %(prev_name)s %(new_col_def)s'
+
+    def get_rename_ops(column):
+        prev_table = column.table
+        schema = prev_table.schema
+        quote_name = schema.provider.quote_name
+        prev_name = quote_name(column.name)
+        sql = '%s %s %s' % ('CHANGE', prev_name, column.new.get_sql())
+        return [ Op(sql, obj=column, type='rename', prefix=alter_table(prev_table)) ]
+
+    def db_rename(column, cursor):
+        schema = column.table.schema
+        provider = schema.provider
+        quote_name = provider.quote_name
+        sql = column.rename_sql_template % dict(
+            table_name=quote_name(column.table.name),
+            prev_name=quote_name(obsolete(column.name)),
+            new_col_def=column.get_sql())
+        provider.execute(cursor, sql)
 
 class MySQLSchema(dbschema.DBSchema):
-    dialect = 'MySQL'
     inline_fk_syntax = False
     column_class = MySQLColumn
+    index_class = MySQLIndex
+    fk_class = MySQLForeignKey
+    ALTER_COLUMN = 'MODIFY COLUMN'
 
 class MySQLTranslator(SQLTranslator):
-    dialect = 'MySQL'
     json_path_wildcard_syntax = True
 
+class MySQLValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, datetime): return 'datetime ' + Value.__unicode__(self)
+        if isinstance(value, date): return 'date ' + Value.__unicode__(self)
+        return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
+
 class MySQLBuilder(SQLBuilder):
-    dialect = 'MySQL'
+    value_class = MySQLValue
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        return 'ALTER COLUMN ', builder.quote_name(column), ' DROP DEFAULT'
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', imap(builder, args)), ')'
     def TRIM(builder, expr, chars=None):
@@ -207,9 +261,6 @@ class MySQLProvider(DBAPIProvider):
         (ormtypes.Json, MySQLJsonConverter),
     ]
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len].lower()
-
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         cursor = connection.cursor()
@@ -257,13 +308,13 @@ class MySQLProvider(DBAPIProvider):
         if db_session is not None and db_session.ddl:
             cursor = connection.cursor()
             cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")
-            fk = cursor.fetchone()
-            if fk is not None: fk = (fk[1] == 'ON')
-            if fk:
+            row = cursor.fetchone()
+            val = row is not None and row[1] == 'ON'
+            if val:
                 sql = 'SET foreign_key_checks = 0'
                 if core.local.debug: log_orm(sql)
                 cursor.execute(sql)
-            cache.saved_fk_state = bool(fk)
+            cache.saved_fk_state = bool(val)
             cache.in_transaction = True
         cache.immediate = True
         if db_session is not None and db_session.serializable:
@@ -289,9 +340,8 @@ class MySQLProvider(DBAPIProvider):
         DBAPIProvider.release(provider, connection, cache)
 
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
-        cursor = connection.cursor()
         if case_sensitive: sql = 'SELECT table_name FROM information_schema.tables ' \
                                  'WHERE table_schema=%s and table_name=%s'
         else: sql = 'SELECT table_name FROM information_schema.tables ' \
@@ -300,18 +350,17 @@ class MySQLProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         if case_sensitive: sql = 'SELECT index_name FROM information_schema.statistics ' \
                                  'WHERE table_schema=%s and table_name=%s and index_name=%s'
         else: sql = 'SELECT index_name FROM information_schema.statistics ' \
                     'WHERE table_schema=%s and table_name=%s and UPPER(index_name)=UPPER(%s)'
-        cursor = connection.cursor()
         cursor.execute(sql, [ db_name, table_name, index_name ])
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(provider, cursor, table_name, fk_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         if case_sensitive: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
                                  'WHERE table_schema=%s and table_name=%s ' \
@@ -319,7 +368,6 @@ class MySQLProvider(DBAPIProvider):
         else: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
                     'WHERE table_schema=%s and table_name=%s ' \
                     "and constraint_type='FOREIGN KEY' and UPPER(constraint_name)=UPPER(%s)"
-        cursor = connection.cursor()
         cursor.execute(sql, [ db_name, table_name, fk_name ])
         row = cursor.fetchone()
         return row[0] if row is not None else None

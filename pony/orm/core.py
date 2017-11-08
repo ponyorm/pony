@@ -2,17 +2,16 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
-import json, re, sys, types, datetime, logging, itertools, warnings
+import json, re, os, sys, types, datetime, logging, itertools, warnings
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
-from time import time
 from decimal import Decimal
 from random import shuffle, randint, random
-from threading import Lock, RLock, currentThread as current_thread, _MainThread
-from contextlib import contextmanager
+from threading import RLock, currentThread as current_thread, _MainThread
 from collections import defaultdict
 from hashlib import md5
 from inspect import isgeneratorfunction
+from contextlib import contextmanager
 
 from pony.thirdparty.compiler import ast, parse
 
@@ -28,7 +27,10 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
      pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce
+     between, concat, coalesce, get_version_tuple
+
+
+from pony.migrate.utils import deconstructible
 
 __all__ = [
     'pony',
@@ -38,7 +40,7 @@ __all__ = [
     'Warning', 'Error', 'InterfaceError', 'DatabaseError', 'DataError', 'OperationalError',
     'IntegrityError', 'InternalError', 'ProgrammingError', 'NotSupportedError',
 
-    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError',
+    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError', 'UpgradeError',
     'TableDoesNotExist', 'TableIsNotEmpty', 'ConstraintError', 'CacheIndexError',
     'ObjectNotFound', 'MultipleObjectsFoundError', 'TooManyObjectsFoundError', 'OperationWithDeletedObjectError',
     'TransactionError', 'ConnectionClosedError', 'TransactionIntegrityError', 'IsolationError',
@@ -128,6 +130,8 @@ def args2str(args):
 
 adapted_sql_cache = {}
 string2ast_cache = {}
+
+class UpgradeError(Exception): pass
 
 class OrmError(Exception): pass
 
@@ -628,6 +632,7 @@ def db_decorator(func, *args, **kwargs):
         if web: throw(web.Http404NotFound)
         raise
 
+@deconstructible
 class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
@@ -636,6 +641,7 @@ class Database(object):
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         self.priority = 0
         self._insert_cache = {}
+        self.migration_in_progress = False
 
         # ER-diagram related stuff:
         self._translator_cache = {}
@@ -653,9 +659,32 @@ class Database(object):
         self.provider = None
         if args or kwargs: self._bind(*args, **kwargs)
     @cut_traceback
+    def connect(self, *args, **kwargs):
+        check_tables = kwargs.pop('check_tables', True)
+        create_tables = kwargs.pop('create_tables', False)
+        auto_upgrade = kwargs.pop('allow_auto_upgrade', False)
+        kwargs.pop('migration_dir', None)
+        self._bind(*args, **kwargs)
+        self.generate_mapping(check_tables=check_tables, create_tables=create_tables, allow_auto_upgrade=auto_upgrade)
+    @cut_traceback
+    def migrate(self, *args, **kwargs):
+        kwargs.pop('check_tables', True)
+        kwargs.pop('create_tables', False)
+        auto_upgrade = kwargs.pop('allow_auto_upgrade', False)
+        migration_dir = kwargs.pop('migration_dir', None)
+        command = kwargs.pop('command', None)
+        self._bind(*args, **kwargs)
+        self.generate_mapping(check_tables=False, allow_auto_upgrade=auto_upgrade)
+
+        if migration_dir is not None:
+            os.environ['MIGRATIONS_DIR'] = migration_dir
+        from pony.migrate.command import migrate
+        return migrate(self, command)
+    @cut_traceback
     def bind(self, *args, **kwargs):
         self._bind(*args, **kwargs)
     def _bind(self, *args, **kwargs):
+        self._constructor_args = (args, dict(kwargs))
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
             throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
@@ -671,19 +700,81 @@ class Database(object):
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
         self.provider = provider_cls(*args, **kwargs)
+    def _add_entity_(database, entity_name, base_names, attrs):
+        assert entity_name not in database.entities
+        bases = []
+        for base_name in base_names:
+            base = database.Entity if base_name == 'Entity' else database.entities.get(base_name)
+            if base is None: throw(NameError, 'Error when defining %s entity: base entity %s is not defined'
+                                              % (entity_name, base_name))
+            bases.append(base)
+        bases = tuple(bases) or (database.Entity,)
+        cls_dict = {name: attr for name, attr in attrs}
+        entity = EntityMeta(entity_name, bases, cls_dict)
+        schema = database.schema
+        if schema is None: return
+        for attr in entity._new_attrs_:
+            attr._set_nullable_()
+            attr._resolve_type_()
+        for attr in entity._new_attrs_:
+            if issubclass(attr.py_type, Entity): attr._link_()
+        table = entity._add_table_(schema)
+        for attr in entity._new_attrs_:
+            if attr.is_collection: attr._add_m2m_table_(schema)
+            else: attr._add_columns_(table)
+        entity._attrs_with_columns_ = [ attr for attr in entity._attrs_ if attr.columns and not attr.is_collection ]
+        entity._init_bits_()
+        for index in entity._indexes_: table.add_index(
+            index.get_columns(), is_pk=index.is_pk, is_unique=index.is_unique, provided_name=index.name)
+        table = schema.tables[entity._table_]
+        for attr in entity._new_attrs_:
+            attr._add_foreign_key_(table)
+    def _remove_entity_(database, entity_name):
+        entity = database.entities[entity_name]
+        assert not entity._subclasses_
+        schema = database.schema
+        table = schema.tables[entity._table_] if schema is not None else None
+        for attr in entity._new_attrs_:
+            if not attr.is_relation: pass
+            elif attr.is_collection:
+                entity._remove_relation_(attr.name)
+            elif attr.columns and schema is not None:
+                for column_name in attr.columns:
+                    entity_is_root = entity._root_ is entity
+                    table.remove_column(column_name, constraints_only=entity_is_root)
+        if entity._root_ is not entity:
+            for base in entity._all_bases_:
+                base._subclass_attrs_[:] = [ attr for attr in base._subclass_attrs_ if attr.entity is not entity ]
+                for attr in entity._new_attrs_:
+                    del base._subclass_adict_[attr.name]
+                base._subclasses_.remove(entity)
+        else:
+            if table is not None:
+                table.remove()
+        del database.entities[entity_name]
+    def _rename_entity_(database, old_name, new_name):
+        assert new_name not in database.entities
+        entity = database.entities.pop(old_name)
+        entity.__name__ = str(new_name) if PY2 else new_name
+        database.entities[new_name] = entity
+        entity._table_ = entity._provided_table_
+        schema = database.schema
+        if schema is None: return
+        for attr in entity._new_attrs_:
+            attr.rename_columns()  # will rename indexes and foreign keys as well
     @property
     def last_sql(database):
         return database._dblocal.last_sql
     @property
     def local_stats(database):
         return database._dblocal.stats
-    def _update_local_stat(database, sql, query_start_time):
+    def _update_local_stat(database, sql, duration):
         dblocal = database._dblocal
         dblocal.last_sql = sql
         stats = dblocal.stats
         stat = stats.get(sql)
-        if stat is not None: stat.query_executed(query_start_time)
-        else: stats[sql] = QueryStat(sql, query_start_time)
+        if stat is not None: stat.query_executed(duration)
+        else: stats[sql] = QueryStat(sql, duration)
     def merge_local_stats(database):
         setdefault = database._global_stats.setdefault
         with database._global_stats_lock:
@@ -812,188 +903,95 @@ class Database(object):
         if start_transaction: cache.immediate = True
         connection = cache.prepare_connection_for_query_execution()
         cursor = connection.cursor()
-        if local.debug: log_sql(sql, arguments)
         provider = database.provider
-        t = time()
-        try: new_id = provider.execute(cursor, sql, arguments, returning_id)
+        try: new_id, duration = provider.execute(cursor, sql, arguments, returning_id)
         except Exception as e:
             connection = cache.reconnect(e)
             cursor = connection.cursor()
-            if local.debug: log_sql(sql, arguments)
-            t = time()
-            new_id = provider.execute(cursor, sql, arguments, returning_id)
+            new_id, duration = provider.execute(cursor, sql, arguments, returning_id)
         if cache.immediate: cache.in_transaction = True
-        database._update_local_stat(sql, t)
+        database._update_local_stat(sql, duration)
         if not returning_id: return cursor
         if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
-        provider = database.provider
-        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
+    @db_session(ddl=True)
+    def generate_mapping(database, filename=None, check_tables=True, create_tables=False, allow_auto_upgrade=False):
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
-        schema = database.schema = provider.dbschema_cls(provider)
+        provider = database.provider
+        schema = database.schema = database.generate_schema()
+        if check_tables or create_tables or allow_auto_upgrade:
+            can_alter_tables = create_tables or allow_auto_upgrade
+            connection = database.get_connection()
+            db_version = schema.get_pony_version(connection, create_version_table=can_alter_tables)
+            upgrades = schema.get_upgrades(db_version)
+            if upgrades:
+                if allow_auto_upgrade:
+                    for upgrade in upgrades:
+                        upgrade.apply(schema, connection)
+                        provider.update_pony_version(connection, upgrade.version)
+                else:
+                    upgrade_info = '\n\n'.join(
+                        '* upgrade to ver. %s:\n%s' % (upgrade.version, upgrade.get_description(schema, connection))
+                        for upgrade in upgrades
+                    )
+                    throw(UpgradeError, 'The database tables are compatible with Pony %s, '
+                                        'and the current version of Pony is %s. '
+                                        'To upgrade tables to current Pony version, '
+                                        'call generate_mapping with flag allow_auto_upgrade=True.\n'
+                                        'Following changes will be applied:\n%s'
+                                        % (db_version, pony.__version__, upgrade_info))
+            if can_alter_tables and get_version_tuple(db_version) < get_version_tuple(pony.__version__):
+                database.provider.update_pony_version(connection)
+            if create_tables: schema.create_tables(connection)
+            if check_tables: schema.check_tables(connection)
+    def generate_schema(database):
+        provider = database.provider
+        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
+        schema = provider.dbschema_cls(provider)
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
-            entity._resolve_attr_types_()
+            for attr in entity._new_attrs_:
+                attr._set_nullable_()
+                attr._resolve_type_()
         for entity in entities:
-            entity._link_reverse_attrs_()
+            for attr in entity._new_attrs_:
+                if issubclass(attr.py_type, Entity): attr._link_()
         for entity in entities:
             entity._check_table_options_()
 
-        def get_columns(table, column_names):
-            column_dict = table.column_dict
-            return tuple(column_dict[name] for name in column_names)
-
         for entity in entities:
-            entity._get_pk_columns_()
-            table_name = entity._table_
-
-            is_subclass = entity._root_ is not entity
-            if is_subclass:
-                if table_name is not None: throw(NotImplementedError)
-                table_name = entity._root_._table_
-                entity._table_ = table_name
-            elif table_name is None:
-                table_name = provider.get_default_entity_table_name(entity)
-                entity._table_ = table_name
-            else: assert isinstance(table_name, (basestring, tuple))
-
-            table = schema.tables.get(table_name)
-            if table is None: table = schema.add_table(table_name, entity)
-            else: table.add_entity(entity)
-
+            table = entity._add_table_(schema)
             for attr in entity._new_attrs_:
-                if attr.is_collection:
-                    if not isinstance(attr, Set): throw(NotImplementedError)
-                    reverse = attr.reverse
-                    if not reverse.is_collection: # many-to-one:
-                        if attr.table is not None: throw(MappingError,
-                            "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
-                        elif attr.columns: throw(NotImplementedError,
-                            "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
-                        continue
-                    # many-to-many:
-                    if not isinstance(reverse, Set): throw(NotImplementedError)
-                    if attr.entity.__name__ > reverse.entity.__name__: continue
-                    if attr.entity is reverse.entity and attr.name > reverse.name: continue
+                if attr.is_collection: attr._add_m2m_table_(schema)
+                else: attr._add_columns_(table)
+            entity._attrs_with_columns_ = [ attr for attr in entity._attrs_ if attr.columns and not attr.is_collection ]
+            entity._init_bits_()
 
-                    if attr.table:
-                        if not reverse.table: reverse.table = attr.table
-                        elif reverse.table != attr.table:
-                            throw(MappingError, "Parameter 'table' for %s and %s do not match" % (attr, reverse))
-                        table_name = attr.table
-                    elif reverse.table: table_name = attr.table = reverse.table
-                    else:
-                        table_name = provider.get_default_m2m_table_name(attr, reverse)
+            for index in entity._indexes_: table.add_index(
+                index.get_columns(), is_pk=index.is_pk, is_unique=index.is_unique, provided_name=index.name)
 
-                    m2m_table = schema.tables.get(table_name)
-                    if m2m_table is not None:
-                        if not attr.table:
-                            seq_counter = itertools.count(2)
-                            while m2m_table is not None:
-                                new_table_name = table_name + '_%d' % next(seq_counter)
-                                m2m_table = schema.tables.get(new_table_name)
-                            table_name = new_table_name
-                        elif m2m_table.entities or m2m_table.m2m:
-                            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
-                            throw(MappingError, "Table name '%s' is already in use" % table_name)
-                        else: throw(NotImplementedError)
-                    attr.table = reverse.table = table_name
-                    m2m_table = schema.add_table(table_name)
-                    m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
-                    m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
-                    if m2m_columns_1 == m2m_columns_2: throw(MappingError,
-                        'Different column names should be specified for attributes %s and %s' % (attr, reverse))
-                    assert len(m2m_columns_1) == len(reverse.converters)
-                    assert len(m2m_columns_2) == len(attr.converters)
-                    for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
-                        m2m_table.add_column(column_name, converter.get_sql_type(), converter, True)
-                    m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
-                    m2m_table.m2m.add(attr)
-                    m2m_table.m2m.add(reverse)
-                else:
-                    if attr.is_required: pass
-                    elif not attr.is_string:
-                        if attr.nullable is False:
-                            throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
-                        attr.nullable = True
-                    elif entity._database_.provider.dialect == 'Oracle':
-                        if attr.nullable is False: throw(ERDiagramError,
-                            'In Oracle, optional string attribute %s must be nullable' % attr)
-                        attr.nullable = True
-
-                    columns = attr.get_columns()  # initializes attr.converters
-                    if not attr.reverse and attr.default is not None:
-                        assert len(attr.converters) == 1
-                        if not callable(attr.default): attr.default = attr.validate(attr.default)
-                    assert len(columns) == len(attr.converters)
-                    if len(columns) == 1:
-                        converter = attr.converters[0]
-                        table.add_column(columns[0], converter.get_sql_type(attr),
-                                         converter, not attr.nullable, attr.sql_default)
-                    elif columns:
-                        if attr.sql_type is not None: throw(NotImplementedError,
-                            'sql_type cannot be specified for composite attribute %s' % attr)
-                        for (column_name, converter) in izip(columns, attr.converters):
-                            table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
-                    else: pass  # virtual attribute of one-to-one pair
-            entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
-                                                 if not attr.is_collection and attr.columns ]
-            if not table.pk_index:
-                if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
-                else: is_pk = True
-                table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
-            for index in entity._indexes_:
-                if index.is_pk: continue
-                column_names = []
-                attrs = index.attrs
-                for attr in attrs: column_names.extend(attr.columns)
-                index_name = attrs[0].index if len(attrs) == 1 else None
-                table.add_index(index_name, get_columns(table, column_names), is_unique=index.is_unique)
-            columns = []
-            columns_without_pk = []
-            converters = []
-            converters_without_pk = []
-            for attr in entity._attrs_with_columns_:
-                columns.extend(attr.columns)  # todo: inheritance
-                converters.extend(attr.converters)
-                if not attr.is_pk:
-                    columns_without_pk.extend(attr.columns)
-                    converters_without_pk.extend(attr.converters)
-            entity._columns_ = columns
-            entity._columns_without_pk_ = columns_without_pk
-            entity._converters_ = converters
-            entity._converters_without_pk_ = converters_without_pk
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
-                if attr.is_collection:
-                    reverse = attr.reverse
-                    if not reverse.is_collection: continue
-                    if not isinstance(attr, Set): throw(NotImplementedError)
-                    if not isinstance(reverse, Set): throw(NotImplementedError)
-                    m2m_table = schema.tables[attr.table]
-                    parent_columns = get_columns(table, entity._pk_columns_)
-                    child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns, attr.index)
-                    if attr.symmetric:
-                        child_columns = get_columns(m2m_table, attr.reverse_columns)
-                        m2m_table.add_foreign_key(attr.reverse_fk_name, child_columns, table, parent_columns)
-                elif attr.reverse and attr.columns:
-                    rentity = attr.reverse.entity
-                    parent_table = schema.tables[rentity._table_]
-                    parent_columns = get_columns(parent_table, rentity._pk_columns_)
-                    child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index)
-                elif attr.index and attr.columns:
-                    columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
-                    table.add_index(attr.index, columns, is_unique=attr.is_unique)
-            entity._initialize_bits_()
+                attr._add_foreign_key_(table)
 
-        if create_tables: database.create_tables(check_tables)
-        elif check_tables: database.check_tables()
+        return schema
+    @cut_traceback
+    @db_session(ddl=True)
+    def create_tables(database, check_tables=False):
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+        connection = database.get_connection()
+        database.schema.create_tables(connection)
+        if check_tables: database.schema.check_tables(connection)
+    @cut_traceback
+    @db_session()
+    def check_tables(database):
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+        cache = database._get_cache()
+        connection = cache.prepare_connection_for_query_execution()
+        database.schema.check_tables(connection)
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
@@ -1021,44 +1019,28 @@ class Database(object):
         if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         database._drop_tables(database.schema.tables, True, with_all_data)
     def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
-        cache = database._get_cache()
-        connection = cache.prepare_connection_for_query_execution()
+        connection = database.get_connection()
+        cursor = connection.cursor()
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
             table_name = database._get_table_name(table_name)
-            if provider.table_exists(connection, table_name): existed_tables.append(table_name)
+            if provider.table_exists(cursor, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
                     normalized_table_name = provider.normalize_name(table_name)
                     if normalized_table_name != table_name \
-                    and provider.table_exists(connection, normalized_table_name):
-                        throw(TableDoesNotExist, 'Table %s does not exist (probably you meant table %s)'
+                    and provider.table_exists(cursor, normalized_table_name):
+                        throw(TableDoesNotExist, 'Table `%s` does not exist (probably you meant table `%s`)'
                                                  % (table_name, normalized_table_name))
-                throw(TableDoesNotExist, 'Table %s does not exist' % table_name)
+                throw(TableDoesNotExist, 'Table `%s` does not exist' % table_name)
         if not with_all_data:
             for table_name in existed_tables:
-                if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
-                    'Cannot drop table %s because it is not empty. Specify option '
+                if provider.table_has_data(cursor, table_name): throw(TableIsNotEmpty,
+                    'Cannot drop table `%s` because it is not empty. Specify option '
                     'with_all_data=True if you want to drop table with all data' % table_name)
         for table_name in existed_tables:
-            if local.debug: log_orm('DROPPING TABLE %s' % table_name)
-            provider.drop_table(connection, table_name)
-    @cut_traceback
-    @db_session(ddl=True)
-    def create_tables(database, check_tables=False):
-        cache = database._get_cache()
-        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
-        connection = cache.prepare_connection_for_query_execution()
-        database.schema.create_tables(database.provider, connection)
-        if check_tables: database.schema.check_tables(database.provider, connection)
-    @cut_traceback
-    @db_session()
-    def check_tables(database):
-        cache = database._get_cache()
-        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
-        connection = cache.prepare_connection_for_query_execution()
-        database.schema.check_tables(database.provider, connection)
+            provider.drop_table(cursor, table_name)
     @contextmanager
     def set_perms_for(database, *entities):
         if not entities: throw(TypeError, 'You should specify at least one positional argument')
@@ -1538,10 +1520,8 @@ class DbLocal(localbase):
         dblocal.last_sql = None
 
 class QueryStat(object):
-    def __init__(stat, sql, query_start_time=None):
-        if query_start_time is not None:
-            query_end_time = time()
-            duration = query_end_time - query_start_time
+    def __init__(stat, sql, duration=None):
+        if duration is not None:
             stat.min_time = stat.max_time = stat.sum_time = duration
             stat.db_count = 1
             stat.cache_count = 0
@@ -1554,9 +1534,7 @@ class QueryStat(object):
         result = object.__new__(QueryStat)
         result.__dict__.update(stat.__dict__)
         return result
-    def query_executed(stat, query_start_time):
-        query_end_time = time()
-        duration = query_end_time - query_start_time
+    def query_executed(stat, duration):
         if stat.db_count:
             stat.min_time = builtins.min(stat.min_time, duration)
             stat.max_time = builtins.max(stat.max_time, duration)
@@ -1845,14 +1823,16 @@ class DescWrapper(object):
 
 attr_id_counter = itertools.count(1)
 
+@deconstructible
 class Attribute(object):
     __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
                 'is_pk', 'is_collection', 'is_relation', 'is_basic', 'is_string', 'is_volatile', 'is_implicit', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
-                'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
+                'column', 'columns', 'column_objects', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic', 'fk_name'
+                'optimistic', 'fk_name', '_provided_columns', 'initial', '_constructor_args', 'provided_table', \
+                'prev_attr', 'new_attr'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1901,19 +1881,24 @@ class Attribute(object):
                 throw(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
             if not isinstance(attr.column, basestring):
                 throw(TypeError, "Parameter 'column' must be a string. Got: %r" % attr.column)
-            attr.columns = [ attr.column ]
+            attr.columns = (attr.column,)
         elif attr.columns is not None:
             if not isinstance(attr.columns, (tuple, list)):
                 throw(TypeError, "Parameter 'columns' must be a list. Got: %r'" % attr.columns)
             for column in attr.columns:
                 if not isinstance(column, basestring):
                     throw(TypeError, "Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
+            attr.columns = tuple(attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
-        else: attr.columns = []
+        else: attr.columns = ()
+        attr._provided_columns = attr.columns
+
         attr.index = kwargs.pop('index', None)
         attr.fk_name = kwargs.pop('fk_name', None)
-        attr.col_paths = []
+        attr.col_paths = ()
         attr._columns_checked = False
+        attr.column_objects = None
+        attr.prev_attr = attr.new_attr = None
         attr.composite_keys = []
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
@@ -1923,7 +1908,10 @@ class Attribute(object):
         attr.py_check = kwargs.pop('py_check', None)
         attr.hidden = kwargs.pop('hidden', False)
         attr.kwargs = kwargs
-        attr.converters = []
+        attr.converters = ()
+        attr.initial = attr.kwargs.get('initial')
+        attr._constructor_args[1].pop('default', None)
+        attr._constructor_args[1].pop('py_check', None)
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
@@ -1965,6 +1953,10 @@ class Attribute(object):
             throw(TypeError, "'sql_default' option of %s attribute must be of string or bool type. Got: %s"
                              % (attr, attr.sql_default))
 
+        attr.kwargs.pop('initial', None)
+        if attr.initial is not None and attr.is_collection:
+            throw(TypeError, 'Initial value cannot be specified for collection attribute %s' % attr)
+
         if attr.py_check is not None and not callable(attr.py_check):
             throw(TypeError, "'py_check' parameter of %s attribute should be callable" % attr)
 
@@ -1990,6 +1982,89 @@ class Attribute(object):
                 throw(TypeError, 'You should specify fk_name in %s instead of %s' % (reverse, attr))
         for option in attr.kwargs:
             throw(TypeError, 'Attribute %s has unknown option %r' % (attr, option))
+    def _resolve_type_(attr):
+        py_type = attr.py_type
+        if isinstance(py_type, basestring):
+            rentity = attr.entity._database_.entities.get(py_type)
+            if rentity is None: throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
+            attr.py_type = py_type = rentity
+        elif isinstance(py_type, types.FunctionType):
+            rentity = py_type()
+            if not isinstance(rentity, EntityMeta): throw(TypeError,
+                'Invalid type of attribute %s: expected entity class, got %r' % (attr, rentity))
+            attr.py_type = py_type = rentity
+        if isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity': throw(TypeError,
+            'Cannot link attribute %s to abstract Entity class. Use specific Entity subclass instead' % attr)
+    def _link_(attr):
+        entity = attr.entity
+        rentity = attr.py_type
+        if rentity._database_ is not entity._database_: throw(ERDiagramError,
+            'Interrelated entities must belong to same database. Entities %s and %s belongs to different databases'
+            % (entity.__name__, rentity.__name__))
+        reverse = attr.reverse
+        if isinstance(reverse, basestring):
+            attr2 = getattr(rentity, reverse, None)
+            if attr2 is None: throw(ERDiagramError, 'Reverse attribute %s.%s not found' % (rentity.__name__, reverse))
+        elif isinstance(reverse, Attribute):
+            attr2 = reverse
+            if attr2.entity is not rentity: throw(ERDiagramError,
+                'Incorrect reverse attribute %s used in %s' % (attr2, attr))  ###
+        elif reverse is not None:
+            throw(ERDiagramError, "Value of 'reverse' option must be string. Got: %r" % type(reverse))
+        else:
+            candidates1 = []
+            candidates2 = []
+            for attr2 in rentity._new_attrs_:
+                if attr2.py_type not in (entity, entity.__name__): continue
+                reverse2 = attr2.reverse
+                if reverse2 in (attr, attr.name): candidates1.append(attr2)
+                elif not reverse2 and attr2 is not attr: candidates2.append(attr2)
+            msg = "Ambiguous reverse attribute for %s. Use the 'reverse' parameter for pointing to right attribute"
+            if len(candidates1) > 1: throw(ERDiagramError, msg % attr)
+            elif len(candidates1) == 1: attr2 = candidates1[0]
+            elif len(candidates2) > 1: throw(ERDiagramError, msg % attr)
+            elif len(candidates2) == 1: attr2 = candidates2[0]
+            else: throw(ERDiagramError, 'Reverse attribute for %s not found' % attr)
+
+        type2 = attr2.py_type
+        if type2 != entity:
+            throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
+        reverse2 = attr2.reverse
+        if reverse2 not in (None, attr, attr.name):
+            throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
+
+        if attr.is_required and attr2.is_required: throw(ERDiagramError,
+            "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
+        attr.reverse = attr2
+        attr2.reverse = attr
+        attr.linked()
+        attr2.linked()
+    def get_declaration_id(attr):
+        args, kwargs = attr._constructor_args
+        attr_type, rest = args[0], args[1:]
+        if isinstance(attr_type, types.FunctionType):  # Required(lambda: MyEntity)
+            attr_type = attr_type()
+        if isinstance(attr_type, basestring):
+            assert attr.reverse
+            attr_type = attr.reverse.entity.__name__
+        elif isinstance(attr_type, EntityMeta):
+            attr_type = attr_type.__name__
+        args = (attr.__class__, attr_type) + rest
+        kwargs = sorted(kwargs.items())
+
+        for i, (k, v) in enumerate(kwargs):
+            if k == 'initial':
+                del kwargs[i]
+            if all((
+                k == 'sql_default',
+                isinstance(attr, Optional),
+                attr.py_type == str,
+                v == "''",
+            )):
+                del kwargs[i]
+
+        kwargs = tuple(kwargs)
+        return args, kwargs
     @cut_traceback
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
@@ -2284,6 +2359,16 @@ class Attribute(object):
         rentity = reverse.entity
         if val is None: return rentity._pk_nones_
         return val._get_raw_pkval_()
+    def _set_nullable_(attr):
+        if attr.is_collection or attr.is_required: pass
+        elif not attr.is_string:
+            if attr.nullable is False: throw(TypeError,
+                'Optional attribute with non-string type %s must be nullable' % attr)
+            attr.nullable = True
+        elif attr.entity._database_.provider.dialect == 'Oracle':
+            if attr.nullable is False: throw(ERDiagramError,
+                'In Oracle, optional string attribute %s must be nullable' % attr)
+            attr.nullable = True
     def get_columns(attr):
         assert not attr.is_collection
         assert not isinstance(attr.py_type, basestring)
@@ -2294,8 +2379,8 @@ class Attribute(object):
         if not reverse: # attr is not part of relationship
             if not attr.columns: attr.columns = provider.get_default_column_names(attr)
             elif len(attr.columns) > 1: throw(MappingError, "Too many columns were specified for %s" % attr)
-            attr.col_paths = [ attr.name ]
-            attr.converters = [ provider.get_converter_by_attr(attr) ]
+            attr.col_paths = (attr.name,)
+            attr.converters = (provider.get_converter_by_attr(attr),)
         else:
             def generate_columns():
                 reverse_pk_columns = reverse.entity._get_pk_columns_()
@@ -2304,10 +2389,11 @@ class Attribute(object):
                     attr.columns = provider.get_default_column_names(attr, reverse_pk_columns)
                 elif len(attr.columns) != len(reverse_pk_columns): throw(MappingError,
                     'Invalid number of columns specified for %s' % attr)
-                attr.col_paths = [ '-'.join((attr.name, paths)) for paths in reverse_pk_col_paths ]
-                attr.converters = []
+                attr.col_paths = tuple('-'.join((attr.name, paths)) for paths in reverse_pk_col_paths)
+                converters = []
                 for a in reverse.entity._pk_attrs_:
-                    attr.converters.extend(a.converters)
+                    converters.extend(a.converters)
+                attr.converters = tuple(converters)
 
             if reverse.is_collection: # one-to-many:
                 generate_columns()
@@ -2324,6 +2410,73 @@ class Attribute(object):
         if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.column = None
         return attr.columns
+    def rename_columns(attr):
+        if attr._provided_columns: return  # no column names needs to be changed
+        prev_columns = tuple(attr.columns)
+        if not prev_columns: return  # attr has no columns
+
+        new_columns = attr.get_columns()
+        attr.columns = new_columns
+        assert len(prev_columns) == len(new_columns)
+
+        renamed_columns = {}
+        for prev_name, new_name in izip(prev_columns, new_columns):
+            if prev_name != new_name:
+                renamed_columns[prev_name] = new_name
+        if not renamed_columns: return
+        entity = attr.entity
+        schema = entity._diagram_.schema
+        if schema is None: return
+        table = schema.tables[entity._table_]
+        table.rename_columns(renamed_columns)
+    def _add_columns_(attr, table):
+        columns = attr.get_columns()  # initializes attr.converters
+        if not attr.reverse and attr.default is not None:
+            assert len(attr.converters) == 1
+            if not callable(attr.default): attr.default = attr.validate(attr.default)
+        assert len(columns) == len(attr.converters)
+        if len(columns) == 1:
+            converter = attr.converters[0]
+            default = attr.sql_default
+            if attr.default and not callable(attr.default) and default is None:
+                provider = attr.entity._database_.provider
+                value_class = provider.sqlbuilder_cls.value_class
+                value = converter.py2sql(attr.default)
+                value = value_class(provider.paramstyle, value)
+                default = unicode(value)
+            column = table.add_column(columns[0], converter.get_sql_type(attr), converter, not attr.nullable, default)
+            column.attr = attr
+            attr.column_objects = [ column ]
+        elif columns:
+            if attr.sql_type is not None:
+                throw(NotImplementedError, 'sql_type cannot be specified for composite attribute %s' % attr)
+            attr.column_objects = [
+                table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
+                for (column_name, converter) in izip(columns, attr.converters)
+            ]
+            for column in attr.column_objects:
+                column.attr = attr
+        else: pass  # virtual attribute of one-to-one pair
+    def _add_foreign_key_(attr, table):
+        if attr.is_collection:
+            reverse = attr.reverse
+            if not reverse.is_collection: return
+            if not isinstance(attr, Set): throw(NotImplementedError)
+            if not isinstance(reverse, Set): throw(NotImplementedError)
+            entity = attr.entity
+            m2m_table = table.schema.tables[attr.table]
+            m2m_table.add_foreign_key(reverse.fk_name, col_names=reverse.columns,
+                                      parent_table=table, parent_col_names=entity._pk_columns_, index_name=attr.index)
+            if attr.symmetric:
+                m2m_table.add_foreign_key(attr.reverse_fk_name, col_names=attr.reverse_columns,
+                                          parent_table=table, parent_col_names=entity._pk_columns_)
+        elif attr.reverse and attr.columns:
+            rentity = attr.reverse.entity
+            parent_table = table.schema.tables[rentity._table_]
+            table.add_foreign_key(attr.reverse.fk_name, col_names=attr.columns,
+                                  parent_table=parent_table, parent_col_names=rentity._pk_columns_)
+    def _modify_relation_(attr, new_name, new_attr, reverse_name, reverse_attr):
+        throw(NotImplementedError)  # todo
     @property
     def asc(attr):
         return attr
@@ -2417,12 +2570,13 @@ class Discriminator(Required):
         assert False  # pragma: no cover
 
 class Index(object):
-    __slots__ = 'entity', 'attrs', 'is_pk', 'is_unique'
+    __slots__ = 'entity', 'attrs', 'is_pk', 'is_unique', 'name'
     def __init__(index, *attrs, **options):
         index.entity = None
         index.attrs = list(attrs)
         index.is_pk = options.pop('is_pk', False)
         index.is_unique = options.pop('is_unique', True)
+        index.name = options.pop('name', None)
         assert not options
     def _init_(index, entity):
         index.entity = entity
@@ -2456,6 +2610,19 @@ class Index(object):
                 attr.nullable = True
                 if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
                     attr.default = None
+    def modify_attrs(index, *attrs):
+        index.attrs = attrs
+        if len(attrs) == 1:
+            attr = attrs[0]
+            index.is_unique = attr.is_unique
+            index.name = attr.name
+        index._init_(index.entity)
+    def get_columns(index):
+        result = []
+        for attr in index.attrs:
+            assert attr.columns, attr
+            result.extend(attr.columns)
+        return tuple(result)
 
 def _define_index(func_name, attrs, is_unique=False):
     if len(attrs) < 2: throw(TypeError,
@@ -2480,7 +2647,7 @@ class PrimaryKey(Required):
         cls_dict = sys._getframe(1).f_locals
 
         if not attrs:
-            return Required.__new__(cls)
+            return Required.__new__(cls, *args, **kwargs)
         elif non_attrs or kwargs:
             throw(TypeError, 'PrimaryKey got invalid arguments: %r %r' % (args, kwargs))
         elif len(attrs) == 1:
@@ -2514,7 +2681,7 @@ class Collection(Attribute):
                 if not isinstance(name_part, basestring):
                     throw(TypeError, 'Each part of table name must be a string. Got: %r' % name_part)
             table = tuple(table)
-        attr.table = table
+        attr.table = attr.provided_table = table
         Attribute.__init__(attr, py_type, *args, **kwargs)
         if attr.auto: throw(TypeError, "'auto' option could not be set for collection attribute")
         kwargs = attr.kwargs
@@ -2526,15 +2693,16 @@ class Collection(Attribute):
                 throw(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
             if not isinstance(attr.reverse_column, basestring):
                 throw(TypeError, "Parameter 'reverse_column' must be a string. Got: %r" % attr.reverse_column)
-            attr.reverse_columns = [ attr.reverse_column ]
+            attr.reverse_columns = (attr.reverse_column,)
         elif attr.reverse_columns is not None:
             if not isinstance(attr.reverse_columns, (tuple, list)):
                 throw(TypeError, "Parameter 'reverse_columns' must be a list. Got: %r" % attr.reverse_columns)
             for reverse_column in attr.reverse_columns:
                 if not isinstance(reverse_column, basestring):
                     throw(TypeError, "Parameter 'reverse_columns' must be a list of strings. Got: %r" % attr.reverse_columns)
+            attr.reverse_columns = tuple(attr.reverse_columns)
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
-        else: attr.reverse_columns = []
+        else: attr.reverse_columns = ()
 
         attr.reverse_fk_name = kwargs.pop('reverse_fk_name', None)
 
@@ -2555,6 +2723,8 @@ class Collection(Attribute):
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
+    def _add_m2m_table_(attr, schema):
+        assert False, 'Abstract method'  # pragma: no cover
     def load(attr, obj):
         assert False, 'Abstract method'  # pragma: no cover
     def __get__(attr, obj, cls=None):
@@ -2930,13 +3100,13 @@ class Set(Collection):
 
             if attr.symmetric:
                 if not attr.reverse_columns:
-                    attr.reverse_columns = [ column + '_2' for column in attr.columns ]
+                    attr.reverse_columns = tuple(column + '_2' for column in attr.columns)
                 elif len(attr.reverse_columns) != pk_length:
                     throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                 return attr.columns if not is_reverse else attr.reverse_columns
             else:
                 if not reverse.columns:
-                    reverse.columns = [ column + '_2' for column in attr.columns ]
+                    reverse.columns = tuple(column + '_2' for column in attr.columns)
                 reverse._columns_checked = True
                 reverse.converters = entity._pk_converters_
                 return attr.columns if not is_reverse else reverse.columns
@@ -2949,6 +3119,47 @@ class Set(Collection):
         reverse.converters = entity._pk_converters_
         attr._columns_checked = True
         return reverse.columns
+    def _add_m2m_table_(attr, schema):
+        reverse = attr.reverse
+        if not reverse.is_collection:  # many-to-one:
+            if attr.provided_table is not None: throw(MappingError,
+                "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
+            elif attr.columns: throw(NotImplementedError,
+                "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
+            return None
+        # many-to-many:
+        if not isinstance(reverse, Set): throw(NotImplementedError)
+
+        reverse = attr.reverse
+        if attr.provided_table:
+            if reverse.provided_table and reverse.provided_table != attr.provided_table:
+                throw(MappingError, "Parameter 'table' for %s and %s do not match" % (attr, reverse))
+            table_name = attr.provided_table
+        elif reverse.provided_table: table_name = reverse.provided_table
+        else: table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
+        attr.table = reverse.table = table_name
+
+        m2m_table = schema.tables.get(table_name)
+        if m2m_table is not None:
+            if attr in m2m_table.m2m:
+                assert reverse in m2m_table.m2m and not m2m_table.entities
+                return m2m_table
+            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
+            throw(MappingError, "Table name '%s' is already in use" % table_name)
+
+        m2m_table = schema.add_table(table_name)
+        m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
+        m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
+        if m2m_columns_1 == m2m_columns_2: throw(MappingError,
+            'Different column names should be specified for attributes %s and %s' % (attr, reverse))
+        assert len(m2m_columns_1) == len(reverse.converters)
+        assert len(m2m_columns_2) == len(attr.converters)
+        for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
+            m2m_table.add_column(column_name, converter.get_sql_type(), converter, True)
+        m2m_table.add_index(tuple(col.name for col in m2m_table.column_list), is_pk=True)
+        m2m_table.m2m.add(attr)
+        m2m_table.m2m.add(reverse)
+        return m2m_table
     def remove_m2m(attr, removed):
         assert removed
         entity = attr.entity
@@ -3402,7 +3613,17 @@ class EntityMeta(type):
         if 'Entity' in globals():
             if '__slots__' in cls_dict: throw(TypeError, 'Entity classes cannot contain __slots__ variable')
             cls_dict['__slots__'] = ()
-        return super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
+
+        if PY2 and isinstance(name, unicode):
+            try: name = str(name)
+            except: throw(TypeError, 'In Python2 entity name should not contains non-ascii symbols. Got: %r' % name)
+        result = super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
+        result._deconstructed = meta, name, bases, dict(cls_dict)
+        return result
+
+    def deconstruct(entity):
+        return entity._deconstructed
+
     @cut_traceback
     def __init__(entity, name, bases, cls_dict):
         super(EntityMeta, entity).__init__(name, bases, cls_dict)
@@ -3426,7 +3647,7 @@ class EntityMeta(type):
             throw(ERDiagramError, 'Entity %s already exists' % entity.__name__)
         assert entity.__name__ not in database.__dict__
 
-        if database.schema is not None: throw(ERDiagramError,
+        if database.schema is not None and not database.migration_in_progress: throw(ERDiagramError,
             'Cannot define entity %r: database mapping has already been generated' % entity.__name__)
 
         entity._database_ = database
@@ -3481,7 +3702,9 @@ class EntityMeta(type):
 
         indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:
-            if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
+            if attr.index or attr.is_unique:
+                is_pk = False if not isinstance(attr, PrimaryKey) else 'auto' if attr.auto else True
+                indexes.append(Index(attr, name=attr.index, is_pk=is_pk, is_unique=attr.is_unique))
         for index in indexes: index._init_(entity)
         primary_keys = {index.attrs for index in indexes if index.is_pk}
         if direct_bases:
@@ -3505,7 +3728,7 @@ class EntityMeta(type):
             entity.id = attr
             new_attrs.insert(0, attr)
             pk_attrs = (attr,)
-            index = Index(attr, is_pk=True)
+            index = Index(attr, is_pk='auto')
             indexes.insert(0, index)
             index._init_(entity)
         else: pk_attrs = primary_keys.pop()
@@ -3532,18 +3755,21 @@ class EntityMeta(type):
                     'To fix this, move attribute definition to base class'
                     % (attr, prev, entity._root_.__name__))
                 base._subclass_attrs_.append(attr)
+        entity._erase_bits_()
         entity._attrnames_cache_ = {}
 
-        try: table_name = entity.__dict__['_table_']
-        except KeyError: entity._table_ = None
-        else:
-            if not isinstance(table_name, basestring):
-                if not isinstance(table_name, (list, tuple)): throw(TypeError,
-                    '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
-                for name_part in table_name:
-                    if not isinstance(name_part, basestring):throw(TypeError,
-                        'Each part of table name must be a string. Got: %r' % name_part)
-                entity._table_ = table_name = tuple(table_name)
+        table_name = entity.__dict__.get('_table_')
+        if table_name is not None and not isinstance(table_name, basestring):
+            if not isinstance(table_name, (list, tuple)): throw(TypeError,
+                '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
+            for name_part in table_name:
+                if not isinstance(name_part, basestring):throw(TypeError,
+                    'Each part of table name must be a string. Got: %r' % name_part)
+            table_name = tuple(table_name)
+
+        entity._table_ = entity._provided_table_ = table_name
+        entity._table_object_ = None
+        entity._prev_entity_ = entity._new_entity_ = None
 
         database.entities[entity.__name__] = entity
         setattr(database, entity.__name__, entity)
@@ -3576,88 +3802,170 @@ class EntityMeta(type):
         entity._default_genexpr_ = inner_expr
 
         entity._access_rules_ = defaultdict(set)
-    def _initialize_bits_(entity):
+    def _add_attr_(entity, attr_name, attr):
+        assert isinstance(attr, Attribute)
+        if attr_name in entity._adict_ or attr_name in entity._root_._subclass_adict_:
+            throw(ERDiagramError, 'Name `%s` already in use' % attr_name)
+        if attr_name.startswith('_') and attr_name.endswith('_'):
+            throw(ERDiagramError, 'Attribute name cannot both start and end with underscore. Got: %s' % attr_name)
+        if attr.entity is not None:
+            throw(ERDiagramError, 'Duplicate use of attribute %s in entity %s' % (attr, entity.__name__))
+        attr._init_(entity, attr_name)
+        # assert not attr.reverse  # use _add_relation_ instead
+        # if attr.reverse: attr.linked()
+        setattr(entity, attr_name, attr)
+        entity._adict_[attr_name] = attr
+        entity._new_attrs_.append(attr)
+        entity._attrs_.append(attr)
+        for subentity in entity._subclasses_:
+            subentity._adict_[attr_name] = attr
+            subentity._base_attrs_.append(attr)
+            subentity._attrs_.append(attr)
+        for base in entity._all_bases_:
+            base._subclass_attrs_.append(attr)
+            base._subclass_adict_[attr_name] = attr
+        attr._set_nullable_()
+        if attr.is_unique or attr.index:
+            index = Index(attr, is_pk=False, is_unique=attr.is_unique, name=attr.index)
+            entity._indexes_.append(index)
+        else: index = None
+
+        schema = entity._database_.schema
+        if schema is None: return
+        table = schema.tables[entity._table_]
+        attr._add_columns_(table)
+        entity._init_bit_(attr)
+        if attr.columns:
+            entity._attrs_with_columns_.append(attr)
+            if index is not None: table.add_index(
+                index.get_columns(), is_pk=index.is_pk, is_unique=index.is_unique, provided_name=index.name)
+    def _remove_attr_(entity, attr_name):
+        attr = entity._adict_[attr_name]
+        assert attr.pk_offset is None
+        entity._new_attrs_.remove(attr)
+        entity._attrs_.remove(attr)
+        del entity._adict_[attr_name]
+        for subentity in entity._subclasses_:
+            del subentity._adict_[attr_name]
+            subentity._base_attrs_.remove(attr)
+            subentity._attrs_.remove(attr)
+
+        for base in entity._all_bases_:
+            base._subclass_attrs_.remove(attr)
+            del base._subclass_adict_[attr_name]
+
+        if attr.is_unique or attr.index:
+            indexes_to_remove = set(index for index in entity._indexes_ if attr in index.attrs)
+            entity._indexes_[:] = [ index for index in entity._indexes_ if index not in indexes_to_remove ]
+
+        schema = entity._database_.schema
+        if schema is None: return
+        entity._withdraw_bit_(attr)
+        table = schema.tables[entity._table_]
+        if not attr.is_collection and attr.columns:
+            for column in attr.columns:
+                table.remove_column(column)  # removes indexes and foreign keys as well
+    def _rename_attr_(entity, old_name, new_name):
+        assert new_name not in entity._root_._subclass_adict_
+        attr = entity._adict_.pop(old_name)
+        entity._adict_[new_name] = attr
+        attr.name = new_name
+        for subentity in entity._subclasses_:
+            del subentity._adict_[old_name]
+            subentity._adict_[new_name] = attr
+        for base in entity._all_bases_:
+            del base._subclass_adict_[old_name]
+            base._subclass_adict_[new_name] = attr
+        attr.columns = attr._provided_columns
+        attr._columns_checked = False
+        schema = entity._database_.schema
+        if schema is None: return
+        attr.rename_columns()  # will rename indexes and foreign keys as well
+    def _modify_attr_(entity, attr_name, new_attr):
+        if new_attr.entity is not None:
+            throw(ERDiagramError, 'Duplicate use of attribute %s in entity %s' % (new_attr, entity.__name__))
+        prev_attr = entity._adict_[attr_name]
+        new_attr._init_(entity, attr_name)
+        setattr(entity, attr_name, new_attr)
+        entity._adict_[attr_name] = new_attr
+        i = entity._new_attrs_.index(prev_attr)
+        entity._new_attrs_[i] = new_attr
+        i = entity._attrs_.index(prev_attr)
+        entity._attrs_[i] = new_attr
+        for subentity in entity._subclasses_:
+            subentity._adict_[attr_name] = new_attr
+            i = subentity._base_attrs_.index(prev_attr)
+            subentity._base_attrs_[i] = new_attr
+            i = subentity._attrs_.index(prev_attr)
+            subentity._attrs_[i] = new_attr
+        new_attr._set_nullable_()
+        for index in entity._indexes_[:]:
+            if prev_attr in index.attrs:
+                if len(index.attrs) > 1:
+                    attrs = [ new_attr if a is prev_attr else a for a in index.attrs ]
+                    index.modify_attrs(*attrs)
+                elif new_attr.is_unique or new_attr.index:
+                    index.modify_attrs(new_attr)
+                else:
+                    entity._indexes_.remove(index)
+
+        schema = entity._database_.schema
+        if schema is not None:
+            throw(NotImplementedError)
+    def _add_relation_(entity, attr_name, attr, rentity, reverse_name, reverse):
+        assert attr.reverse is reverse_name and attr.py_type is rentity
+        assert reverse.reverse is attr_name and reverse.py_type is entity
+        entity._add_attr_(attr_name, attr)
+        rentity._add_attr_(reverse_name, reverse)
+        attr.reverse = reverse
+        reverse.reverse = attr
+        for a in (attr, reverse): a.linked()
+
+        schema = entity._database_.schema
+        if schema is None: return
+        table = schema.tables[entity._table_]
+        for a in (attr, reverse):
+            if a.is_collection: a._add_m2m_table_(schema)
+        for a in (attr, reverse):
+            a._add_foreign_key_(table)
+    def _remove_relation_(entity, attr_name):
+        attr = entity._adict_[attr_name]
+        reverse = attr.reverse
+        assert reverse is not None
+        m2m_table_name = None
+        if attr.is_collection and reverse.is_collection:
+            m2m_table_name = attr.table
+        entity._remove_attr_(attr_name)
+        reverse.entity._remove_attr_(reverse.name)
+
+        schema = entity._database_.schema
+        if schema is None: return
+        m2m_table = schema.tables[m2m_table_name]
+        m2m_table.remove()
+    def _erase_bits_(entity):
+        entity._bits_ = entity._bits_except_volatile_ = entity._all_bits_ = entity._all_bits_except_volatile_ = None
+        entity._offset_counter_ = 0
+    def _init_bits_(entity):
         entity._bits_ = {}
         entity._bits_except_volatile_ = {}
-        offset_counter = itertools.count()
-        all_bits = all_bits_except_volatile = 0
-        for attr in entity._attrs_:
-            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
-            elif not attr.columns: bit = 0
-            else: bit = 1 << next(offset_counter)
-            all_bits |= bit
-            entity._bits_[attr] = bit
-            if attr.is_volatile: bit = 0
-            all_bits_except_volatile |= bit
-            entity._bits_except_volatile_[attr] = bit
-        entity._all_bits_ = all_bits
-        entity._all_bits_except_volatile_ = all_bits_except_volatile
-    def _resolve_attr_types_(entity):
-        database = entity._database_
-        for attr in entity._new_attrs_:
-            py_type = attr.py_type
-            if isinstance(py_type, basestring):
-                rentity = database.entities.get(py_type)
-                if rentity is None:
-                    throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
-                attr.py_type = py_type = rentity
-            elif isinstance(py_type, types.FunctionType):
-                rentity = py_type()
-                if not isinstance(rentity, EntityMeta): throw(TypeError,
-                    'Invalid type of attribute %s: expected entity class, got %r' % (attr, rentity))
-                attr.py_type = py_type = rentity
-            if isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity': throw(TypeError,
-                'Cannot link attribute %s to abstract Entity class. Use specific Entity subclass instead' % attr)
-    def _link_reverse_attrs_(entity):
-        database = entity._database_
-        for attr in entity._new_attrs_:
-            py_type = attr.py_type
-            if not issubclass(py_type, Entity): continue
-
-            entity2 = py_type
-            if entity2._database_ is not database:
-                throw(ERDiagramError, 'Interrelated entities must belong to same database. '
-                                   'Entities %s and %s belongs to different databases'
-                                   % (entity.__name__, entity2.__name__))
-            reverse = attr.reverse
-            if isinstance(reverse, basestring):
-                attr2 = getattr(entity2, reverse, None)
-                if attr2 is None: throw(ERDiagramError, 'Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
-            elif isinstance(reverse, Attribute):
-                attr2 = reverse
-                if attr2.entity is not entity2: throw(ERDiagramError, 'Incorrect reverse attribute %s used in %s' % (attr2, attr)) ###
-            elif reverse is not None: throw(ERDiagramError, "Value of 'reverse' option must be string. Got: %r" % type(reverse))
-            else:
-                candidates1 = []
-                candidates2 = []
-                for attr2 in entity2._new_attrs_:
-                    if attr2.py_type not in (entity, entity.__name__): continue
-                    reverse2 = attr2.reverse
-                    if reverse2 in (attr, attr.name): candidates1.append(attr2)
-                    elif not reverse2:
-                        if attr2 is attr: continue
-                        candidates2.append(attr2)
-                msg = "Ambiguous reverse attribute for %s. Use the 'reverse' parameter for pointing to right attribute"
-                if len(candidates1) > 1: throw(ERDiagramError, msg % attr)
-                elif len(candidates1) == 1: attr2 = candidates1[0]
-                elif len(candidates2) > 1: throw(ERDiagramError, msg % attr)
-                elif len(candidates2) == 1: attr2 = candidates2[0]
-                else: throw(ERDiagramError, 'Reverse attribute for %s not found' % attr)
-
-            type2 = attr2.py_type
-            if type2 != entity:
-                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
-            reverse2 = attr2.reverse
-            if reverse2 not in (None, attr, attr.name):
-                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
-
-            if attr.is_required and attr2.is_required: throw(ERDiagramError,
-                "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
-
-            attr.reverse = attr2
-            attr2.reverse = attr
-            attr.linked()
-            attr2.linked()
+        entity._all_bits_ = entity._all_bits_except_volatile_ = 0
+        for attr in entity._attrs_: entity._init_bit_(attr)
+    def _init_bit_(entity, attr):
+        if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
+        elif attr.columns:
+            entity._offset_counter_ += 1
+            bit = 1 << entity._offset_counter_
+        else:  bit = 0
+        entity._bits_[attr] = bit
+        entity._all_bits_ |= bit
+        if attr.is_volatile: bit = 0
+        entity._all_bits_except_volatile_ |= bit
+        entity._bits_except_volatile_[attr] = bit
+    def _withdraw_bit_(entity, attr):
+        inverted_bit = entity._bits_.pop(attr)
+        entity._bits_except_volatile_.pop(attr)
+        entity._all_bits_ &= inverted_bit
+        entity._all_bits_except_volatile_ &= inverted_bit
     def _check_table_options_(entity):
         if entity._root_ is not entity:
             if '_table_options_' in entity.__dict__: throw(TypeError,
@@ -3676,11 +3984,30 @@ class EntityMeta(type):
             pk_columns.extend(attr_columns)
             pk_converters.extend(attr.converters)
             pk_paths.extend(attr_col_paths)
-        entity._pk_columns_ = pk_columns
-        entity._pk_converters_ = pk_converters
+        entity._pk_columns_ = tuple(pk_columns)
+        entity._pk_converters_ = tuple(pk_converters)
         entity._pk_nones_ = (None,) * len(pk_columns)
-        entity._pk_paths_ = pk_paths
-        return pk_columns
+        entity._pk_paths_ = tuple(pk_paths)
+        return entity._pk_columns_
+    def _add_table_(entity, schema):
+        entity._get_pk_columns_()
+        table_name = entity._table_
+
+        is_subclass = entity._root_ is not entity
+        if is_subclass:
+            # if table_name is not None: throw(NotImplementedError)
+            table_name = entity._root_._table_
+            entity._table_ = table_name
+        elif table_name is None:
+            table_name = schema.provider.get_default_entity_table_name(entity)
+            entity._table_ = table_name
+        else: assert isinstance(table_name, (basestring, tuple))
+
+        table = schema.tables.get(table_name)
+        if table is None: table = schema.add_table(table_name, entity)
+        else: table.add_entity(entity)
+        entity._table_object_ = table
+        return table
     def __iter__(entity):
         return EntityIter(entity)
     @cut_traceback

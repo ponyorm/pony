@@ -1,50 +1,37 @@
-import sys
-import os
-import logging
+from pony.py23compat import PY2, ExitStack, ContextDecorator, StringIO
 
-from pony.py23compat import PY2
-from ponytest import with_cli_args, pony_fixtures, provider_validators, provider, Fixture, \
-        ValidationError
-
-from functools import wraps, partial
-import click
+import os, os.path, sys, logging, threading
 from contextlib import contextmanager, closing
-
-from pony.utils import cached_property, class_property
-
-if not PY2:
-    from contextlib import contextmanager, ContextDecorator
-else:
-    from contextlib2 import contextmanager, ContextDecorator
-
-import unittest
-
-from pony.orm import db_session, Database, rollback, delete
-
-if not PY2:
-    from io import StringIO
-else:
-    from StringIO import StringIO
-
 from multiprocessing import Process
 
-import threading
+import unittest
+from ponytest import with_cli_args, pony_fixtures, provider
+
+import click
+
+from pony.orm import db_session, Database, rollback, delete
+from pony.utils import cached_property, class_property
+
 
 class DBContext(ContextDecorator):
 
     fixture = 'db'
     enabled = False
 
-    def __init__(self, Test):
+    def __init__(self, Test=None):
+        if Test is None:
+            return
         if not isinstance(Test, type):
             # FIXME ?
             TestCls = type(Test)
             NewClass = type(TestCls.__name__, (TestCls,), {})
             NewClass.__module__ = TestCls.__module__
             NewClass.db = property(lambda t: self.db)
+            NewClass.db_params = property(lambda t: self.db_params)
             Test.__class__ = NewClass
         else:
             Test.db = class_property(lambda cls: self.db)
+            Test.db_params = property(lambda t: self.db_params)
         self.Test = Test
 
     @class_property
@@ -61,6 +48,11 @@ class DBContext(ContextDecorator):
 
     @cached_property
     def db(self):
+        args, kw = self.db_params
+        return Database(*args, **kw)
+
+    @cached_property
+    def db_params(self):
         raise NotImplementedError
 
     def __enter__(self):
@@ -131,9 +123,8 @@ class MySqlContext(DBContext):
     }
 
     @cached_property
-    def db(self):
-        CONN = dict(self.CONN, db=self.db_name)
-        return Database('mysql', **CONN)
+    def db_params(self):
+        return ['mysql'], dict(self.CONN, db=self.db_name)
 
 @provider()
 class SqlServerContext(DBContext):
@@ -152,9 +143,9 @@ class SqlServerContext(DBContext):
         return s
 
     @cached_property
-    def db(self):
+    def db_params(self):
         CONN = self.get_conn_string(self.db_name)
-        return Database('mssqlserver', CONN)
+        return ['mssqlserver', CONN], {}
 
     def init_db(self):
         import pyodbc
@@ -164,7 +155,8 @@ class SqlServerContext(DBContext):
                 self.drop_db(c)
             except pyodbc.DatabaseError as exc:
                 print('Failed to drop db: %s' % exc)
-            c.execute('''CREATE DATABASE %s DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci''' % self.db_name )
+            # c.execute('''CREATE DATABASE %s DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci''' % self.db_name )
+            c.execute('''CREATE DATABASE %s''' % self.db_name )
             c.execute('use %s' % self.db_name)
 
     def drop_db(self, cursor):
@@ -187,8 +179,8 @@ class SqliteMixin(DBContext):
         return os.path.abspath(p)
 
     @cached_property
-    def db(self):
-        return Database('sqlite', self.db_path, create_db=True)
+    def db_params(self):
+        return ['sqlite', self.db_path], dict(create_db=True)
 
 
 @provider()
@@ -254,8 +246,90 @@ class PostgresContext(DBContext):
 
 
     @cached_property
-    def db(self):
-        return Database('postgres', **self.get_conn_dict())
+    def db_params(self):
+        return ['postgres'], self.get_conn_dict()
+
+
+@provider()
+class DestroyOracleUser(ContextDecorator):
+
+    enabled = True
+    fixture = 'destroy_oracle_user'
+
+    def __init__(self, Test):
+        self.Test = Test
+
+    def __exit__(self, *exc_info):
+        pass
+
+    def __enter__(self):
+        os.environ.update(dict(
+            ORACLE_BASE='/u01/app/oracle',
+            ORACLE_HOME='/u01/app/oracle/product/12.1.0/dbhome_1',
+            ORACLE_OWNR='oracle',
+            ORACLE_SID='orcl',
+        ))
+        import cx_Oracle
+        with closing(self.connect_sys()) as conn:
+            with closing(conn.cursor()) as cursor:
+                try:
+                    self._destroy_test_user(cursor)
+                except cx_Oracle.DatabaseError as exc:
+                    print('Failed to drop user: %s' % exc)
+                self._create_test_user(cursor)
+
+    def connect_sys(self):
+        import cx_Oracle
+        return cx_Oracle.connect('sys/the@localhost/ORCL', mode=cx_Oracle.SYSDBA)
+
+    def _create_test_user(self, cursor):
+        cursor.execute(
+        """CREATE USER %(user)s
+            IDENTIFIED BY %(password)s
+            DEFAULT TABLESPACE %(tblspace)s
+            TEMPORARY TABLESPACE %(tblspace_temp)s
+            QUOTA UNLIMITED ON %(tblspace)s
+        """ % self.parameters
+        )
+        cursor.execute(
+        """GRANT CREATE SESSION,
+                    CREATE TABLE,
+                    CREATE SEQUENCE,
+                    CREATE PROCEDURE,
+                    CREATE TRIGGER
+            TO %(user)s
+        """ % self.parameters
+        )
+
+    def _destroy_test_user(self, cursor):
+
+        # cursor.execute('''
+        #     SELECT s.sid, s.serial#, s.status, p.spid
+        #     FROM v$session s, v$process p
+        #     WHERE s.username = 'PONYTEST'
+        #     AND p.addr(+) = s.paddr
+        # ''')
+
+        # rows = list(cursor.fetchall())
+        # for row in rows:
+        #     if row[-1]:
+        #         s = "ALTER SYSTEM KILL SESSION '%d, %d' IMMEDIATE" % row[:2]
+        #         cursor.execute(s)
+
+        cursor.execute('''
+            DROP USER %(user)s CASCADE
+        ''' % self.parameters)
+
+    parameters = {
+        'tblspace': 'test_tblspace',
+        'tblspace_temp': 'test_tblspace_temp',
+        'datafile': 'test_datafile.dbf',
+        'datafile_tmp': 'test_datafile_tmp.dbf',
+        'user': 'ponytest',
+        'password': 'ponytest',
+        'maxsize': '100M',
+        'maxsize_tmp': '100M',
+    }
 
 
 @provider()
@@ -276,10 +350,10 @@ class OracleContext(DBContext):
         import cx_Oracle
         with closing(self.connect_sys()) as conn:
             with closing(conn.cursor()) as cursor:
-                try:
-                    self._destroy_test_user(cursor)
-                except cx_Oracle.DatabaseError as exc:
-                    print('Failed to drop user: %s' % exc)
+                # try:
+                    # self._destroy_test_user(cursor)
+                # except cx_Oracle.DatabaseError as exc:
+                #     print('Failed to drop user: %s' % exc)
                 try:
                     self._drop_tablespace(cursor)
                 except cx_Oracle.DatabaseError as exc:
@@ -294,7 +368,7 @@ class OracleContext(DBContext):
                 TEMPFILE '%(datafile_tmp)s' SIZE 20M
                 REUSE AUTOEXTEND ON NEXT 10M MAXSIZE %(maxsize_tmp)s
                 """ % self.parameters)
-                self._create_test_user(cursor)
+                # self._create_test_user(cursor)
 
 
     def _drop_tablespace(self, cursor):
@@ -327,8 +401,8 @@ class OracleContext(DBContext):
 
 
     @cached_property
-    def db(self):
-        return Database('oracle', 'ponytest/ponytest@localhost/ORCL')
+    def db_params(self):
+        return ['oracle', 'ponytest/ponytest@localhost/ORCL'], {}
 
     def _create_test_user(self, cursor):
         cursor.execute(
@@ -350,6 +424,20 @@ class OracleContext(DBContext):
         )
 
     def _destroy_test_user(self, cursor):
+
+        # cursor.execute('''
+        #     SELECT s.sid, s.serial#, s.status, p.spid
+        #     FROM v$session s, v$process p
+        #     WHERE s.username = 'PONYTEST'
+        #     AND p.addr(+) = s.paddr
+        # ''')
+
+        # rows = list(cursor.fetchall())
+        # for row in rows:
+        #     if row[-1]:
+        #         s = "ALTER SYSTEM KILL SESSION '%d, %d' IMMEDIATE" % row[:2]
+        #         cursor.execute(s)
+
         cursor.execute('''
             DROP USER %(user)s CASCADE
         ''' % self.parameters)
@@ -445,6 +533,40 @@ class SeparateProcess(object):
             if f.KEY == 'db' and f.provider_key in ('sqlserver', 'oracle'):
                 return True
 
+
+@provider(fixture='parallel')
+class Parallel(object):
+    enabled = False
+
+    def __init__(self, Test):
+        self.Test = Test
+
+    def __call__(self, func):
+        def wrapper(Test):
+            from concurrent.futures import wait, ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=1) as exe:
+                fu = exe.submit(func, Test)
+
+                @fu.add_done_callback
+                def _(fu):
+                    exc = fu.exception()
+                    if exc:
+                        s = '{sep} {klass}.{method_name} {sep}'.format(**{
+                            'sep': '!' * 10,
+                            'klass': Test.__class__.__name__,
+                            'method_name': Test._testMethodName,
+                        })
+                        with open('test.result', 'a') as f:
+                            f.write(s)
+                            f.write('\n')
+                        raise exc
+
+                wait([fu])
+
+        return wrapper
+
+
 @provider()
 class ClearTables(ContextDecorator):
 
@@ -462,6 +584,8 @@ class ClearTables(ContextDecorator):
         for entity in db.entities.values():
             if entity._database_.schema is None:
                 break
+            if entity.__name__ == 'Migration':
+                continue
             delete(i for i in entity)
 
 
@@ -518,16 +642,59 @@ class Timeout(object):
             if f.KEY == 'db' and f.provider_key in ('sqlserver', 'oracle'):
                 return True
 
+@provider(fixture='exitstack')
+class UseExitStack(ContextDecorator):
+
+    def __init__(self, Test):
+        self.Test = Test
+        self.Test.exitstack = ExitStack()
+
+    def __enter__(self):
+        return self.Test.exitstack.__enter__()
+
+    def __exit__(self, *exc_info):
+        return self.Test.exitstack.__exit__(*exc_info)
+
+@provider(fixture='clear_sequences')
+class ClearSequences(ContextDecorator):
+
+    def __init__(self, Test):
+        self.Test = Test
+
+    def __exit__(self, *exc_info):
+        pass
+
+    def __enter__(self):
+        with ExitStack() as stack:
+            try:
+                db = self.Test.db
+            except AttributeError:
+                return
+            stack.callback(db.disconnect)
+            stack.enter_context(db_session)
+            if db.provider.dialect != 'Oracle':
+                return
+            c = db.execute('select sequence_name from user_sequences')
+            li = c.fetchall()
+            for name, in li:
+                if name == 'MIGRATION_SEQ':
+                    continue
+                db.execute('DROP SEQUENCE {}'.format(name))
+
 
 pony_fixtures['test'].extend([
+    'parallel',
+    'exitstack',
     'log',
     'clear_tables',
 ])
 
 pony_fixtures['class'].extend([
+    # 'destroy_oracle_user',
     'separate_process',
     'timeout',
     'db',
     'log_all',
     'generate_mapping',
+    'clear_sequences',
 ])

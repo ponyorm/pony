@@ -211,6 +211,8 @@ class SQLBuilder(object):
 ##            else:
 ##                del traceback
 ##                raise
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        return 'ALTER COLUMN ', builder.quote_name(column), ' DROP DEFAULT'
     def INSERT(builder, table_name, columns, values, returning=None):
         return [ 'INSERT INTO ', builder.quote_name(table_name), ' (',
                  join(', ', [builder.quote_name(column) for column in columns ]),
@@ -448,9 +450,9 @@ class SQLBuilder(object):
         elif kind == 'DISTINCT':
             if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
             if len(expr_list) == 1: return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
-            if builder.dialect == 'PostgreSQL':
+            if builder.provider.dialect == 'PostgreSQL':
                 return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
-            elif builder.dialect == 'MySQL':
+            elif builder.provider.dialect == 'MySQL':
                 return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
             # Oracle and SQLite queries translated to completely different subquery syntax
             else: throw(NotImplementedError)  # This line must not be executed

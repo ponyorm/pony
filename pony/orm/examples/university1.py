@@ -50,7 +50,7 @@ params = dict(
 )
 db.bind(**params['sqlite'])
 
-db.generate_mapping(create_tables=True)
+db.generate_mapping(create_tables=True, allow_auto_upgrade=True)
 
 @db_session
 def populate_database():
@@ -178,7 +178,22 @@ def test_queries():
                             and len(s.courses) > 3)
     print_students(students)
 
+if True: # __name__ == '__main__':
+    # populate_database()
+    # test_queries()
 
-##if __name__ == '__main__':
-##    populate_database()
-##    test_queries()
+    schema = db.schema
+    for table in schema.tables.values():
+        if table.name.obsolete_name != table.name:
+            print('%s -> %s' % (table.name.obsolete_name, table.name))
+        for column in table.column_list:
+            if column.name.obsolete_name != column.name:
+                print('    column %s -> %s' % (column.name.obsolete_name, column.name))
+        for index in table.indexes.values():
+            if index.name.obsolete_name != index.name:
+                print('    index %s -> %s' % (index.name.obsolete_name, index.name))
+        for fk in table.foreign_keys.values():
+            if fk.name.obsolete_name != fk.name:
+                print('    fk %s -> %s' % (fk.name.obsolete_name, fk.name))
+    m2m = schema.tables[Course.students.table]
+    print([(i.name, i.name.obsolete_name) for i in m2m.indexes.values()])

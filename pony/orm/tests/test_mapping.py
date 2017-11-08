@@ -9,17 +9,18 @@ from pony.orm.tests.testutils import *
 class TestColumnsMapping(unittest.TestCase):
 
     # raise exception if mapping table by default is not found
-    @raises_exception(OperationalError, 'no such table: Student')
+    @raises_exception(OperationalError, 'no such table: student')
     def test_table_check1(self):
         db = Database('sqlite', ':memory:')
         class Student(db.Entity):
             name = PrimaryKey(str)
-        sql = "drop table if exists Student;"
+        sql = "drop table if exists student;"
         with db_session:
-            db.get_connection().executescript(sql)
+            con = db.get_connection()
+            con.executescript(sql)
         db.generate_mapping()
 
-    # no exception if table was specified
+    # no exception if table exists in the database
     def test_table_check2(self):
         db = Database('sqlite', ':memory:')
         class Student(db.Entity):
@@ -31,9 +32,11 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         with db_session:
-            db.get_connection().executescript(sql)
+            con = db.get_connection()
+            db.provider.make_pony_version_table(con)
+            con.executescript(sql)
         db.generate_mapping()
-        self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'name')
+        self.assertEqual(db.schema.tables['student'].column_list[0].name, 'name')
 
     # raise exception if specified mapping table is not found
     @raises_exception(OperationalError, 'no such table: Table1')
@@ -57,12 +60,14 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         with db_session:
-            db.get_connection().executescript(sql)
+            con = db.get_connection()
+            db.provider.make_pony_version_table(con)
+            con.executescript(sql)
         db.generate_mapping()
         self.assertEqual(db.schema.tables['Table1'].column_list[0].name, 'name')
 
     # 'id' field created if primary key is not defined
-    @raises_exception(OperationalError, 'no such column: Student.id')
+    @raises_exception(OperationalError, 'no such column: student.id')
     def test_table_check5(self):
         db = Database('sqlite', ':memory:')
         class Student(db.Entity):
@@ -74,7 +79,9 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         with db_session:
-            db.get_connection().executescript(sql)
+            con = db.get_connection()
+            db.provider.make_pony_version_table(con)
+            con.executescript(sql)
         db.generate_mapping()
 
     # 'id' field created if primary key is not defined
@@ -90,11 +97,13 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         with db_session:
-            db.get_connection().executescript(sql)
+            con = db.get_connection()
+            db.provider.make_pony_version_table(con)
+            con.executescript(sql)
         db.generate_mapping()
-        self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'id')
+        self.assertEqual(db.schema.tables['student'].column_list[0].name, 'id')
 
-    @raises_exception(DBSchemaError, "Column 'name' already exists in table 'Student'")
+    @raises_exception(DBSchemaError, "Column `name` already exists in table `student`")
     def test_table_check7(self):
         db = Database('sqlite', ':memory:')
         class Student(db.Entity):
@@ -116,16 +125,8 @@ class TestColumnsMapping(unittest.TestCase):
         db = Database('sqlite', ':memory:')
         class Student(db.Entity):
             name = PrimaryKey(str, column='name1')
-        sql = """
-            drop table if exists Student;
-            create table Student(
-                name1 varchar(30)
-            );
-        """
-        with db_session:
-            db.get_connection().executescript(sql)
-        db.generate_mapping()
-        self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'name1')
+        db.generate_mapping(create_tables=True)
+        self.assertEqual(db.schema.tables['student'].column_list[0].name, 'name1')
 
     # Required-Required raises exception
     @raises_exception(ERDiagramError,
@@ -171,8 +172,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a')
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['attr1'])
-        self.assertEqual(Entity2.attr2.columns, ['a'])
+        self.assertEqual(Entity1.attr1.columns, ('attr1',))
+        self.assertEqual(Entity2.attr2.columns, ('a',))
 
     # no exception Optional-Optional
     def test_relations5(self):
@@ -205,8 +206,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a1')
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['a'])
-        self.assertEqual(Entity2.attr2.columns, ['a1'])
+        self.assertEqual(Entity1.attr1.columns, ('a',))
+        self.assertEqual(Entity2.attr2.columns, ('a1',))
 
     def test_columns1(self):
         db = Database('sqlite', ':memory:')
@@ -217,7 +218,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         db.generate_mapping(create_tables=True)
-        column_list = db.schema.tables['Entity2'].column_list
+        column_list = db.schema.tables['entity2'].column_list
         self.assertEqual(len(column_list), 2)
         self.assertEqual(column_list[0].name, 'id')
         self.assertEqual(column_list[1].name, 'attr2')
@@ -233,7 +234,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         db.generate_mapping(create_tables=True)
-        column_list = db.schema.tables['Entity2'].column_list
+        column_list = db.schema.tables['entity2'].column_list
         self.assertEqual(len(column_list), 3)
         self.assertEqual(column_list[0].name, 'id')
         self.assertEqual(column_list[1].name, 'attr2_a')
@@ -248,8 +249,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['attr1'])
-        self.assertEqual(Entity2.attr2.columns, [])
+        self.assertEqual(Entity1.attr1.columns, ('attr1',))
+        self.assertEqual(Entity2.attr2.columns, ())
 
     def test_columns4(self):
         db = Database('sqlite', ':memory:')
@@ -260,8 +261,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr1 = Optional(Entity2)
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['attr1'])
-        self.assertEqual(Entity2.attr2.columns, [])
+        self.assertEqual(Entity1.attr1.columns, ('attr1',))
+        self.assertEqual(Entity2.attr2.columns, ())
 
     @raises_exception(ERDiagramError, "Mapping is not generated for entity 'E1'")
     def test_generate_mapping1(self):

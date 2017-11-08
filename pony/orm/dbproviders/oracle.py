@@ -11,13 +11,15 @@ from uuid import UUID
 
 import cx_Oracle
 
+from pony.migrate.operations import Op, alter_table
+
 from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
-from pony.orm.dbschema import DBSchema, DBObject, Table, Column
+from pony.orm.dbschema import DBSchema, DBObject, Table, Column, Trigger, DBIndex, ForeignKey
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, Value
-from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
-from pony.utils import throw, is_ident
+from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.utils import throw, get_version_tuple
 from pony.converting import timedelta2str
 
 NoneType = type(None)
@@ -27,7 +29,8 @@ class OraTable(Table):
         result = Table.get_objects_to_create(table, created_tables)
         for column in table.column_list:
             if column.is_pk == 'auto':
-                sequence_name = column.converter.attr.kwargs.get('sequence_name')
+                if column.converter is None: sequence_name = None
+                else: sequence_name = column.converter.attr.kwargs.get('sequence_name')
                 sequence = OraSequence(table, sequence_name)
                 trigger = OraTrigger(table, column, sequence)
                 result.extend((sequence, trigger))
@@ -42,20 +45,24 @@ class OraSequence(DBObject):
         if name is not None: sequence.name = name
         elif isinstance(table_name, basestring): sequence.name = table_name + '_SEQ'
         else: sequence.name = tuple(table_name[:-1]) + (table_name[0] + '_SEQ',)
-    def exists(sequence, provider, connection, case_sensitive=True):
+    def exists(sequence, provider, cursor, case_sensitive=True):
         if case_sensitive: sql = 'SELECT sequence_name FROM all_sequences ' \
                                  'WHERE sequence_owner = :so and sequence_name = :sn'
         else: sql = 'SELECT sequence_name FROM all_sequences ' \
                     'WHERE sequence_owner = :so and upper(sequence_name) = upper(:sn)'
         owner_name, sequence_name = provider.split_table_name(sequence.name)
-        cursor = connection.cursor()
         cursor.execute(sql, dict(so=owner_name, sn=sequence_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
     def get_create_command(sequence):
         schema = sequence.table.schema
         seq_name = schema.provider.quote_name(sequence.name)
-        return schema.case('CREATE SEQUENCE %s NOCACHE') % seq_name
+        return 'CREATE SEQUENCE %s NOCACHE' % seq_name
+    def get_drop_ops(sequence):
+        schema = sequence.table.schema
+        quote_name = schema.provider.quote_name
+        sql = 'DROP SEQUENCE %s' % quote_name(sequence.name)
+        return [ Op(sql, obj=sequence, type='drop') ]
 
 trigger_template = """
 CREATE TRIGGER %s
@@ -67,16 +74,15 @@ BEGIN
   END IF;
 END;""".strip()
 
-class OraTrigger(DBObject):
-    typename = 'Trigger'
+class OraTrigger(Trigger):
     def __init__(trigger, table, column, sequence):
-        trigger.table = table
-        trigger.column = column
-        trigger.sequence = sequence
         table_name = table.name
         if not isinstance(table_name, basestring): table_name = table_name[-1]
-        trigger.name = table_name + '_BI' # Before Insert
-    def exists(trigger, provider, connection, case_sensitive=True):
+        trigger_name = table_name + '_BI' # Before Insert
+        Trigger.__init__(trigger_name, table)
+        trigger.column = column
+        trigger.sequence = sequence
+    def exists(trigger, provider, cursor, case_sensitive=True):
         if case_sensitive: sql = 'SELECT trigger_name FROM all_triggers ' \
                                  'WHERE table_name = :tbn AND table_owner = :o ' \
                                  'AND trigger_name = :trn AND owner = :o'
@@ -84,7 +90,6 @@ class OraTrigger(DBObject):
                     'WHERE table_name = :tbn AND table_owner = :o ' \
                     'AND upper(trigger_name) = upper(:trn) AND owner = :o'
         owner_name, table_name = provider.split_table_name(trigger.table.name)
-        cursor = connection.cursor()
         cursor.execute(sql, dict(tbn=table_name, trn=trigger.name, o=owner_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
@@ -95,15 +100,43 @@ class OraTrigger(DBObject):
         table_name = quote_name(trigger.table.name)
         column_name = quote_name(trigger.column.name)
         seq_name = quote_name(trigger.sequence.name)
-        return schema.case(trigger_template) % (trigger_name, table_name, column_name, seq_name, column_name)
+        return trigger_template % (trigger_name, table_name, column_name, seq_name, column_name)
+    def get_drop_ops(trigger):
+        schema = trigger.table.schema
+        quote_name = schema.provider.quote_name
+        sql = 'DROP TRIGGER %s' % quote_name(trigger.name)
+        return [ Op(sql, obj=trigger, type='drop') ]
 
 class OraColumn(Column):
     auto_template = None
 
+    def get_rename_ops(column):
+        prev_table = column.table
+        schema = prev_table.schema
+        quote_name = schema.provider.quote_name
+        prev_name = quote_name(column.name)
+        new_name = quote_name(column.new.name)
+        sql = 'RENAME COLUMN %s TO %s' % (prev_name, new_name)
+        return [ Op(sql, obj=column, type='rename', prefix=alter_table(prev_table)) ]
+
+
+class OraForeignKey(ForeignKey):
+    def get_drop_ops(foreign_key):
+        schema = foreign_key.table.schema
+        quote_name = schema.provider.quote_name
+        sql = 'DROP CONSTRAINT %s' % quote_name(foreign_key.name)
+        return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
+
+class OraDBIndex(DBIndex):
+    pass
+
 class OraSchema(DBSchema):
-    dialect = 'Oracle'
     table_class = OraTable
     column_class = OraColumn
+    fk_class = OraForeignKey
+    index_class = OraDBIndex
+    ALTER_COLUMN = 'MODIFY'
+    ADD_COLUMN = 'ADD'
 
 class OraNoneMonad(sqltranslation.NoneMonad):
     def __init__(monad, translator, value=None):
@@ -117,7 +150,6 @@ class OraConstMonad(sqltranslation.ConstMonad):
         return sqltranslation.ConstMonad.new(translator, value)
 
 class OraTranslator(sqltranslation.SQLTranslator):
-    dialect = 'Oracle'
     rowid_support = True
     json_path_wildcard_syntax = True
     json_values_are_comparable = False
@@ -129,8 +161,19 @@ class OraTranslator(sqltranslation.SQLTranslator):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
 
+class OraValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, datetime): return 'timestamp ' + Value.__unicode__(self)
+        if isinstance(value, date): return 'date ' + Value.__unicode__(self)
+        return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
+
 class OraBuilder(SQLBuilder):
-    dialect = 'Oracle'
+    value_class = OraValue
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        return 'MODIFY ', builder.quote_name(column), ' DEFAULT NULL'
     def INSERT(builder, table_name, columns, values, returning=None):
         result = SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
@@ -393,6 +436,11 @@ class OraProvider(DBAPIProvider):
 
     name_before_table = 'owner'
 
+    pony_version_table_create_sql = 'CREATE TABLE pony_version (id INT PRIMARY KEY, pony_version VARCHAR2(20) NOT NULL)'
+
+    table_has_data_sql_template = "SELECT 1 FROM %(table_name)s WHERE ROWNUM = 1"
+    drop_table_sql_template = "DROP TABLE %(table_name)s CASCADE CONSTRAINTS"
+
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, OraBoolConverter),
@@ -426,8 +474,8 @@ class OraProvider(DBAPIProvider):
         return isinstance(exc, cx_Oracle.OperationalError) \
                and exc.args[0].code in reconnect_error_codes
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len].upper()
+    def normalize_name_case(provider, name):
+        return name.upper()
 
     def normalize_vars(provider, vars, vartypes):
         for name, value in iteritems(vars):
@@ -448,8 +496,7 @@ class OraProvider(DBAPIProvider):
         if db_session is not None and (db_session.serializable or db_session.ddl):
             cache.in_transaction = True
 
-    @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None, returning_id=False):
+    def _execute(provider, cursor, sql, arguments=None, returning_id=False):
         if type(arguments) is list:
             assert arguments and not returning_id
             set_input_sizes(cursor, arguments[0])
@@ -493,28 +540,26 @@ class OraProvider(DBAPIProvider):
         kwargs.setdefault('increment', 1)
         return OraPool(**kwargs)
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
-        cursor = connection.cursor()
         if case_sensitive: sql = 'SELECT table_name FROM all_tables WHERE owner = :o AND table_name = :tn'
         else: sql = 'SELECT table_name FROM all_tables WHERE owner = :o AND upper(table_name) = upper(:tn)'
         cursor.execute(sql, dict(o=owner_name, tn=table_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
         if not isinstance(index_name, basestring): throw(NotImplementedError)
         if case_sensitive: sql = 'SELECT index_name FROM all_indexes WHERE owner = :o ' \
                                  'AND index_name = :i AND table_owner = :o AND table_name = :t'
         else: sql = 'SELECT index_name FROM all_indexes WHERE owner = :o ' \
                     'AND upper(index_name) = upper(:i) AND table_owner = :o AND table_name = :t'
-        cursor = connection.cursor()
         cursor.execute(sql, dict(o=owner_name, i=index_name, t=table_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(provider, cursor, table_name, fk_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
         if not isinstance(fk_name, basestring): throw(NotImplementedError)
         if case_sensitive:
@@ -522,22 +567,9 @@ class OraProvider(DBAPIProvider):
                   'AND table_name = :tn AND constraint_name = :cn AND owner = :o'
         else: sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'R' " \
                     'AND table_name = :tn AND upper(constraint_name) = upper(:cn) AND owner = :o'
-        cursor = connection.cursor()
         cursor.execute(sql, dict(tn=table_name, cn=fk_name, o=owner_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
-
-    def table_has_data(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s WHERE ROWNUM = 1' % table_name)
-        return cursor.fetchone() is not None
-
-    def drop_table(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        sql = 'DROP TABLE %s CASCADE CONSTRAINTS' % table_name
-        cursor.execute(sql)
 
 provider_cls = OraProvider
 

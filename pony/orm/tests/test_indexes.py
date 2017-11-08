@@ -16,17 +16,15 @@ class TestIndexes(unittest.TestCase):
 
         i1, i2 = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
-        self.assertEqual(i1.is_pk, True)
+        self.assertEqual(i1.is_pk, 'auto')
         self.assertEqual(i1.is_unique, True)
         self.assertEqual(i2.attrs, (Person.name, Person.age))
         self.assertEqual(i2.is_pk, False)
         self.assertEqual(i2.is_unique, True)
 
-        table = db.schema.tables['Person']
-        name_column = table.column_dict['name']
-        age_column = table.column_dict['age']
+        table = db.schema.tables['person']
         self.assertEqual(len(table.indexes), 2)
-        db_index = table.indexes[name_column, age_column]
+        db_index = table.indexes['name', 'age']
         self.assertEqual(db_index.is_pk, False)
         self.assertEqual(db_index.is_unique, True)
 
@@ -40,22 +38,20 @@ class TestIndexes(unittest.TestCase):
 
         i1, i2 = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
-        self.assertEqual(i1.is_pk, True)
+        self.assertEqual(i1.is_pk, 'auto')
         self.assertEqual(i1.is_unique, True)
         self.assertEqual(i2.attrs, (Person.name, Person.age))
         self.assertEqual(i2.is_pk, False)
         self.assertEqual(i2.is_unique, False)
 
-        table = db.schema.tables['Person']
-        name_column = table.column_dict['name']
-        age_column = table.column_dict['age']
+        table = db.schema.tables['person']
         self.assertEqual(len(table.indexes), 2)
-        db_index = table.indexes[name_column, age_column]
+        db_index = table.indexes['name', 'age']
         self.assertEqual(db_index.is_pk, False)
         self.assertEqual(db_index.is_unique, False)
 
         create_script = db.schema.generate_create_script()
-        index_sql = 'CREATE INDEX "idx_person__name_age" ON "Person" ("name", "age")'
+        index_sql = 'CREATE INDEX "idx_person__name_age" ON "person" ("name", "age")'
         self.assertTrue(index_sql in create_script)
 
     def test_3(self):

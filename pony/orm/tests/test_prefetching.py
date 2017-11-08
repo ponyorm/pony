@@ -107,7 +107,7 @@ class TestPrefetching(unittest.TestCase):
             s1 = Student.select().prefetch(Student.biography).first()
         self.assertEqual(s1.biography, 'some text')
         self.assertEqual(db.last_sql, '''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."biography"
-FROM "Student" "s"
+FROM "student" "s"
 ORDER BY 1
 LIMIT 1''')
 

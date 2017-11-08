@@ -43,10 +43,10 @@ class TestJoin(unittest.TestCase):
     def test_join_1(self):
         result = select(g.id for g in self.db.Genre for a in g.artists if a.name.startswith('S'))[:]
         self.assertEqual(self.db.last_sql, """SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
     ON "g"."id" = "t-1"."genre"
-  INNER JOIN "Artist" "a"
+  INNER JOIN "artist" "a"
     ON "t-1"."artist" = "a"."id"
 WHERE "a"."name" LIKE 'S%'""")
 
@@ -55,9 +55,9 @@ WHERE "a"."name" LIKE 'S%'""")
         result = select(g.id for g in self.db.Genre for a in self.db.Artist
                         if JOIN(a in g.artists) and a.name.startswith('S'))[:]
         self.assertEqual(self.db.last_sql, """SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
-    ON "g"."id" = "t-1"."genre", "Artist" "a"
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
+    ON "g"."id" = "t-1"."genre", "artist" "a"
 WHERE "t-1"."artist" = "a"."id"
   AND "a"."name" LIKE 'S%'""")
 
@@ -67,9 +67,9 @@ WHERE "t-1"."artist" = "a"."id"
         result = select(g.id for g in self.db.Genre for x in self.db.Artist for a in self.db.Artist
                         if JOIN(a in g.artists) and a.name.startswith('S') and g.id == x.id)[:]
         self.assertEqual(self.db.last_sql, '''SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
-    ON "g"."id" = "t-1"."genre", "Artist" "x", "Artist" "a"
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
+    ON "g"."id" = "t-1"."genre", "artist" "x", "artist" "a"
 WHERE "t-1"."artist" = "a"."id"
   AND "a"."name" LIKE 'S%'
   AND "g"."id" = "x"."id"''')
@@ -79,9 +79,9 @@ WHERE "t-1"."artist" = "a"."id"
         result = select(g.id for g in self.db.Genre for a in self.db.Artist for x in self.db.Artist
                         if JOIN(a in g.artists) and a.name.startswith('S') and g.id == x.id)[:]
         self.assertEqual(self.db.last_sql, '''SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
-    ON "g"."id" = "t-1"."genre", "Artist" "a", "Artist" "x"
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
+    ON "g"."id" = "t-1"."genre", "artist" "a", "artist" "x"
 WHERE "t-1"."artist" = "a"."id"
   AND "a"."name" LIKE 'S%'
   AND "g"."id" = "x"."id"''')

@@ -31,28 +31,89 @@ from pony.orm.sqlbuilding import Value, SQLBuilder
 from pony.converting import timedelta2str
 from pony.utils import is_ident
 
+from pony.migrate.operations import Op, alter_table
+
 NoneType = type(None)
 
 class PGColumn(dbschema.Column):
-    auto_template = 'SERIAL PRIMARY KEY'
+    auto_template = 'SERIAL %(pk_constraint_template)s PRIMARY KEY'
+
+    def get_alter_ops(column):
+        table = column.table
+        provider = table.schema.provider
+        quote_name = provider.quote_name
+        prefix = '%s %s' % (table.schema.ALTER_COLUMN, quote_name(column.name))
+        ops = []
+        if column.sql_type != column.prev.sql_type:
+            sql = '%s TYPE %s' % (prefix, column.sql_type)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+
+        if column.is_not_null and not column.prev.is_not_null:
+            sql = '{} SET NOT NULL'.format(prefix)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+        elif not column.is_not_null and column.prev.is_not_null:
+            sql = '{} DROP NOT NULL'.format(prefix)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+
+        if column.sql_default is None and column.prev.sql_default is not None:
+            sql = '{} DROP DEFAULT'.format(prefix)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+        elif column.sql_default is not None and column.prev.sql_default != column.sql_default:
+            value_class = provider.sqlbuilder_cls.value_class
+            value = value_class(provider.paramstyle, column.sql_default)
+            sql = '{} SET DEFAULT {}'.format(prefix, value)
+            ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
+
+        return ops
+
+    def get_rename_ops(column):
+        prev_table = column.table
+        schema = prev_table.schema
+        quote_name = schema.provider.quote_name
+        prev_name = quote_name(column.name)
+        new_name = quote_name(column.new.name)
+        sql = 'RENAME %s TO %s' % (prev_name, new_name)
+        return [ Op(sql, obj=column, type='rename', prefix=alter_table(prev_table)) ]
+
+
+class PGTable(dbschema.Table):
+    pass
+
+class PGDBIndex(dbschema.DBIndex):
+
+    def __init__(index, name, *args, **kw):
+        super(PGDBIndex, index).__init__(name, *args, **kw)
+        if index.is_pk and not index.name:
+            index.name = '{}_pkey'.format(index.table.name)
+
+class PGForeignKey(dbschema.ForeignKey):
+    def get_drop_ops(foreign_key):
+        schema = foreign_key.table.schema
+        quote_name = schema.provider.quote_name
+        sql = 'DROP CONSTRAINT %s' % quote_name(foreign_key.name)
+        return [ Op(sql, obj=foreign_key, type='drop', prefix=alter_table(foreign_key.table)) ]
+
 
 class PGSchema(dbschema.DBSchema):
-    dialect = 'PostgreSQL'
     column_class = PGColumn
+    table_class = PGTable
+    index_class = PGDBIndex
+    fk_class = PGForeignKey
 
 class PGTranslator(SQLTranslator):
-    dialect = 'PostgreSQL'
+    pass
 
 class PGValue(Value):
     __slots__ = []
     def __unicode__(self):
         value = self.value
         if isinstance(value, bool): return value and 'true' or 'false'
+        if isinstance(value, datetime): return 'timestamp ' + Value.__unicode__(self)
+        if isinstance(value, date): return 'date ' + Value.__unicode__(self)
         return Value.__unicode__(self)
     if not PY2: __str__ = __unicode__
 
 class PGSQLBuilder(SQLBuilder):
-    dialect = 'PostgreSQL'
     value_class = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         if not values: result = [ 'INSERT INTO ', builder.quote_name(table_name) ,' DEFAULT VALUES' ]
@@ -176,8 +237,7 @@ class PGProvider(DBAPIProvider):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len].lower()
+    drop_table_sql_template = "DROP TABLE %(table_name)s CASCADE"
 
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
@@ -209,8 +269,7 @@ class PGProvider(DBAPIProvider):
         if db_session is not None and (db_session.serializable or db_session.ddl):
             cache.in_transaction = True
 
-    @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None, returning_id=False):
+    def _execute(provider, cursor, sql, arguments=None, returning_id=False):
         if PY2 and isinstance(sql, unicode): sql = sql.encode('utf8')
         if type(arguments) is list:
             assert arguments and not returning_id
@@ -220,9 +279,8 @@ class PGProvider(DBAPIProvider):
             else: cursor.execute(sql, arguments)
             if returning_id: return cursor.fetchone()[0]
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
-        cursor = connection.cursor()
         if case_sensitive: sql = 'SELECT tablename FROM pg_catalog.pg_tables ' \
                                  'WHERE schemaname = %s AND tablename = %s'
         else: sql = 'SELECT tablename FROM pg_catalog.pg_tables ' \
@@ -231,9 +289,8 @@ class PGProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
-        cursor = connection.cursor()
         if case_sensitive: sql = 'SELECT indexname FROM pg_catalog.pg_indexes ' \
                                 'WHERE schemaname = %s AND tablename = %s AND indexname = %s'
         else: sql = 'SELECT indexname FROM pg_catalog.pg_indexes ' \
@@ -242,7 +299,7 @@ class PGProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(provider, cursor, table_name, fk_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
         if case_sensitive: sql = 'SELECT con.conname FROM pg_class cls ' \
                                  'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
@@ -254,22 +311,9 @@ class PGProvider(DBAPIProvider):
                     'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
                     'WHERE ns.nspname = %s AND cls.relname = %s ' \
                     "AND con.contype = 'f' AND lower(con.conname) = lower(%s)"
-        cursor = connection.cursor()
         cursor.execute(sql, [ schema_name, table_name, fk_name ])
         row = cursor.fetchone()
         return row[0] if row is not None else None
-
-    def table_has_data(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
-        return cursor.fetchone() is not None
-
-    def drop_table(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        sql = 'DROP TABLE %s CASCADE' % table_name
-        cursor.execute(sql)
 
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),

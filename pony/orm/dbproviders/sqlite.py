@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
+from pony.py23compat import imap, basestring, buffer, int_types, unicode
 
 import os.path, sys, re, json
 import sqlite3 as sqlite
@@ -12,6 +12,7 @@ from uuid import UUID
 from binascii import hexlify
 from functools import wraps
 
+from pony import orm
 from pony.orm import core, dbschema, sqltranslation, dbapiprovider
 from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json
@@ -19,18 +20,82 @@ from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
 
+from pony.migrate.operations import Op, OperationBatch
+
+
 class SqliteExtensionUnavailable(Exception):
     pass
 
 NoneType = type(None)
 
 class SQLiteForeignKey(dbschema.ForeignKey):
-    def get_create_command(foreign_key):
+    def get_create_command(fk):
         assert False  # pragma: no cover
 
+class SQLiteTable(dbschema.Table):
+    def get_rename_ops(table):
+        ops = []
+        ops.append(Op('PRAGMA foreign_keys = true', obj=None, type='pragma_foreign_keys'))
+        ops.extend(dbschema.Table.get_rename_ops(table))
+        ops.append(Op('PRAGMA foreign_keys = false', obj=None, type='pragma_foreign_keys'))
+        return [ OperationBatch(ops, type='rename') ]
+
+    def get_alter_ops(table):
+        batch = OperationBatch(type='rename')
+        index_ops = []
+
+        original_table_name = table.name
+        tmp_name = table.name + '__new'
+
+        table.name = tmp_name
+        batch.extend(table.get_create_ops())
+        for index in table.prev.indexes.values():
+            if index.is_pk or index.is_unique and len(index.col_names) > 1:
+                continue
+            sql = index.get_create_command()
+            index_ops.append(Op(sql, obj=index, type='create'))
+        table.name = original_table_name
+
+        quote_name = table.schema.provider.quote_name
+
+        new_col_names = []
+        prev_values = []
+        for c in table.column_list:
+            new_col_names.append(quote_name(c.name))
+            if c.prev is not None:
+                prev_values.append(quote_name(c.prev.name))
+            else:
+                prev_values.append('NULL')
+
+        insert_sql = 'INSERT INTO {} ({}) SELECT {} FROM {}'.format(
+            quote_name(tmp_name), ', '.join(new_col_names), ', '.join(prev_values), quote_name(table.prev.name))
+        batch.append(Op(insert_sql, obj=table, type='insert'))
+
+        drop_sql = 'DROP TABLE {}'.format(quote_name(table.prev.name))
+        batch.append(Op(drop_sql, obj=table, type='drop'))
+
+        rename_sql = 'ALTER TABLE {} RENAME TO {}'.format(tmp_name, quote_name(table.prev.name))
+        batch.append(Op(rename_sql, obj=table, type='rename'))
+
+        batch.extend(index_ops)
+        return [ batch ]
+
+class SQLiteIndex(dbschema.DBIndex):
+    def can_be_renamed(index):
+        return False
+
+class SQLiteColumn(dbschema.Column):
+    def get_rename_ops(column):
+        throw(NotImplementedError)
+
+    def db_rename(column, cursor, table_name):
+        throw(NotImplementedError)
+
 class SQLiteSchema(dbschema.DBSchema):
-    dialect = 'SQLite'
     named_foreign_keys = False
+    table_class = SQLiteTable
+    column_class = SQLiteColumn
+    index_class = SQLiteIndex
     fk_class = SQLiteForeignKey
 
 def make_overriden_string_func(sqlop):
@@ -44,7 +109,6 @@ def make_overriden_string_func(sqlop):
 
 
 class SQLiteTranslator(sqltranslation.SQLTranslator):
-    dialect = 'SQLite'
     sqlite_version = sqlite.sqlite_version_info
     row_value_syntax = False
     rowid_support = True
@@ -53,10 +117,11 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
     StringMixin_LOWER = make_overriden_string_func('PY_LOWER')
 
 class SQLiteBuilder(SQLBuilder):
-    dialect = 'SQLite'
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)
+    def ALTER_COLUMN_DEFAULT(builder, column):
+        assert False
     def SELECT_FOR_UPDATE(builder, nowait, *sections):
         assert not builder.indent and not nowait
         return builder.SELECT(*sections)
@@ -273,7 +338,6 @@ class SQLiteProvider(DBAPIProvider):
 
     @wrap_dbapi_exceptions
     def inspect_connection(provider, conn):
-        DBAPIProvider.inspect_connection(provider, conn)
         provider.json1_available = provider.check_json1(conn)
 
     def restore_exception(provider):
@@ -292,13 +356,13 @@ class SQLiteProvider(DBAPIProvider):
             db_session = cache.db_session
             if db_session is not None and db_session.ddl:
                 cursor.execute('PRAGMA foreign_keys')
-                fk = cursor.fetchone()
-                if fk is not None: fk = fk[0]
-                if fk:
+                row = cursor.fetchone()
+                val = row and row[0]
+                if val:
                     sql = 'PRAGMA foreign_keys = false'
                     if core.local.debug: log_orm(sql)
                     cursor.execute(sql)
-                cache.saved_fk_state = bool(fk)
+                cache.saved_fk_state = bool(val)
                 assert cache.immediate
 
             if cache.immediate:
@@ -371,20 +435,20 @@ class SQLiteProvider(DBAPIProvider):
             filename = absolutize_path(filename, frame_depth=7)
         return SQLitePool(filename, create_db, **kwargs)
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
-        return provider._exists(connection, table_name, None, case_sensitive)
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
+        return provider._exists(cursor, table_name, None, case_sensitive=False)
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
-        return provider._exists(connection, table_name, index_name, case_sensitive)
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
+        return provider._exists(cursor, table_name, index_name, case_sensitive=False)
 
-    def _exists(provider, connection, table_name, index_name=None, case_sensitive=True):
+    def _exists(provider, cursor, table_name, index_name=None, case_sensitive=False):
+        # Note on case-sensitivity: SQLite treats "Table1" and "table1" as the same name, even with quotes
         db_name, table_name = provider.split_table_name(table_name)
 
         if db_name is None: catalog_name = 'sqlite_master'
         else: catalog_name = (db_name, 'sqlite_master')
         catalog_name = provider.quote_name(catalog_name)
 
-        cursor = connection.cursor()
         if index_name is not None:
             sql = "SELECT name FROM %s WHERE type='index' AND name=?" % catalog_name
             if not case_sensitive: sql += ' COLLATE NOCASE'
@@ -396,11 +460,10 @@ class SQLiteProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name):
+    def fk_exists(provider, cursor, table_name, fk_name):
         assert False  # pragma: no cover
 
-    def check_json1(provider, connection):
-        cursor = connection.cursor()
+    def check_json1(provider, cursor):
         sql = '''
             select json('{"this": "is", "a": ["test"]}')'''
         try:

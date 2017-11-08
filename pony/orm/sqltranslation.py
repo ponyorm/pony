@@ -260,7 +260,9 @@ class SQLTranslator(ASTTranslator):
 
             database = entity._database_
             assert database.schema is not None
-            if translator.database is None: translator.database = database
+            if translator.database is None:
+                translator.database = database
+                translator.dialect = database.provider.dialect
             elif translator.database is not database: throw(TranslationError,
                 'All entities in a query must belong to the same database')
 
