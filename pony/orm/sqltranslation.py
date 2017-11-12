@@ -662,6 +662,8 @@ class SQLTranslator(ASTTranslator):
         return translator.AndMonad(monads)
     def postConst(translator, node):
         value = node.value
+        if type(value) is frozenset:
+            value = tuple(sorted(value))
         if type(value) is not tuple:
             return translator.ConstMonad.new(translator, value)
         else:
