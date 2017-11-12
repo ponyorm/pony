@@ -279,6 +279,11 @@ class TestJson(TestCase):
             self.assertDictEqual(p.info['os'], {'type': 'iOS', 'version': '9'})
 
     @db_session
+    def test_set_same_value(self):
+        p = get(p for p in self.Product)
+        p.info = p.info
+
+    @db_session
     def test_len(self):
         with raises_if(self, self.db.provider.dialect == 'Oracle',
                        TranslationError, 'Oracle does not provide `length` function for JSON arrays'):

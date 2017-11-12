@@ -768,7 +768,7 @@ class JsonConverter(Converter):
     def validate(converter, val, obj=None):
         if obj is None or converter.attr is None:
             return val
-        if isinstance(val, TrackedValue) and val.obj is obj and val.attr is converter.attr:
+        if isinstance(val, TrackedValue) and val.obj_ref() is obj and val.attr is converter.attr:
             return val
         return TrackedValue.make(obj, converter.attr, val)
     def val2dbval(converter, val, obj=None):
