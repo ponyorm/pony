@@ -13,7 +13,7 @@ from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 from bisect import bisect
 from collections import defaultdict
-from functools import update_wrapper
+from functools import update_wrapper, wraps
 from xml.etree import cElementTree
 
 import pony
@@ -553,3 +553,25 @@ def unpickle_ast(pickled):
 
 def copy_ast(tree):
     return unpickle_ast(pickle_ast(tree))
+
+def _hashable_wrap(func):
+    @wraps(func, assigned=('__name__', '__doc__'))
+    def new_func(self, *args, **kwargs):
+        if getattr(self, '_hash', None) is not None:
+            assert False, 'Cannot mutate HashableDict instance after the hash value is calculated'
+        return func(self, *args, **kwargs)
+    return new_func
+
+class HashableDict(dict):
+    def __hash__(self):
+        result = getattr(self, '_hash', None)
+        if result is None:
+            result = self._hash = hash(tuple(sorted(self.items())))
+        return result
+    __setitem__ = _hashable_wrap(dict.__setitem__)
+    __delitem__ = _hashable_wrap(dict.__delitem__)
+    clear = _hashable_wrap(dict.clear)
+    pop = _hashable_wrap(dict.pop)
+    popitem = _hashable_wrap(dict.popitem)
+    setdefault = _hashable_wrap(dict.setdefault)
+    update = _hashable_wrap(dict.update)
