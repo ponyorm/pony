@@ -9,7 +9,7 @@ Here is an example query in Pony:
 
 Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
 
-By providing a Pythonic API, Pony facilitates fast app development. Pony is an easy-to-learn and easy-to-use library. It makes your work more productive and helps save resources. Pony achieves this ease of use through the following:
+By providing a Pythonic API, Pony facilitates fast app development. Pony is an easy-to-learn and easy-to-use library. It makes your work more productive and helps to save resources. Pony achieves this ease of use through the following:
 
 * Compact entity definitions
 * The concise query language
