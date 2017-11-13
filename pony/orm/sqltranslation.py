@@ -167,7 +167,7 @@ class SQLTranslator(ASTTranslator):
         translator.lambda_argnames = None
         translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
-        translator.vartypes = vartypes
+        translator.vartypes = vartypes.copy()
         translator.parent = parent_translator
         translator.left_join = left_join
         translator.optimize = optimize

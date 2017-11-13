@@ -345,7 +345,6 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
             node._attrname_value = attrname_value
         getattr_cache[code_key] = getattr_extractors
 
-        varnames = list(sorted(extractors))
         extractors_key = (code_key, getattr_attrnames)
-        result = extractors_cache[extractors_key] = extractors, varnames, tree, extractors_key
+        result = extractors_cache[extractors_key] = extractors, tree, extractors_key
     return result

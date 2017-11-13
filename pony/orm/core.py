@@ -28,7 +28,7 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
      get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce
+     between, concat, coalesce, HashableDict
 
 __all__ = [
     'pony',
@@ -5245,7 +5245,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
         for name, cell in cells.items():
             locals[name] = cell.cell_contents
     vars = {}
-    vartypes = {}
+    vartypes = HashableDict()
     for src, code in iteritems(extractors):
         key = filter_num, src
         if src == '.0': value = locals['.0']
@@ -5276,7 +5276,7 @@ def unpickle_query(query_result):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, varnames, tree, pretranslator_key = create_extractors(
+        extractors, tree, pretranslator_key = create_extractors(
             code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = 0
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
@@ -5292,8 +5292,9 @@ class Query(object):
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
+
         query._vars = vars
-        query._key = pretranslator_key, tuple(vartypes[filter_num, name] for name in varnames), left_join
+        query._key = pretranslator_key, vartypes, left_join
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -5604,7 +5605,7 @@ class Query(object):
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
-        extractors, varnames, func_ast, pretranslator_key = create_extractors(
+        extractors, func_ast, pretranslator_key = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
@@ -5612,10 +5613,9 @@ class Query(object):
             query._database.provider.normalize_vars(vars, vartypes)
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
-            sorted_vartypes = tuple(vartypes[filter_num, name] for name in varnames)
-        else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
+        else: new_query_vars, vartypes = query._vars, HashableDict()
 
-        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', pretranslator_key, sorted_vartypes),)
+        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', pretranslator_key, vartypes),)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
