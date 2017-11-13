@@ -1,7 +1,7 @@
 #coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import PY2, imap, basestring, unicode, pickle
+from pony.py23compat import PY2, imap, basestring, unicode, pickle, iteritems
 
 import io, re, os, os.path, sys, datetime, inspect, types, linecache, warnings, json
 
@@ -15,6 +15,7 @@ from bisect import bisect
 from collections import defaultdict
 from functools import update_wrapper, wraps
 from xml.etree import cElementTree
+from copy import deepcopy
 
 import pony
 from pony import options
@@ -568,6 +569,11 @@ class HashableDict(dict):
         if result is None:
             result = self._hash = hash(tuple(sorted(self.items())))
         return result
+    def __deepcopy__(self, memo):
+        if getattr(self, '_hash', None) is not None:
+            return self
+        return HashableDict({deepcopy(key, memo): deepcopy(value, memo)
+                            for key, value in iteritems(self)})
     __setitem__ = _hashable_wrap(dict.__setitem__)
     __delitem__ = _hashable_wrap(dict.__delitem__)
     clear = _hashable_wrap(dict.clear)
