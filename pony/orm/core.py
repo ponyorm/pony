@@ -2108,8 +2108,9 @@ class Attribute(object):
         if vals is None: throw_db_session_is_over('read value of', obj, attr)
         val = vals[attr] if attr in vals else attr.load(obj)
         if val is not None and attr.reverse and val._subclasses_ and val._status_ not in ('deleted', 'cancelled'):
-            seeds = obj._session_cache_.seeds[val._pk_attrs_]
-            if val in seeds: val._load_()
+            cache = obj._session_cache_
+            if cache is not None and val in cache.seeds[val._pk_attrs_]:
+                val._load_()
         return val
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
