@@ -644,3 +644,13 @@ class TestJson(TestCase):
         with db_session:
             val = select(p.info['id'] for p in Product if not p.info['val'])
             self.assertEqual(tuple(sorted(val)), (2, 3, 5, 7, 9, 11))
+
+    @db_session
+    def test_optimistic_check(self):
+        p1 = self.Product.select().first()
+        p1.info['foo'] = 'bar'
+        flush()
+        p1.name = 'name2'
+        flush()
+        p1.name = 'name3'
+        flush()

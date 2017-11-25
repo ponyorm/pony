@@ -4810,7 +4810,8 @@ class Entity(with_metaclass(EntityMeta)):
             elif after_create and val is None:
                 obj._rbits_ &= ~bits[attr]
             else:
-                dbvals[attr] = new_dbvals.get(attr, val)
+                if attr in new_dbvals:
+                    dbvals[attr] = new_dbvals[attr]
                 continue
             # Clear value of volatile attribute or null values after create, because the value may be changed in the DB
             del vals[attr]
@@ -4832,6 +4833,7 @@ class Entity(with_metaclass(EntityMeta)):
                     new_dbvals[attr] = dbval
                     values.append(dbval)
                 else:
+                    new_dbvals[attr] = val
                     values.extend(attr.get_raw_values(val))
         attrs = tuple(attrs)
 
@@ -4896,6 +4898,7 @@ class Entity(with_metaclass(EntityMeta)):
                 new_dbvals[attr] = dbval
                 values.append(dbval)
             else:
+                new_dbvals[attr] = val
                 values.extend(attr.get_raw_values(val))
         if update_columns:
             for attr in obj._pk_attrs_:
