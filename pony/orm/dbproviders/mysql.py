@@ -329,4 +329,7 @@ provider_cls = MySQLProvider
 def str2datetime(s):
     if 19 < len(s) < 26: s += '000000'[:26-len(s)]
     s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
-    return datetime(*imap(int, s.split()))
+    try:
+        return datetime(*imap(int, s.split()))
+    except ValueError:
+        return None  # for incorrect values like 0000-00-00 00:00:00
