@@ -4776,10 +4776,7 @@ class Entity(with_metaclass(EntityMeta)):
             optimistic_converters.extend(attr.converters)
             values = attr.get_raw_values(dbval)
             optimistic_values.extend(values)
-            if dbval is None:
-                optimistic_operations.append('IS_NULL')
-            else:
-                optimistic_operations.extend(converter.EQ for converter in converters)
+            optimistic_operations.extend('IS_NULL' if dbval is None else converter.EQ for converter in converters)
         return optimistic_operations, optimistic_columns, optimistic_converters, optimistic_values
     def _save_principal_objects_(obj, dependent_objects):
         if dependent_objects is None: dependent_objects = []

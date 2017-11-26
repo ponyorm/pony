@@ -781,6 +781,7 @@ class JsonConverter(Converter):
             return val
         return TrackedValue.make(obj, converter.attr, val)
     def dbvals_equal(converter, x, y):
+        if x == y: return True  # optimization
         if isinstance(x, basestring): x = json.loads(x)
         if isinstance(y, basestring): y = json.loads(y)
         return x == y
