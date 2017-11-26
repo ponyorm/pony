@@ -5276,7 +5276,7 @@ def unpickle_query(query_result):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, tree, pretranslator_key = create_extractors(
+        extractors, tree, extractors_key = create_extractors(
             code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = 0
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
@@ -5294,7 +5294,7 @@ class Query(object):
         database.provider.normalize_vars(vars, vartypes)
 
         query._vars = vars
-        query._key = pretranslator_key, vartypes, left_join
+        query._key = extractors_key, vartypes, left_join
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -5605,7 +5605,7 @@ class Query(object):
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
-        extractors, func_ast, pretranslator_key = create_extractors(
+        extractors, func_ast, extractors_key = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
@@ -5615,7 +5615,7 @@ class Query(object):
             new_query_vars.update(vars)
         else: new_query_vars, vartypes = query._vars, HashableDict()
 
-        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', pretranslator_key, vartypes),)
+        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
