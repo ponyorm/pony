@@ -90,19 +90,47 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
+    def test_allowed_exceptions_1(self):
+        # allowed_exceptions may be callable, should commit if nonzero
+        @db_session(allowed_exceptions=lambda e: isinstance(e, ZeroDivisionError))
+        def test():
+            self.X(a=3, b=3)
+            1/0
+        try:
+            test()
+        except ZeroDivisionError:
+            with db_session:
+                self.assertEqual(count(x for x in self.X), 3)
+        else:
+            self.fail()
+
+    def test_allowed_exceptions_2(self):
+        # allowed_exceptions may be callable, should rollback if not nonzero
+        @db_session(allowed_exceptions=lambda e: isinstance(e, TypeError))
+        def test():
+            self.X(a=3, b=3)
+            1/0
+        try:
+            test()
+        except ZeroDivisionError:
+            with db_session:
+                self.assertEqual(count(x for x in self.X), 2)
+        else:
+            self.fail()
+
     @raises_exception(TypeError, "'retry' parameter of db_session must be of integer type. Got: %r" % str)
-    def test_db_session_decorator_5(self):
+    def test_retry_1(self):
         @db_session(retry='foobar')
         def test():
             pass
 
     @raises_exception(TypeError, "'retry' parameter of db_session must not be negative. Got: -1")
-    def test_db_session_decorator_6(self):
+    def test_retry_2(self):
         @db_session(retry=-1)
         def test():
             pass
 
-    def test_db_session_decorator_7(self):
+    def test_retry_3(self):
         # Should not to do retry until retry count is specified
         counter = count()
         @db_session(retry_exceptions=[ZeroDivisionError])
@@ -119,7 +147,7 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
-    def test_db_session_decorator_8(self):
+    def test_retry_4(self):
         # Should rollback & retry 1 time if retry=1
         counter = count()
         @db_session(retry=1, retry_exceptions=[ZeroDivisionError])
@@ -136,7 +164,7 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
-    def test_db_session_decorator_9(self):
+    def test_retry_5(self):
         # Should rollback & retry N time if retry=N
         counter = count()
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
@@ -153,7 +181,7 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
-    def test_db_session_decorator_10(self):
+    def test_retry_6(self):
         # Should not retry if the exception not in the list of retry_exceptions
         counter = count()
         @db_session(retry=3, retry_exceptions=[TypeError])
@@ -170,7 +198,7 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
-    def test_db_session_decorator_11(self):
+    def test_retry_7(self):
         # Should commit after successful retrying
         counter = count()
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
@@ -189,41 +217,13 @@ class TestDBSession(unittest.TestCase):
 
     @raises_exception(TypeError, "The same exception ZeroDivisionError cannot be specified "
                                  "in both allowed and retry exception lists simultaneously")
-    def test_db_session_decorator_12(self):
+    def test_retry_8(self):
         @db_session(retry=3, retry_exceptions=[ZeroDivisionError],
                              allowed_exceptions=[ZeroDivisionError])
         def test():
             pass
 
-    def test_db_session_decorator_13(self):
-        # allowed_exceptions may be callable, should commit if nonzero
-        @db_session(allowed_exceptions=lambda e: isinstance(e, ZeroDivisionError))
-        def test():
-            self.X(a=3, b=3)
-            1/0
-        try:
-            test()
-        except ZeroDivisionError:
-            with db_session:
-                self.assertEqual(count(x for x in self.X), 3)
-        else:
-            self.fail()
-
-    def test_db_session_decorator_14(self):
-        # allowed_exceptions may be callable, should rollback if not nonzero
-        @db_session(allowed_exceptions=lambda e: isinstance(e, TypeError))
-        def test():
-            self.X(a=3, b=3)
-            1/0
-        try:
-            test()
-        except ZeroDivisionError:
-            with db_session:
-                self.assertEqual(count(x for x in self.X), 2)
-        else:
-            self.fail()
-
-    def test_db_session_decorator_15(self):
+    def test_retry_9(self):
         # retry_exceptions may be callable, should retry if nonzero
         counter = count()
         @db_session(retry=3, retry_exceptions=lambda e: isinstance(e, ZeroDivisionError))
