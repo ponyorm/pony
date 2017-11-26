@@ -5350,7 +5350,7 @@ class Query(object):
             elif arguments_type is dict: arguments_key = tuple(sorted(iteritems(arguments)))
             try: hash(arguments_key)
             except: query_key = None  # arguments are unhashable
-            else: query_key = sql_key + (arguments_key)
+            else: query_key = sql_key + (arguments_key,)
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
     def get_sql(query):
