@@ -5346,9 +5346,7 @@ class Query(object):
         else: sql, adapter, attr_offsets = cache_entry
         arguments = adapter(query._vars)
         if query._translator.query_result_is_cacheable:
-            arguments_type = type(arguments)
-            if arguments_type is tuple: arguments_key = arguments
-            elif arguments_type is dict: arguments_key = tuple(sorted(iteritems(arguments)))
+            arguments_key = HashableDict(arguments) if type(arguments) is dict else arguments
             try: hash(arguments_key)
             except: query_key = None  # arguments are unhashable
             else: query_key = sql_key + (arguments_key,)
