@@ -19,7 +19,7 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of, Json
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of, Json, TrackedValue
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -4167,6 +4167,8 @@ class EntityMeta(type):
                 def fget(wrapper, attr=attr):
                     attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ x for x in (attr.__get__(item) for item in wrapper) if x is not None ]
+                    if attr.py_type is Json:
+                        return [ item.get_untracked() if isinstance(item, TrackedValue) else item for item in items ]
                     return Multiset(wrapper._obj_, attrnames, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
