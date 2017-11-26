@@ -459,7 +459,7 @@ class DBSessionContextManager(object):
                     exc_type = exc = tb = None
                     try:
                         result = func(*args, **kwargs)
-                        flush()
+                        commit()
                         return result
                     except:
                         exc_type, exc, tb = sys.exc_info()
