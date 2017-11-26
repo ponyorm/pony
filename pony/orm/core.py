@@ -457,7 +457,10 @@ class DBSessionContextManager(object):
                 for i in xrange(db_session.retry+1):
                     db_session._enter()
                     exc_type = exc = tb = None
-                    try: return func(*args, **kwargs)
+                    try:
+                        result = func(*args, **kwargs)
+                        flush()
+                        return result
                     except:
                         exc_type, exc, tb = sys.exc_info()
                         retry_exceptions = db_session.retry_exceptions

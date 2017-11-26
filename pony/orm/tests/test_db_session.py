@@ -12,7 +12,7 @@ class TestDBSession(unittest.TestCase):
     def setUp(self):
         self.db = Database('sqlite', ':memory:')
         class X(self.db.Entity):
-            a = Required(int)
+            a = PrimaryKey(int)
             b = Optional(int)
         self.X = X
         self.db.generate_mapping(create_tables=True)
@@ -237,6 +237,20 @@ class TestDBSession(unittest.TestCase):
             self.assertEqual(next(counter), 4)
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
+        else:
+            self.fail()
+
+    def test_retry_10(self):
+        # Issue 313: retry on exception raised during db_session.__exit__
+        retries = count()
+        @db_session(retry=3)
+        def test():
+            next(retries)
+            self.X(a=1, b=1)
+        try:
+            test()
+        except TransactionIntegrityError:
+            self.assertEqual(next(retries), 4)
         else:
             self.fail()
 
