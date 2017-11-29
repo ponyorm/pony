@@ -5294,7 +5294,7 @@ class Query(object):
         database.provider.normalize_vars(vars, vartypes)
 
         query._vars = vars
-        query._key = extractors_key, vartypes, left_join
+        query._key = HashableDict(extractors_key, vartypes=vartypes, left_join=left_join, filters=())
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -5332,8 +5332,8 @@ class Query(object):
             attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
-        sql_key = query._key + (range, query._distinct, aggr_func_name, query._for_update, query._nowait,
-                                options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
+        sql_key = (query._key, range, query._distinct, aggr_func_name, query._for_update, query._nowait,
+                   options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
@@ -5508,7 +5508,7 @@ class Query(object):
             for obj in objects: obj._delete_()
             return len(objects)
         translator = query._translator
-        sql_key = query._key + ('DELETE',)
+        sql_key = HashableDict(query._key, sql_command='DELETE')
         database = query._database
         cache = database._get_cache()
         cache_entry = database._constructed_sql_cache.get(sql_key)
@@ -5539,7 +5539,7 @@ class Query(object):
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of %s() method is None, it must be the only argument' % method_name)
             tup = (('without_order',),)
-            new_key = query._key + tup
+            new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
             new_filters = query._filters + tup
             new_translator = query._database._translator_cache.get(new_key)
             if new_translator is None:
@@ -5564,7 +5564,7 @@ class Query(object):
             throw(TypeError, 'order_by() method receive invalid combination of arguments')
 
         tup = (('order_by_numbers' if numbers else 'order_by_attributes', args),)
-        new_key = query._key + tup
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
@@ -5612,8 +5612,8 @@ class Query(object):
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
         else: new_query_vars, vartypes = query._vars, HashableDict()
-
-        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
+        tup = (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
@@ -5693,7 +5693,7 @@ class Query(object):
 
         filterattrs = tuple(filterattrs)
         tup = (('apply_kwfilters', filterattrs, original_names),)
-        new_key = query._key + tup
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
