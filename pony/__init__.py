@@ -16,8 +16,8 @@ def detect_mode():
         except ImportError: return 'GAE-SERVER'
         return 'GAE-LOCAL'
 
-    try: mod_wsgi = sys.modules['mod_wsgi']
-    except KeyError: pass
+    try: from mod_wsgi import version
+    except: pass
     else: return 'MOD_WSGI'
 
     if 'flup.server.fcgi' in sys.modules: return 'FCGI-FLUP'
