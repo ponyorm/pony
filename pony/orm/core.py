@@ -26,8 +26,8 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony import utils
-from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
-     pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
+from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
+     get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
      between, concat, coalesce
 
 __all__ = [
@@ -744,7 +744,7 @@ class Database(object):
             except: transact_reraise(RollbackException, [sys.exc_info()])
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
+        return database._exec_raw_sql(sql, globals, locals, frame_depth=cut_traceback_depth+1, start_transaction=True)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth, start_transaction=False):
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
@@ -760,7 +760,7 @@ class Database(object):
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 3)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth+cut_traceback_depth+1)
         max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             result = cursor.fetchmany(max_fetch_count)
@@ -776,7 +776,7 @@ class Database(object):
         return [ row_class(row) for row in result ]
     @cut_traceback
     def get(database, sql, globals=None, locals=None):
-        rows = database.select(sql, globals, locals, frame_depth=3)
+        rows = database.select(sql, globals, locals, frame_depth=cut_traceback_depth+1)
         if not rows: throw(RowNotFound)
         if len(rows) > 1: throw(MultipleRowsFound)
         row = rows[0]
@@ -784,7 +784,7 @@ class Database(object):
     @cut_traceback
     def exists(database, sql, globals=None, locals=None):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=3)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=cut_traceback_depth+1)
         result = cursor.fetchone()
         return bool(result)
     @cut_traceback
@@ -3315,7 +3315,7 @@ class SetInstance(object):
         s = 'lambda item: JOIN(obj in item.%s)' if reverse.is_collection else 'lambda item: item.%s == obj'
         query = query.filter(s % reverse.name, {'obj' : obj, 'JOIN': JOIN})
         if args:
-            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=cut_traceback_depth+1)
             query = query.filter(func, globals, locals)
         return query
     filter = select
@@ -3709,34 +3709,34 @@ class EntityMeta(type):
         return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
-        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).exists()
         try: obj = entity._find_one_(kwargs)
         except ObjectNotFound: return False
         except MultipleObjectsFoundError: return True
         return True
     @cut_traceback
     def get(entity, *args, **kwargs):
-        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).get()
         try: return entity._find_one_(kwargs)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_for_update(entity, *args, **kwargs):
         nowait = kwargs.pop('nowait', False)
-        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).for_update(nowait).get()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).for_update(nowait).get()
         try: return entity._find_one_(kwargs, True, nowait)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
-        objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
+        objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=cut_traceback_depth+1)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
     def select(entity, *args):
-        return entity._query_from_args_(args, kwargs=None, frame_depth=3)
+        return entity._query_from_args_(args, kwargs=None, frame_depth=cut_traceback_depth+1)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
-        return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
+        return entity._find_by_sql_(None, sql, globals, locals, frame_depth=cut_traceback_depth+1)
     @cut_traceback
     def select_random(entity, limit):
         if entity._pk_is_composite_: return entity.select().random(limit)
@@ -5180,23 +5180,23 @@ def make_query(args, frame_depth, left_join=False):
 
 @cut_traceback
 def select(*args):
-    return make_query(args, frame_depth=3)
+    return make_query(args, frame_depth=cut_traceback_depth+1)
 
 @cut_traceback
 def left_join(*args):
-    return make_query(args, frame_depth=3, left_join=True)
+    return make_query(args, frame_depth=cut_traceback_depth+1, left_join=True)
 
 @cut_traceback
 def get(*args):
-    return make_query(args, frame_depth=3).get()
+    return make_query(args, frame_depth=cut_traceback_depth+1).get()
 
 @cut_traceback
 def exists(*args):
-    return make_query(args, frame_depth=3).exists()
+    return make_query(args, frame_depth=cut_traceback_depth+1).exists()
 
 @cut_traceback
 def delete(*args):
-    return make_query(args, frame_depth=3).delete()
+    return make_query(args, frame_depth=cut_traceback_depth+1).delete()
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
@@ -5549,7 +5549,7 @@ class Query(object):
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         if isinstance(args[0], (basestring, types.FunctionType)):
-            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=4)
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=cut_traceback_depth+2)
             return query._process_lambda(func, globals, locals, order_by=True)
 
         if isinstance(args[0], RawSQL):
@@ -5647,7 +5647,7 @@ class Query(object):
             if isinstance(args[0], RawSQL):
                 raw = args[0]
                 return query.filter(lambda: raw)
-            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=cut_traceback_depth+1)
             return query._process_lambda(func, globals, locals, order_by=False)
         if not kwargs: return query
 
@@ -5661,7 +5661,7 @@ class Query(object):
             if isinstance(args[0], RawSQL):
                 raw = args[0]
                 return query.where(lambda: raw)
-            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=cut_traceback_depth+1)
             return query._process_lambda(func, globals, locals, order_by=False, original_names=True)
         if not kwargs: return query
 
