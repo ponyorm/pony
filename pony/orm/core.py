@@ -4935,7 +4935,7 @@ class Entity(with_metaclass(EntityMeta)):
             else: sql, adapter = cached_sql
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments, start_transaction=True)
-            if cursor.rowcount == 0:
+            if cursor.rowcount == 0 and cache.db_session.optimistic:
                 throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
@@ -4966,7 +4966,7 @@ class Entity(with_metaclass(EntityMeta)):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments, start_transaction=True)
-        if cursor.rowcount == 0:
+        if cursor.rowcount == 0 and cache.db_session.optimistic:
             throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
