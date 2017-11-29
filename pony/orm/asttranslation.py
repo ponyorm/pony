@@ -309,7 +309,7 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
     if getattr_extractors:
         getattr_attrnames = HashableDict({src: eval(code, globals, locals)
                                           for src, code in iteritems(getattr_extractors)})
-        extractors_key = (code_key, getattr_attrnames)
+        extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
         try:
             result = extractors_cache.get(extractors_key)
         except TypeError:
@@ -345,6 +345,6 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
             node._attrname_value = attrname_value
         getattr_cache[code_key] = getattr_extractors
 
-        extractors_key = (code_key, getattr_attrnames)
+        extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
         result = extractors_cache[extractors_key] = extractors, tree, extractors_key
     return result
