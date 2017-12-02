@@ -307,8 +307,8 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
     result = None
     getattr_extractors = getattr_cache.get(code_key)
     if getattr_extractors:
-        getattr_attrnames = HashableDict({src: eval(code, globals, locals)
-                                          for src, code in iteritems(getattr_extractors)})
+        getattr_attrnames = HashableDict({src: extractor(globals, locals)
+                                          for src, extractor in iteritems(getattr_extractors)})
         extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
         try:
             result = extractors_cache.get(extractors_key)
@@ -324,18 +324,21 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
         extractors = {}
         for node in pretranslator.externals:
             src = node.src = ast2src(node)
-            if src == '.0': code = None
-            else: code = compile(src, src, 'eval')
-            extractors[src] = code
+            if src == '.0':
+                extractor = lambda globals, locals: locals['.0']
+            else:
+                code = compile(src, src, 'eval')
+                extractor = lambda globals, locals, code=code: eval(code, globals, locals)
+            extractors[src] = extractor
 
         getattr_extractors = {}
         getattr_attrnames = HashableDict()
         for node in pretranslator.getattr_nodes:
             if node in pretranslator.externals:
                 src = node.src
-                code = extractors[src]
-                getattr_extractors[src] = code
-                attrname_value = eval(code, globals, locals)
+                extractor = extractors[src]
+                getattr_extractors[src] = extractor
+                attrname_value = extractor(globals, locals)
                 getattr_attrnames[src] = attrname_value
             elif isinstance(node, ast.Const):
                 attrname_value = node.value

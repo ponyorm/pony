@@ -5252,15 +5252,13 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
                 throw(NameError, 'Free variable `%s` referenced before assignment in enclosing scope' % name)
     vars = {}
     vartypes = HashableDict()
-    for src, code in iteritems(extractors):
+    for src, extractor in iteritems(extractors):
         key = filter_num, src
-        if src == '.0': value = locals['.0']
-        else:
-            try: value = eval(code, globals, locals)
-            except Exception as cause: raise ExprEvalError(src, cause)
-            if src == 'None' and value is not None: throw(TranslationError)
-            if src == 'True' and value is not True: throw(TranslationError)
-            if src == 'False' and value is not False: throw(TranslationError)
+        try: value = extractor(globals, locals)
+        except Exception as cause: raise ExprEvalError(src, cause)
+        if src == 'None' and value is not None: throw(TranslationError)
+        if src == 'True' and value is not True: throw(TranslationError)
+        if src == 'False' and value is not False: throw(TranslationError)
         try: vartypes[key], value = normalize(value)
         except TypeError:
             if not isinstance(value, dict):
