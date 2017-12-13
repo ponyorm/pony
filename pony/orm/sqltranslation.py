@@ -1015,7 +1015,7 @@ class Monad(with_metaclass(MonadMeta)):
         try: property_method = getattr(monad, 'attr_' + attrname)
         except AttributeError:
             if not hasattr(monad, 'call_' + attrname):
-                throw(AttributeError, '%r object has no attribute %r' % (type2str(monad.type), attrname))
+                throw(AttributeError, '%r object has no attribute %r: {EXPR}' % (type2str(monad.type), attrname))
             translator = monad.translator
             return translator.MethodMonad(monad, attrname)
         return property_method()
