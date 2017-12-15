@@ -1800,6 +1800,7 @@ class SessionCache(object):
                 # attribute which was created or updated lately clashes with one stored in database
         cache_index.pop(old_dbval, None)
     def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
+        if prev_vals == new_vals: return
         if None in prev_vals: prev_vals = None
         if None in new_vals: new_vals = None
         if prev_vals is None and new_vals is None: return
@@ -1813,6 +1814,7 @@ class SessionCache(object):
         if prev_vals is not None: del cache_index[prev_vals]
         undo.append((cache_index, prev_vals, new_vals))
     def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
+        if prev_vals == new_vals: return
         cache_index = cache.indexes[attrs]
         if None not in new_vals:
             obj2 = cache_index.setdefault(new_vals, obj)
