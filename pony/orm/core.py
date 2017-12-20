@@ -4553,15 +4553,13 @@ class Entity(with_metaclass(EntityMeta)):
                     cache.db_update_simple_index(obj, attr, old_val, new_dbval)
 
         for attrs in obj._composite_keys_:
-            for attr in attrs:
-                if attr in avdict: break
-            else: continue
-            vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
-            prev_vals = tuple(vals)
-            for i, attr in enumerate(attrs):
-                if attr in avdict: vals[i] = avdict[attr]
-            new_vals = tuple(vals)
-            cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
+            if any(attr in avdict for attr in attrs):
+                vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
+                prev_vals = tuple(vals)
+                for i, attr in enumerate(attrs):
+                    if attr in avdict: vals[i] = avdict[attr]
+                new_vals = tuple(vals)
+                cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
 
         for attr, new_val in iteritems(avdict):
             if not attr.reverse:
@@ -4727,15 +4725,13 @@ class Entity(with_metaclass(EntityMeta)):
                     old_val = get_val(attr)
                     if old_val != new_val: cache.update_simple_index(obj, attr, old_val, new_val, undo)
                 for attrs in obj._composite_keys_:
-                    for attr in attrs:
-                        if attr in avdict: break
-                    else: continue
-                    vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
-                    prev_vals = tuple(vals)
-                    for i, attr in enumerate(attrs):
-                        if attr in avdict: vals[i] = avdict[attr]
-                    new_vals = tuple(vals)
-                    cache.update_composite_index(obj, attrs, prev_vals, new_vals, undo)
+                    if any(attr in avdict for attr in attrs):
+                        vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
+                        prev_vals = tuple(vals)
+                        for i, attr in enumerate(attrs):
+                            if attr in avdict: vals[i] = avdict[attr]
+                        new_vals = tuple(vals)
+                        cache.update_composite_index(obj, attrs, prev_vals, new_vals, undo)
                 for attr, new_val in iteritems(avdict):
                     if not attr.reverse: continue
                     old_val = get_val(attr)

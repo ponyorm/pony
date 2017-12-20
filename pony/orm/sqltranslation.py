@@ -326,11 +326,9 @@ class SQLTranslator(ASTTranslator):
                 for tr in tablerefs.values():
                     if not tr.can_affect_distinct: continue
                     if tr.name_path in expr_set: continue
-                    for attr in tr.entity._pk_attrs_:
-                        if (tr.name_path, attr) not in expr_set: break
-                    else: continue
-                    translator.distinct = True
-                    break
+                    if any((tr.name_path, attr) not in expr_set for attr in tr.entity._pk_attrs_):
+                        translator.distinct = True
+                        break
             row_layout = []
             offset = 0
             provider = translator.database.provider
