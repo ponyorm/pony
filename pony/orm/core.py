@@ -4700,9 +4700,7 @@ class Entity(with_metaclass(EntityMeta)):
                         objects_to_save.append(obj)
                         cache.modified = True
                 if not collection_avdict:
-                    for attr in avdict:
-                        if attr.reverse or attr.is_part_of_unique_index: break
-                    else:
+                    if not any(attr.reverse or attr.is_part_of_unique_index for attr in avdict):
                         obj._vals_.update(avdict)
                         return
             undo_funcs = []
