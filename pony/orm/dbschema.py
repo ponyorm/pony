@@ -350,10 +350,10 @@ class ForeignKey(Constraint):
 
         if index_name is not False:
             child_columns_len = len(child_columns)
-            for columns in child_table.indexes:
-                if columns[:child_columns_len] == child_columns: break
-            else: child_table.add_index(index_name, child_columns, is_pk=False,
-                                        is_unique=False, m2m=bool(child_table.m2m))
+            if all(columns[:child_columns_len] != child_columns for columns in child_table.indexes):
+                child_table.add_index(index_name, child_columns, is_pk=False,
+                                      is_unique=False, m2m=bool(child_table.m2m))
+
     def exists(foreign_key, provider, connection, case_sensitive=True):
         return provider.fk_exists(connection, foreign_key.child_table.name, foreign_key.name, case_sensitive)
     def get_sql(foreign_key):
