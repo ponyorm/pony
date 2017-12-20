@@ -76,5 +76,21 @@ class TestIndexes(unittest.TestCase):
             u = User[1]
             self.assertEqual(u.name, 'B')
 
+    def test_4(self):  # issue 321
+        db = Database('sqlite', ':memory:')
+        class Person(db.Entity):
+            name = Required(str)
+            age = Required(int)
+            composite_key(name, age)
+
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            p1 = Person(id=1, name='John', age=19)
+
+        with db_session:
+            p1 = Person[1]
+            p1.set(name='John', age=19)
+            p1.delete()
+
 if __name__ == '__main__':
     unittest.main()
