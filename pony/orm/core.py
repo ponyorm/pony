@@ -1800,7 +1800,7 @@ class SessionCache(object):
                 # attribute which was created or updated lately clashes with one stored in database
         cache_index.pop(old_dbval, None)
     def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
-        if prev_vals == new_vals: return
+        assert prev_vals != new_vals
         if None in prev_vals: prev_vals = None
         if None in new_vals: new_vals = None
         if prev_vals is None and new_vals is None: return
@@ -1814,7 +1814,7 @@ class SessionCache(object):
         if prev_vals is not None: del cache_index[prev_vals]
         undo.append((cache_index, prev_vals, new_vals))
     def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
-        if prev_vals == new_vals: return
+        assert prev_vals != new_vals
         cache_index = cache.indexes[attrs]
         if None not in new_vals:
             obj2 = cache_index.setdefault(new_vals, obj)
@@ -4688,6 +4688,7 @@ class Entity(with_metaclass(EntityMeta)):
                 for attr in avdict:
                     if attr not in obj._vals_ and attr.reverse and not attr.reverse.is_collection:
                         attr.load(obj)  # loading of one-to-one relations
+
                 if wbits is not None:
                     new_wbits = wbits
                     for attr in avdict: new_wbits |= obj._bits_[attr]
@@ -4699,10 +4700,16 @@ class Entity(with_metaclass(EntityMeta)):
                         obj._save_pos_ = len(objects_to_save)
                         objects_to_save.append(obj)
                         cache.modified = True
+
                 if not collection_avdict:
                     if not any(attr.reverse or attr.is_part_of_unique_index for attr in avdict):
                         obj._vals_.update(avdict)
                         return
+
+                for attr, value in items_list(avdict):
+                    if value == get_val(attr):
+                        avdict.pop(attr)
+
             undo_funcs = []
             undo = []
             def undo_func():
@@ -4721,7 +4728,7 @@ class Entity(with_metaclass(EntityMeta)):
                     if attr not in avdict: continue
                     new_val = avdict[attr]
                     old_val = get_val(attr)
-                    if old_val != new_val: cache.update_simple_index(obj, attr, old_val, new_val, undo)
+                    cache.update_simple_index(obj, attr, old_val, new_val, undo)
                 for attrs in obj._composite_keys_:
                     if any(attr in avdict for attr in attrs):
                         vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
