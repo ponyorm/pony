@@ -79,7 +79,7 @@ class OraTrigger(Trigger):
         table_name = table.name
         if not isinstance(table_name, basestring): table_name = table_name[-1]
         trigger_name = table_name + '_BI' # Before Insert
-        Trigger.__init__(trigger_name, table)
+        Trigger.__init__(trigger, trigger_name, table)
         trigger.column = column
         trigger.sequence = sequence
     def exists(trigger, provider, cursor, case_sensitive=True):
