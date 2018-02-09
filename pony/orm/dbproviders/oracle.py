@@ -528,15 +528,13 @@ class OraProvider(DBAPIProvider):
         return row[0] if row is not None else None
 
     def table_has_data(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s WHERE ROWNUM = 1' % table_name)
+        cursor.execute('SELECT 1 FROM %s WHERE ROWNUM = 1' % provider.quote_name(table_name))
         return cursor.fetchone() is not None
 
     def drop_table(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
-        sql = 'DROP TABLE %s CASCADE CONSTRAINTS' % table_name
+        sql = 'DROP TABLE %s CASCADE CONSTRAINTS' % provider.quote_name(table_name)
         cursor.execute(sql)
 
 provider_cls = OraProvider

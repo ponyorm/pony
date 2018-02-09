@@ -1000,7 +1000,6 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
-        table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     def _get_table_name(database, table_name):
         if isinstance(table_name, EntityMeta):
