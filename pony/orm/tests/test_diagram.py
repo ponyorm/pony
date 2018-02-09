@@ -76,7 +76,7 @@ class TestDiag(unittest.TestCase):
             attr2 = Set(Entity1, table='Table2')
         db.generate_mapping()
 
-    @raises_exception(MappingError, "Table name 'Table1' is already in use")
+    @raises_exception(MappingError, 'Table name "Table1" is already in use')
     def test_diagram7(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

@@ -153,7 +153,7 @@ class DBAPIProvider(object):
             return [ normalize(prefix + column) for column in columns ]
 
     def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
-        if is_pk: index_name = 'pk_%s' % table_name
+        if is_pk: index_name = 'pk_%s' % provider.base_name(table_name)
         else:
             if is_unique: template = 'unq_%(tname)s__%(cnames)s'
             elif m2m: template = 'idx_%(tname)s'
@@ -190,6 +190,9 @@ class DBAPIProvider(object):
             name = name.replace(quote_char, quote_char+quote_char)
             return quote_char + name + quote_char
         return '.'.join(provider.quote_name(item) for item in name)
+
+    def format_table_name(provider, name):
+        return provider.quote_name(name)
 
     def normalize_vars(provider, vars, vartypes):
         pass
@@ -287,9 +290,8 @@ class DBAPIProvider(object):
         throw(NotImplementedError)
 
     def table_has_data(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
+        cursor.execute('SELECT 1 FROM %s LIMIT 1' % provider.quote_name(table_name))
         return cursor.fetchone() is not None
 
     def disable_fk_checks(provider, connection):
@@ -299,9 +301,8 @@ class DBAPIProvider(object):
         pass
 
     def drop_table(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
-        sql = 'DROP TABLE %s' % table_name
+        sql = 'DROP TABLE %s' % provider.quote_name(table_name)
         cursor.execute(sql)
 
 class Pool(localbase):
