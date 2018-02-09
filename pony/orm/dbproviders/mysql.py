@@ -288,7 +288,6 @@ class MySQLProvider(DBAPIProvider):
                     raise
         DBAPIProvider.release(provider, connection, cache)
 
-
     def table_exists(provider, connection, table_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()

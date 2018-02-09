@@ -259,16 +259,9 @@ class PGProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def table_has_data(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
-        return cursor.fetchone() is not None
-
     def drop_table(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
-        sql = 'DROP TABLE %s CASCADE' % table_name
+        sql = 'DROP TABLE %s CASCADE' % provider.quote_name(table_name)
         cursor.execute(sql)
 
     converter_classes = [

@@ -896,12 +896,15 @@ class Database(object):
                         if not attr.table:
                             seq_counter = itertools.count(2)
                             while m2m_table is not None:
-                                new_table_name = table_name + '_%d' % next(seq_counter)
+                                if isinstance(table_name, basestring):
+                                    new_table_name = table_name + '_%d' % next(seq_counter)
+                                else:
+                                    schema_name, base_name = provider.split_table_name(table_name)
+                                    new_table_name = schema_name, base_name + '_%d' % next(seq_counter)
                                 m2m_table = schema.tables.get(new_table_name)
                             table_name = new_table_name
-                        elif m2m_table.entities or m2m_table.m2m:
-                            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
-                            throw(MappingError, "Table name '%s' is already in use" % table_name)
+                        elif m2m_table.entities or m2m_table.m2m: throw(MappingError,
+                            "Table name %s is already in use" % provider.format_table_name(table_name))
                         else: throw(NotImplementedError)
                     attr.table = reverse.table = table_name
                     m2m_table = schema.add_table(table_name)
@@ -1000,7 +1003,6 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
-        table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     def _get_table_name(database, table_name):
         if isinstance(table_name, EntityMeta):
@@ -1014,9 +1016,13 @@ class Database(object):
         elif table_name is None:
             if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
             else: throw(TypeError, 'Table name cannot be None')
-        elif not isinstance(table_name, basestring):
-            throw(TypeError, 'Invalid table name: %r' % table_name)
-        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        elif isinstance(table_name, tuple):
+            for component in table_name:
+                if not isinstance(component, basestring):
+                    throw(TypeError, 'Invalid table name component: {}'.format(component))
+        elif isinstance(table_name, basestring):
+            table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        else: throw(TypeError, 'Invalid table name: {}'.format(table_name))
         return table_name
     @cut_traceback
     @db_session(ddl=True)
@@ -1033,19 +1039,24 @@ class Database(object):
             if provider.table_exists(connection, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
-                    normalized_table_name = provider.normalize_name(table_name)
-                    if normalized_table_name != table_name \
-                    and provider.table_exists(connection, normalized_table_name):
-                        throw(TableDoesNotExist, 'Table %s does not exist (probably you meant table %s)'
-                                                 % (table_name, normalized_table_name))
-                throw(TableDoesNotExist, 'Table %s does not exist' % table_name)
+                    if isinstance(table_name, basestring):
+                        normalized_table_name = provider.normalize_name(table_name)
+                    else:
+                        schema_name, base_name = provider.split_table_name(table_name)
+                        normalized_table_name = schema_name, provider.normalize_name(base_name)
+                    if normalized_table_name != table_name and provider.table_exists(connection, normalized_table_name):
+                        throw(TableDoesNotExist, 'Table %s does not exist (probably you meant table %s)' % (
+                                                 provider.format_table_name(table_name),
+                                                 provider.format_table_name(normalized_table_name)))
+                throw(TableDoesNotExist, 'Table %s does not exist' % provider.format_table_name(table_name))
         if not with_all_data:
             for table_name in existed_tables:
                 if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
                     'Cannot drop table %s because it is not empty. Specify option '
-                    'with_all_data=True if you want to drop table with all data' % table_name)
+                    'with_all_data=True if you want to drop table with all data'
+                    % provider.format_table_name(table_name))
         for table_name in existed_tables:
-            if local.debug: log_orm('DROPPING TABLE %s' % table_name)
+            if local.debug: log_orm('DROPPING TABLE %s' % provider.format_table_name(table_name))
             provider.drop_table(connection, table_name)
     @cut_traceback
     @db_session(ddl=True)
