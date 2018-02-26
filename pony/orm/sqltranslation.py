@@ -87,39 +87,39 @@ class SQLTranslator(ASTTranslator):
         t = translator.vartypes[varkey]
         tt = type(t)
         if t is NoneType:
-            monad = translator.ConstMonad.new(translator, None)
+            monad = ConstMonad.new(translator, None)
         elif tt is SetType:
             if isinstance(t.item_type, EntityMeta):
-                monad = translator.EntityMonad(translator, t.item_type)
+                monad = EntityMonad(translator, t.item_type)
             else: throw(NotImplementedError)  # pragma: no cover
         elif tt is FuncType:
             func = t.func
-            func_monad_class = translator.registered_functions.get(func, translator.ErrorSpecialFuncMonad)
+            func_monad_class = translator.registered_functions.get(func, ErrorSpecialFuncMonad)
             monad = func_monad_class(translator, func)
         elif tt is MethodType:
             obj, func = t.obj, t.func
             if isinstance(obj, EntityMeta):
-                entity_monad = translator.EntityMonad(translator, obj)
+                entity_monad = EntityMonad(translator, obj)
                 if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
-                monad = translator.MethodMonad(entity_monad, func.__name__)
+                monad = MethodMonad(entity_monad, func.__name__)
             elif node.src == 'random':  # For PyPy
-                monad = translator.FuncRandomMonad(translator, t)
+                monad = FuncRandomMonad(translator, t)
             else: throw(NotImplementedError)
         elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
             value = True if node.name == 'True' else False
-            monad = translator.ConstMonad.new(translator, value)
+            monad = ConstMonad.new(translator, value)
         elif tt is tuple:
             params = []
             for i, item_type in enumerate(t):
                 if item_type is NoneType:
                     throw(TypeError, 'Expression `%s` should not contain None values' % node.src)
-                param = translator.ParamMonad.new(translator, item_type, (varkey, i, None))
+                param = ParamMonad.new(translator, item_type, (varkey, i, None))
                 params.append(param)
-            monad = translator.ListMonad(translator, params)
+            monad = ListMonad(translator, params)
         elif isinstance(t, RawSQLType):
-            monad = translator.RawSQLMonad(translator, t, varkey)
+            monad = RawSQLMonad(translator, t, varkey)
         else:
-            monad = translator.ParamMonad.new(translator, t, (varkey, None, None))
+            monad = ParamMonad.new(translator, t, (varkey, None, None))
         node.monad = monad
         monad.node = node
         monad.aggregated = monad.nogroup = False
@@ -221,7 +221,7 @@ class SQLTranslator(ASTTranslator):
                 tableref = TableRef(subquery, name, entity)
                 tablerefs[name] = tableref
                 tableref.make_join()
-                node.monad = translator.ObjectIterMonad(translator, tableref, entity)
+                node.monad = ObjectIterMonad(translator, tableref, entity)
             else:
                 attr_names = []
                 while isinstance(node, ast.Getattr):
@@ -270,7 +270,7 @@ class SQLTranslator(ASTTranslator):
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
-                if isinstance(if_.monad, translator.AndMonad): cond_monads = if_.monad.operands
+                if isinstance(if_.monad, AndMonad): cond_monads = if_.monad.operands
                 else: cond_monads = [ if_.monad ]
                 for m in cond_monads:
                     if not m.aggregated: translator.conditions.extend(m.getsql())
@@ -279,19 +279,19 @@ class SQLTranslator(ASTTranslator):
         translator.dispatch(tree.expr)
         assert not translator.hint_join
         monad = tree.expr.monad
-        if isinstance(monad, translator.ParamMonad): throw(TranslationError,
+        if isinstance(monad, ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
-        translator.expr_monads = monad.items if isinstance(monad, translator.ListMonad) else [ monad ]
+        translator.expr_monads = monad.items if isinstance(monad, ListMonad) else [ monad ]
         translator.groupby_monads = None
         expr_type = monad.type
         if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if isinstance(expr_type, EntityMeta):
             monad.orderby_columns = list(xrange(1, len(expr_type._pk_columns_)+1))
             if monad.aggregated: throw(TranslationError)
-            if isinstance(monad, translator.ObjectMixin):
+            if isinstance(monad, ObjectMixin):
                 entity = monad.type
                 tableref = monad.tableref
-            elif isinstance(monad, translator.AttrSetMonad):
+            elif isinstance(monad, AttrSetMonad):
                 entity = monad.type.item_type
                 tableref = monad.make_tableref(translator.subquery)
             else: assert False  # pragma: no cover
@@ -472,8 +472,8 @@ class SQLTranslator(ASTTranslator):
         having_conditions = translator.having_conditions[:]
         if is_not_null_checks:
             for monad in translator.expr_monads:
-                if isinstance(monad, translator.ObjectIterMonad): pass
-                elif isinstance(monad, translator.AttrMonad) and not monad.attr.nullable: pass
+                if isinstance(monad, ObjectIterMonad): pass
+                elif isinstance(monad, AttrMonad) and not monad.attr.nullable: pass
                 else:
                     notnull_conditions = [ [ 'IS_NOT_NULL', column_ast ] for column_ast in monad.getsql() ]
                     if monad.aggregated: having_conditions.extend(notnull_conditions)
@@ -607,12 +607,12 @@ class SQLTranslator(ASTTranslator):
                 throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
 
         monads = []
-        none_monad = translator.NoneMonad(translator)
+        none_monad = NoneMonad(translator)
         for attr, id, is_none in filterattrs:
             attr_monad = object_monad.getattr(attr.name)
             if is_none: monads.append(CmpMonad('is', attr_monad, none_monad))
             else:
-                param_monad = translator.ParamMonad.new(translator, attr.py_type, (id, None, None))
+                param_monad = ParamMonad.new(translator, attr.py_type, (id, None, None))
                 monads.append(CmpMonad('==', attr_monad, param_monad))
         for m in monads: translator.conditions.extend(m.getsql())
         return translator
@@ -631,7 +631,7 @@ class SQLTranslator(ASTTranslator):
             translator.inside_order_by = True
             new_order = []
             for node in nodes:
-                if isinstance(node.monad, translator.SetMixin):
+                if isinstance(node.monad, SetMixin):
                     t = node.monad.type.item_type
                     if isinstance(type(t), type): t = t.__name__
                     throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
@@ -642,7 +642,7 @@ class SQLTranslator(ASTTranslator):
         else:
             for node in nodes:
                 monad = node.monad
-                if isinstance(monad, translator.AndMonad): cond_monads = monad.operands
+                if isinstance(monad, AndMonad): cond_monads = monad.operands
                 else: cond_monads = [ monad ]
                 for m in cond_monads:
                     if not m.aggregated: translator.conditions.extend(m.getsql())
@@ -652,7 +652,7 @@ class SQLTranslator(ASTTranslator):
         inner_tree = node.code
         translator_cls = translator.__class__
         subtranslator = translator_cls(inner_tree, translator.filter_num, translator.extractors, translator.vartypes, translator)
-        return translator.QuerySetMonad(translator, subtranslator)
+        return QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
         if monad.type is not bool: monad = monad.nonzero()
@@ -677,21 +677,21 @@ class SQLTranslator(ASTTranslator):
             monads.append(monad)
             left = right
         if len(monads) == 1: return monads[0]
-        return translator.AndMonad(monads)
+        return AndMonad(monads)
     def postConst(translator, node):
         value = node.value
         if type(value) is frozenset:
             value = tuple(sorted(value))
         if type(value) is not tuple:
-            return translator.ConstMonad.new(translator, value)
+            return ConstMonad.new(translator, value)
         else:
-            return translator.ListMonad(translator, [ translator.ConstMonad.new(translator, item) for item in value ])
+            return ListMonad(translator, [ ConstMonad.new(translator, item) for item in value ])
     def postEllipsis(translator, node):
-        return translator.ConstMonad.new(translator, Ellipsis)
+        return ConstMonad.new(translator, Ellipsis)
     def postList(translator, node):
-        return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
+        return ListMonad(translator, [ item.monad for item in node.nodes ])
     def postTuple(translator, node):
-        return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
+        return ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
         t = translator
@@ -703,7 +703,7 @@ class SQLTranslator(ASTTranslator):
             t = t.parent
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
-            return translator.ObjectIterMonad(translator, tableref, tableref.entity)
+            return ObjectIterMonad(translator, tableref, tableref.entity)
         else: assert False, name  # pragma: no cover
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
@@ -724,9 +724,9 @@ class SQLTranslator(ASTTranslator):
     def postGetattr(translator, node):
         return node.expr.monad.getattr(node.attrname)
     def postAnd(translator, node):
-        return translator.AndMonad([ subnode.monad for subnode in node.nodes ])
+        return AndMonad([ subnode.monad for subnode in node.nodes ])
     def postOr(translator, node):
-        return translator.OrMonad([ subnode.monad for subnode in node.nodes ])
+        return OrMonad([ subnode.monad for subnode in node.nodes ])
     def postBitor(translator, node):
         left, right = (subnode.monad for subnode in node.nodes)
         return left | right
@@ -776,7 +776,7 @@ class SQLTranslator(ASTTranslator):
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         translator_cls = translator.__class__
         subtranslator = translator_cls(inner_expr, translator.filter_num, translator.extractors, translator.vartypes, translator)
-        return translator.QuerySetMonad(translator, subtranslator)
+        return QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
         kwargs = {}
@@ -796,7 +796,7 @@ class SQLTranslator(ASTTranslator):
         if len(node.subs) > 1:
             for x in node.subs:
                 if isinstance(x, ast.Sliceobj): throw(TypeError)
-            key = translator.ListMonad(translator, [ item.monad for item in node.subs ])
+            key = ListMonad(translator, [ item.monad for item in node.subs ])
             return node.expr.monad[key]
         sub = node.subs[0]
         if isinstance(sub, ast.Sliceobj):
@@ -830,7 +830,7 @@ class SQLTranslator(ASTTranslator):
         elif not translator.row_value_syntax: throw(NotImplementedError)
         else: then_sql, else_sql = [ 'ROW' ] + then_sql, [ 'ROW' ] + else_sql
         expr = [ 'CASE', None, [ [ test_sql, then_sql ] ], else_sql ]
-        result = translator.ExprMonad.new(translator, result_type, expr)
+        result = ExprMonad.new(translator, result_type, expr)
         result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
         return result
 
@@ -1027,18 +1027,17 @@ class Monad(with_metaclass(MonadMeta)):
     def mixin_init(monad):
         pass
     def cmp(monad, op, monad2):
-        return monad.translator.CmpMonad(op, monad, monad2)
+        return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): throw(TypeError)
     def nonzero(monad): throw(TypeError)
     def negate(monad):
-        return monad.translator.NotMonad(monad)
+        return NotMonad(monad)
     def getattr(monad, attrname):
         try: property_method = getattr(monad, 'attr_' + attrname)
         except AttributeError:
             if not hasattr(monad, 'call_' + attrname):
                 throw(AttributeError, '%r object has no attribute %r: {EXPR}' % (type2str(monad.type), attrname))
-            translator = monad.translator
-            return translator.MethodMonad(monad, attrname)
+            return MethodMonad(monad, attrname)
         return property_method()
     def len(monad): throw(TypeError)
     def count(monad, distinct=None):
@@ -1066,7 +1065,7 @@ class Monad(with_metaclass(MonadMeta)):
                     '%s database provider does not support entities '
                     'with composite primary keys inside aggregate functions. Got: {EXPR}'
                     % translator.dialect)
-        result = translator.ExprMonad.new(translator, int, [ 'COUNT', distinct, expr ])
+        result = ExprMonad.new(translator, int, [ 'COUNT', distinct, expr ])
         result.aggregated = True
         return result
     def aggregate(monad, func_name, distinct=None, sep=None):
@@ -1108,7 +1107,7 @@ class Monad(with_metaclass(MonadMeta)):
         if func_name == 'GROUP_CONCAT':
             if sep is not None:
                 aggr_ast.append(['VALUE', sep])
-        result = translator.ExprMonad.new(translator, result_type, aggr_ast)
+        result = ExprMonad.new(translator, result_type, aggr_ast)
         result.aggregated = True
         return result
     def __call__(monad, *args, **kwargs): throw(TypeError)
@@ -1153,7 +1152,7 @@ class RawSQLMonad(Monad):
                     '%s database provider does not support tuples. Got: {EXPR} ' % translator.dialect)
         op = 'NOT_IN' if not_in else 'IN'
         sql = [ op, expr, monad.getsql() ]
-        return translator.BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql)
     def nonzero(monad): return monad
     def getsql(monad, subquery=None):
         provider = monad.translator.database.provider
@@ -1263,7 +1262,7 @@ class ListMonad(Monad):
             sql = sqland([ sqlor([ [ 'NE', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
         else:
             sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
-        return translator.BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql)
     def getsql(monad, subquery=None):
         return [ [ 'ROW' ] + [ item.getsql()[0] for item in monad.items ] ]
 
@@ -1278,15 +1277,15 @@ _binop_errmsg = 'Unsupported operand types %r and %r for operation %r in express
 def make_numeric_binop(op, sqlop):
     def numeric_binop(monad, monad2):
         translator = monad.translator
-        if isinstance(monad2, (translator.AttrSetMonad, translator.NumericSetExprMonad)):
-            return translator.NumericSetExprMonad(op, sqlop, monad, monad2)
+        if isinstance(monad2, (AttrSetMonad, NumericSetExprMonad)):
+            return NumericSetExprMonad(op, sqlop, monad, monad2)
         if monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
         result_type, monad, monad2 = coerce_monads(monad, monad2)
         if result_type is None:
             throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         left_sql = monad.getsql()[0]
         right_sql = monad2.getsql()[0]
-        return translator.NumericExprMonad(translator, result_type, [ sqlop, left_sql, right_sql ])
+        return NumericExprMonad(translator, result_type, [ sqlop, left_sql, right_sql ])
     numeric_binop.__name__ = sqlop
     return numeric_binop
 
@@ -1301,36 +1300,36 @@ class NumericMixin(MonadMixin):
     __mod__ = make_numeric_binop('%', 'MOD')
     def __pow__(monad, monad2):
         translator = monad.translator
-        if not isinstance(monad2, translator.NumericMixin):
+        if not isinstance(monad2, NumericMixin):
             throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), '**'))
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return translator.NumericExprMonad(translator, float, [ 'POW', left_sql[0], right_sql[0] ])
+        return NumericExprMonad(translator, float, [ 'POW', left_sql[0], right_sql[0] ])
     def __neg__(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        return translator.NumericExprMonad(translator, monad.type, [ 'NEG', sql ])
+        return NumericExprMonad(translator, monad.type, [ 'NEG', sql ])
     def abs(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        return translator.NumericExprMonad(translator, monad.type, [ 'ABS', sql ])
+        return NumericExprMonad(translator, monad.type, [ 'ABS', sql ])
     def nonzero(monad):
         translator = monad.translator
-        return translator.CmpMonad('!=', monad, translator.ConstMonad.new(translator, 0))
+        return CmpMonad('!=', monad, ConstMonad.new(translator, 0))
     def negate(monad):
         translator = monad.translator
-        result = translator.CmpMonad('==', monad, translator.ConstMonad.new(translator, 0))
-        if isinstance(monad, translator.AttrMonad) and not monad.attr.nullable:
+        result = CmpMonad('==', monad, ConstMonad.new(translator, 0))
+        if isinstance(monad, AttrMonad) and not monad.attr.nullable:
             return result
         sql = [ 'OR', result.getsql()[0], [ 'IS_NULL', monad.getsql()[0] ] ]
-        return translator.BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql)
 
 def numeric_attr_factory(name):
     def attr_func(monad):
         sql = [ name, monad.getsql()[0] ]
         translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)
+        return NumericExprMonad(translator, int, sql)
     attr_func.__name__ = name.lower()
     return attr_func
 
@@ -1339,7 +1338,7 @@ def make_datetime_binop(op, sqlop):
         translator = monad.translator
         if monad2.type != timedelta: throw(TypeError,
             _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
-        expr_monad_cls = translator.DateExprMonad if monad.type is date else translator.DatetimeExprMonad
+        expr_monad_cls = DateExprMonad if monad.type is date else DatetimeExprMonad
         delta = monad2.value if isinstance(monad2, TimedeltaConstMonad) else monad2.getsql()[0]
         return expr_monad_cls(translator, monad.type, [ sqlop, monad.getsql()[0], delta ])
     datetime_binop.__name__ = sqlop
@@ -1371,7 +1370,7 @@ class DatetimeMixin(DateMixin):
     def call_date(monad):
         translator = monad.translator
         sql = [ 'DATE', monad.getsql()[0] ]
-        return translator.ExprMonad.new(translator, date, sql)
+        return ExprMonad.new(translator, date, sql)
     attr_hour = numeric_attr_factory('HOUR')
     attr_minute = numeric_attr_factory('MINUTE')
     attr_second = numeric_attr_factory('SECOND')
@@ -1387,7 +1386,7 @@ def make_string_binop(op, sqlop):
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return translator.StringExprMonad(translator, monad.type, [ sqlop, left_sql[0], right_sql[0] ])
+        return StringExprMonad(translator, monad.type, [ sqlop, left_sql[0], right_sql[0] ])
     string_binop.__name__ = sqlop
     return string_binop
 
@@ -1396,7 +1395,7 @@ def make_string_func(sqlop):
         sql = monad.getsql()
         assert len(sql) == 1
         translator = monad.translator
-        return translator.StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
+        return StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
     func.__name__ = sqlop
     return func
 
@@ -1406,17 +1405,17 @@ class StringMixin(MonadMixin):
     __add__ = make_string_binop('+', 'CONCAT')
     def __getitem__(monad, index):
         translator = monad.translator
-        if isinstance(index, translator.ListMonad): throw(TypeError, "String index must be of 'int' type. Got 'tuple' in {EXPR}")
+        if isinstance(index, ListMonad): throw(TypeError, "String index must be of 'int' type. Got 'tuple' in {EXPR}")
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
             if start is None and stop is None: return monad
-            if isinstance(monad, translator.StringConstMonad) \
-               and (start is None or isinstance(start, translator.NumericConstMonad)) \
-               and (stop is None or isinstance(stop, translator.NumericConstMonad)):
+            if isinstance(monad, StringConstMonad) \
+               and (start is None or isinstance(start, NumericConstMonad)) \
+               and (stop is None or isinstance(stop, NumericConstMonad)):
                 if start is not None: start = start.value
                 if stop is not None: stop = stop.value
-                return translator.ConstMonad.new(translator, monad.value[start:stop])
+                return ConstMonad.new(translator, monad.value[start:stop])
 
             if start is not None and start.type is not int:
                 throw(TypeError, "Invalid type of start index (expected 'int', got %r) in string slice {EXPR}" % type2str(start.type))
@@ -1424,9 +1423,9 @@ class StringMixin(MonadMixin):
                 throw(TypeError, "Invalid type of stop index (expected 'int', got %r) in string slice {EXPR}" % type2str(stop.type))
             expr_sql = monad.getsql()[0]
 
-            if start is None: start = translator.ConstMonad.new(translator, 0)
+            if start is None: start = ConstMonad.new(translator, 0)
 
-            if isinstance(start, translator.NumericConstMonad):
+            if isinstance(start, NumericConstMonad):
                 if start.value < 0: throw(NotImplementedError, 'Negative indices are not supported in string slice {EXPR}')
                 start_sql = [ 'VALUE', start.value + 1 ]
             else:
@@ -1435,28 +1434,28 @@ class StringMixin(MonadMixin):
 
             if stop is None:
                 len_sql = None
-            elif isinstance(stop, translator.NumericConstMonad):
+            elif isinstance(stop, NumericConstMonad):
                 if stop.value < 0: throw(NotImplementedError, 'Negative indices are not supported in string slice {EXPR}')
-                if isinstance(start, translator.NumericConstMonad):
+                if isinstance(start, NumericConstMonad):
                     len_sql = [ 'VALUE', stop.value - start.value ]
                 else:
                     len_sql = [ 'SUB', [ 'VALUE', stop.value ], start.getsql()[0] ]
             else:
                 stop_sql = stop.getsql()[0]
-                if isinstance(start, translator.NumericConstMonad):
+                if isinstance(start, NumericConstMonad):
                     len_sql = [ 'SUB', stop_sql, [ 'VALUE', start.value ] ]
                 else:
                     len_sql = [ 'SUB', stop_sql, start.getsql()[0] ]
 
             sql = [ 'SUBSTR', expr_sql, start_sql, len_sql ]
-            return translator.StringExprMonad(translator, monad.type, sql)
+            return StringExprMonad(translator, monad.type, sql)
 
-        if isinstance(monad, translator.StringConstMonad) and isinstance(index, translator.NumericConstMonad):
-            return translator.ConstMonad.new(translator, monad.value[index.value])
+        if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
+            return ConstMonad.new(translator, monad.value[index.value])
         if index.type is not int: throw(TypeError,
             'String indices must be integers. Got %r in expression {EXPR}' % type2str(index.type))
         expr_sql = monad.getsql()[0]
-        if isinstance(index, translator.NumericConstMonad):
+        if isinstance(index, NumericConstMonad):
             value = index.value
             if value >= 0: value += 1
             index_sql = [ 'VALUE', value ]
@@ -1464,23 +1463,23 @@ class StringMixin(MonadMixin):
             inner_sql = index.getsql()[0]
             index_sql = [ 'ADD', inner_sql, [ 'CASE', None, [ (['GE', inner_sql, [ 'VALUE', 0 ]], [ 'VALUE', 1 ]) ], [ 'VALUE', 0 ] ] ]
         sql = [ 'SUBSTR', expr_sql, index_sql, [ 'VALUE', 1 ] ]
-        return translator.StringExprMonad(translator, monad.type, sql)
+        return StringExprMonad(translator, monad.type, sql)
     def negate(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        result = translator.BoolExprMonad(translator, [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result = BoolExprMonad(translator, [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
         result.aggregated = monad.aggregated
         return result
     def nonzero(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        result = translator.BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result = BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
         result.aggregated = monad.aggregated
         return result
     def len(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        return translator.NumericExprMonad(translator, int, [ 'LENGTH', sql ])
+        return NumericExprMonad(translator, int, [ 'LENGTH', sql ])
     def contains(monad, item, not_in=False):
         check_comparable(item, monad, 'LIKE')
         return monad._like(item, before='%', after='%', not_like=not_in)
@@ -1501,7 +1500,7 @@ class StringMixin(MonadMixin):
     def _like(monad, item, before=None, after=None, not_like=False):
         escape = False
         translator = monad.translator
-        if isinstance(item, translator.StringConstMonad):
+        if isinstance(item, StringConstMonad):
             value = item.value
             if '%' in value or '_' in value:
                 escape = True
@@ -1520,7 +1519,7 @@ class StringMixin(MonadMixin):
             elif after: item_sql = [ 'CONCAT', item_sql, [ 'VALUE', after ] ]
         sql = [ 'NOT_LIKE' if not_like else 'LIKE', monad.getsql()[0], item_sql ]
         if escape: sql.append([ 'VALUE', '!' ])
-        return translator.BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql)
     def strip(monad, chars, strip_type):
         translator = monad.translator
         if chars is not None and not are_comparable_types(monad.type, chars.type, None):
@@ -1530,7 +1529,7 @@ class StringMixin(MonadMixin):
         parent_sql = monad.getsql()[0]
         sql = [ strip_type, parent_sql ]
         if chars is not None: sql.append(chars.getsql()[0])
-        return translator.StringExprMonad(translator, monad.type, sql)
+        return StringExprMonad(translator, monad.type, sql)
     def call_strip(monad, chars=None):
         return monad.strip(chars, 'TRIM')
     def call_lstrip(monad, chars=None):
@@ -1547,7 +1546,7 @@ class JsonMixin(object):
     def get_path(monad):
         return monad, []
     def __getitem__(monad, key):
-        return monad.translator.JsonItemMonad(monad, key)
+        return JsonItemMonad(monad, key)
     def contains(monad, key, not_in=False):
         translator = monad.translator
         if isinstance(key, ParamMonad):
@@ -1560,35 +1559,35 @@ class JsonMixin(object):
         key_sql = key.getsql()[0]
         sql = [ 'JSON_CONTAINS', base_sql, path, key_sql ]
         if not_in: sql = [ 'NOT', sql ]
-        return translator.BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql)
     def __or__(monad, other):
         translator = monad.translator
-        if not isinstance(other, translator.JsonMixin):
+        if not isinstance(other, JsonMixin):
             raise TypeError('Should be JSON: %s' % ast2src(other.node))
         left_sql = monad.getsql()[0]
         right_sql = other.getsql()[0]
         sql = [ 'JSON_CONCAT', left_sql, right_sql ]
-        return translator.JsonExprMonad(translator, Json, sql)
+        return JsonExprMonad(translator, Json, sql)
     def len(monad):
         translator = monad.translator
         sql = [ 'JSON_ARRAY_LENGTH', monad.getsql()[0] ]
-        return translator.NumericExprMonad(translator, int, sql)
+        return NumericExprMonad(translator, int, sql)
     def cast_from_json(monad, type):
         if type in (Json, NoneType): return monad
         throw(TypeError, 'Cannot compare whole JSON value, you need to select specific sub-item: {EXPR}')
     def nonzero(monad):
         translator = monad.translator
-        return translator.BoolExprMonad(translator, [ 'JSON_NONZERO', monad.getsql()[0] ])
+        return BoolExprMonad(translator, [ 'JSON_NONZERO', monad.getsql()[0] ])
 
 class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
     def negate(monad):
         translator = monad.translator
-        return translator.CmpMonad('is', monad, translator.NoneMonad(translator))
+        return CmpMonad('is', monad, NoneMonad(translator))
     def nonzero(monad):
         translator = monad.translator
-        return translator.CmpMonad('is not', monad, translator.NoneMonad(translator))
+        return CmpMonad('is not', monad, NoneMonad(translator))
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
@@ -1597,9 +1596,9 @@ class ObjectMixin(MonadMixin):
             'Entity %s does not have attribute %s: {EXPR}' % (entity.__name__, name))
         if hasattr(monad, 'tableref'): monad.tableref.used_attrs.add(attr)
         if not attr.is_collection:
-            return translator.AttrMonad.new(monad, attr)
+            return AttrMonad.new(monad, attr)
         else:
-            return translator.AttrSetMonad(monad, attr)
+            return AttrSetMonad(monad, attr)
     def requires_distinct(monad, joined=False):
         return monad.attr.reverse.is_collection or monad.parent.requires_distinct(joined)  # parent ???
 
@@ -1619,16 +1618,16 @@ class AttrMonad(Monad):
     def new(parent, attr, *args, **kwargs):
         translator = parent.translator
         type = normalize_type(attr.py_type)
-        if type in numeric_types: cls = translator.NumericAttrMonad
-        elif type is unicode: cls = translator.StringAttrMonad
-        elif type is date: cls = translator.DateAttrMonad
-        elif type is time: cls = translator.TimeAttrMonad
-        elif type is timedelta: cls = translator.TimedeltaAttrMonad
-        elif type is datetime: cls = translator.DatetimeAttrMonad
-        elif type is buffer: cls = translator.BufferAttrMonad
-        elif type is UUID: cls = translator.UuidAttrMonad
-        elif type is Json: cls = translator.JsonAttrMonad
-        elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
+        if type in numeric_types: cls = NumericAttrMonad
+        elif type is unicode: cls = StringAttrMonad
+        elif type is date: cls = DateAttrMonad
+        elif type is time: cls = TimeAttrMonad
+        elif type is timedelta: cls = TimedeltaAttrMonad
+        elif type is datetime: cls = DatetimeAttrMonad
+        elif type is buffer: cls = BufferAttrMonad
+        elif type is UUID: cls = UuidAttrMonad
+        elif type is Json: cls = JsonAttrMonad
+        elif isinstance(type, EntityMeta): cls = ObjectAttrMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
@@ -1680,14 +1679,14 @@ class StringAttrMonad(StringMixin, AttrMonad):
         result_sql = [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
         if monad.attr.nullable:
             result_sql = [ 'OR', result_sql, [ 'IS_NULL', sql ] ]
-        result = translator.BoolExprMonad(translator, result_sql)
+        result = BoolExprMonad(translator, result_sql)
         result.aggregated = monad.aggregated
         return result
     def nonzero(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
         result_sql = [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
-        result = translator.BoolExprMonad(translator,  result_sql)
+        result = BoolExprMonad(translator,  result_sql)
         result.aggregated = monad.aggregated
         return result
 
@@ -1704,16 +1703,16 @@ class ParamMonad(Monad):
     @staticmethod
     def new(translator, type, paramkey):
         type = normalize_type(type)
-        if type in numeric_types: cls = translator.NumericParamMonad
-        elif type is unicode: cls = translator.StringParamMonad
-        elif type is date: cls = translator.DateParamMonad
-        elif type is time: cls = translator.TimeParamMonad
-        elif type is timedelta: cls = translator.TimedeltaParamMonad
-        elif type is datetime: cls = translator.DatetimeParamMonad
-        elif type is buffer: cls = translator.BufferParamMonad
-        elif type is UUID: cls = translator.UuidParamMonad
-        elif type is Json: cls = translator.JsonParamMonad
-        elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
+        if type in numeric_types: cls = NumericParamMonad
+        elif type is unicode: cls = StringParamMonad
+        elif type is date: cls = DateParamMonad
+        elif type is time: cls = TimeParamMonad
+        elif type is timedelta: cls = TimedeltaParamMonad
+        elif type is datetime: cls = DatetimeParamMonad
+        elif type is buffer: cls = BufferParamMonad
+        elif type is UUID: cls = UuidParamMonad
+        elif type is Json: cls = JsonParamMonad
+        elif isinstance(type, EntityMeta): cls = ObjectParamMonad
         else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type,))
         result = cls(translator, type, paramkey)
         result.aggregated = False
@@ -1762,14 +1761,14 @@ class JsonParamMonad(JsonMixin, ParamMonad):
 class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
-        if type in numeric_types: cls = translator.NumericExprMonad
-        elif type is unicode: cls = translator.StringExprMonad
-        elif type is date: cls = translator.DateExprMonad
-        elif type is time: cls = translator.TimeExprMonad
-        elif type is timedelta: cls = translator.TimedeltaExprMonad
-        elif type is datetime: cls = translator.DatetimeExprMonad
-        elif type is Json: cls = translator.JsonExprMonad
-        elif isinstance(type, EntityMeta): cls = translator.ObjectExprMonad
+        if type in numeric_types: cls = NumericExprMonad
+        elif type is unicode: cls = StringExprMonad
+        elif type is date: cls = DateExprMonad
+        elif type is time: cls = TimeExprMonad
+        elif type is timedelta: cls = TimedeltaExprMonad
+        elif type is datetime: cls = DatetimeExprMonad
+        elif type is Json: cls = JsonExprMonad
+        elif isinstance(type, EntityMeta): cls = ObjectExprMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
     def __new__(cls, *args):
@@ -1824,7 +1823,7 @@ class JsonItemMonad(JsonMixin, Monad):
             return monad
         base_monad, path = monad.get_path()
         sql = [ 'JSON_VALUE', base_monad.getsql()[0], path, type ]
-        return translator.ExprMonad.new(translator, Json if type is NoneType else type, sql)
+        return ExprMonad.new(translator, Json if type is NoneType else type, sql)
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
@@ -1837,16 +1836,16 @@ class ConstMonad(Monad):
     @staticmethod
     def new(translator, value):
         value_type, value = normalize(value)
-        if value_type in numeric_types: cls = translator.NumericConstMonad
-        elif value_type is unicode: cls = translator.StringConstMonad
-        elif value_type is date: cls = translator.DateConstMonad
-        elif value_type is time: cls = translator.TimeConstMonad
-        elif value_type is timedelta: cls = translator.TimedeltaConstMonad
-        elif value_type is datetime: cls = translator.DatetimeConstMonad
-        elif value_type is NoneType: cls = translator.NoneMonad
-        elif value_type is buffer: cls = translator.BufferConstMonad
-        elif value_type is Json: cls = translator.JsonConstMonad
-        elif issubclass(value_type, type(Ellipsis)): cls = translator.EllipsisMonad
+        if value_type in numeric_types: cls = NumericConstMonad
+        elif value_type is unicode: cls = StringConstMonad
+        elif value_type is date: cls = DateConstMonad
+        elif value_type is time: cls = TimeConstMonad
+        elif value_type is timedelta: cls = TimedeltaConstMonad
+        elif value_type is datetime: cls = DatetimeConstMonad
+        elif value_type is NoneType: cls = NoneMonad
+        elif value_type is buffer: cls = BufferConstMonad
+        elif value_type is Json: cls = JsonConstMonad
+        elif issubclass(value_type, type(Ellipsis)): cls = EllipsisMonad
         else: throw(NotImplementedError, value_type)  # pragma: no cover
         result = cls(translator, value)
         result.aggregated = False
@@ -1872,7 +1871,7 @@ class EllipsisMonad(ConstMonad):
 
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
-        return monad.translator.ConstMonad.new(monad.translator, len(monad.value))
+        return ConstMonad.new(monad.translator, len(monad.value))
 
 class JsonConstMonad(JsonMixin, ConstMonad): pass
 class BufferConstMonad(BufferMixin, ConstMonad): pass
@@ -1905,8 +1904,8 @@ class BoolExprMonad(BoolMonad):
         elif negated_op == 'NOT':
             assert len(sql) == 2
             negated_sql = sql[1]
-        else: return translator.NotMonad(translator, sql)
-        return translator.BoolExprMonad(translator, negated_sql)
+        else: return NotMonad(translator, sql)
+        return BoolExprMonad(translator, negated_sql)
 
 cmp_ops = { '>=' : 'GE', '>' : 'GT', '<=' : 'LE', '<' : 'LT' }
 
@@ -1941,7 +1940,7 @@ class CmpMonad(BoolMonad):
         monad.left = left
         monad.right = right
     def negate(monad):
-        return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
+        return CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):
         op = monad.op
         left_sql = monad.left.getsql()
@@ -1980,7 +1979,7 @@ class LogicalBinOpMonad(BoolMonad):
         monad.translator = translator
         for operand in operands:
             if operand.type is not bool: items.append(operand.nonzero())
-            elif isinstance(operand, translator.LogicalBinOpMonad) and monad.binop == operand.binop:
+            elif isinstance(operand, LogicalBinOpMonad) and monad.binop == operand.binop:
                 items.extend(operand.operands)
             else: items.append(operand)
         BoolMonad.__init__(monad, items[0].translator)
@@ -2030,9 +2029,9 @@ class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
     def __call__(monad, *args, **kwargs):
         translator = monad.translator
         for arg in args:
-            assert isinstance(arg, translator.Monad)
+            assert isinstance(arg, Monad)
         for value in kwargs.values():
-            assert isinstance(value, translator.Monad)
+            assert isinstance(value, Monad)
         try: return monad.call(*args, **kwargs)
         except TypeError as exc:
             reraise_improved_typeerror(exc, 'call', monad.type.__name__)
@@ -2041,23 +2040,23 @@ class FuncBufferMonad(FuncMonad):
     func = buffer
     def call(monad, source, encoding=None, errors=None):
         translator = monad.translator
-        if not isinstance(source, translator.StringConstMonad): throw(TypeError)
+        if not isinstance(source, StringConstMonad): throw(TypeError)
         source = source.value
         if encoding is not None:
-            if not isinstance(encoding, translator.StringConstMonad): throw(TypeError)
+            if not isinstance(encoding, StringConstMonad): throw(TypeError)
             encoding = encoding.value
         if errors is not None:
-            if not isinstance(errors, translator.StringConstMonad): throw(TypeError)
+            if not isinstance(errors, StringConstMonad): throw(TypeError)
             errors = errors.value
         if PY2:
             if encoding and errors: source = source.encode(encoding, errors)
             elif encoding: source = source.encode(encoding)
-            return translator.ConstMonad.new(translator, buffer(source))
+            return ConstMonad.new(translator, buffer(source))
         else:
             if encoding and errors: value = buffer(source, encoding, errors)
             elif encoding: value = buffer(source, encoding)
             else: value = buffer(source)
-            return translator.ConstMonad.new(translator, value)
+            return ConstMonad.new(translator, value)
 
 class FuncBoolMonad(FuncMonad):
     func = bool
@@ -2078,32 +2077,32 @@ class FuncDecimalMonad(FuncMonad):
     func = Decimal
     def call(monad, x):
         translator = monad.translator
-        if not isinstance(x, translator.StringConstMonad): throw(TypeError)
-        return translator.ConstMonad.new(translator, Decimal(x.value))
+        if not isinstance(x, StringConstMonad): throw(TypeError)
+        return ConstMonad.new(translator, Decimal(x.value))
 
 class FuncDateMonad(FuncMonad):
     func = date
     def call(monad, year, month, day):
         translator = monad.translator
         for arg, name in izip((year, month, day), ('year', 'month', 'day')):
-            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+            if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of date(year, month, day) function must be of 'int' type. "
                 "Got: %r" % (name, type2str(arg.type)))
             if not isinstance(arg, ConstMonad): throw(NotImplementedError)
-        return translator.ConstMonad.new(translator, date(year.value, month.value, day.value))
+        return ConstMonad.new(translator, date(year.value, month.value, day.value))
     def call_today(monad):
         translator = monad.translator
-        return translator.DateExprMonad(translator, date, [ 'TODAY' ])
+        return DateExprMonad(translator, date, [ 'TODAY' ])
 
 class FuncTimeMonad(FuncMonad):
     func = time
     def call(monad, *args):
         translator = monad.translator
         for arg, name in izip(args, ('hour', 'minute', 'second', 'microsecond')):
-            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+            if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of time(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
             if not isinstance(arg, ConstMonad): throw(NotImplementedError)
-        return translator.ConstMonad.new(translator, time(*tuple(arg.value for arg in args)))
+        return ConstMonad.new(translator, time(*tuple(arg.value for arg in args)))
 
 class FuncTimedeltaMonad(FuncMonad):
     func = timedelta
@@ -2112,11 +2111,11 @@ class FuncTimedeltaMonad(FuncMonad):
         args = days, seconds, microseconds, milliseconds, minutes, hours, weeks
         for arg, name in izip(args, ('days', 'seconds', 'microseconds', 'milliseconds', 'minutes', 'hours', 'weeks')):
             if arg is None: continue
-            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+            if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of timedelta(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
             if not isinstance(arg, ConstMonad): throw(NotImplementedError)
         value = timedelta(*(arg.value if arg is not None else 0 for arg in args))
-        return translator.ConstMonad.new(translator, value)
+        return ConstMonad.new(translator, value)
 
 class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
@@ -2125,14 +2124,14 @@ class FuncDatetimeMonad(FuncDateMonad):
         translator = monad.translator
         for arg, name in izip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
             if arg is None: continue
-            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+            if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
             if not isinstance(arg, ConstMonad): throw(NotImplementedError)
         value = datetime(*(arg.value if arg is not None else 0 for arg in args))
-        return translator.ConstMonad.new(translator, value)
+        return ConstMonad.new(translator, value)
     def call_now(monad):
         translator = monad.translator
-        return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
+        return DatetimeExprMonad(translator, datetime, [ 'NOW' ])
 
 class FuncBetweenMonad(FuncMonad):
     func = between
@@ -2143,7 +2142,7 @@ class FuncBetweenMonad(FuncMonad):
             '%s instance cannot be argument of between() function: {EXPR}' % x.type.__name__)
         translator = x.translator
         sql = [ 'BETWEEN', x.getsql()[0], a.getsql()[0], b.getsql()[0] ]
-        return translator.BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql)
 
 class FuncConcatMonad(FuncMonad):
     func = concat
@@ -2156,7 +2155,7 @@ class FuncConcatMonad(FuncMonad):
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
             result_ast.extend(arg.getsql())
-        return translator.ExprMonad.new(translator, unicode, result_ast)
+        return ExprMonad.new(translator, unicode, result_ast)
 
 class FuncLenMonad(FuncMonad):
     func = len
@@ -2173,9 +2172,9 @@ class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count
     def call(monad, x=None, distinct=None):
         translator = monad.translator
-        if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
+        if isinstance(x, StringConstMonad) and x.value == '*': x = None
         if x is not None: return x.count(distinct)
-        result = translator.ExprMonad.new(translator, int, [ 'COUNT', None ])
+        result = ExprMonad.new(translator, int, [ 'COUNT', None ])
         result.aggregated = True
         return result
 
@@ -2217,7 +2216,7 @@ class FuncCoalesceMonad(FuncMonad):
                 result[i].append(sql)
         sql = [ [ 'COALESCE' ] + coalesce_args for coalesce_args in result ]
         if not isinstance(t, EntityMeta): sql = sql[0]
-        return translator.ExprMonad.new(translator, t, sql)
+        return ExprMonad.new(translator, t, sql)
 
 class FuncDistinctMonad(FuncMonad):
     func = utils.distinct, core.distinct
@@ -2263,20 +2262,20 @@ def minmax(monad, sqlop, *args):
             if arg.type is bool:
                 args[i] = NumericExprMonad(translator, int, [ 'TO_INT', arg.getsql() ])
     sql = [ sqlop, None ] + [ arg.getsql()[0] for arg in args ]
-    return translator.ExprMonad.new(translator, t, sql)
+    return ExprMonad.new(translator, t, sql)
 
 class FuncSelectMonad(FuncMonad):
     func = core.select
     def call(monad, queryset):
         translator = monad.translator
-        if not isinstance(queryset, translator.QuerySetMonad): throw(TypeError,
+        if not isinstance(queryset, QuerySetMonad): throw(TypeError,
             "'select' function expects generator expression, got: {EXPR}")
         return queryset
 
 class FuncExistsMonad(FuncMonad):
     func = core.exists
     def call(monad, arg):
-        if not isinstance(arg, monad.translator.SetMixin): throw(TypeError,
+        if not isinstance(arg, SetMixin): throw(TypeError,
             "'exists' function expects generator expression or collection, got: {EXPR}")
         return arg.nonzero()
 
@@ -2320,7 +2319,6 @@ class SetMixin(MonadMixin):
 
 def make_attrset_binop(op, sqlop):
     def attrset_binop(monad, monad2):
-        NumericSetExprMonad = monad.translator.NumericSetExprMonad
         return NumericSetExprMonad(op, sqlop, monad, monad2)
     return attrset_binop
 
@@ -2357,7 +2355,7 @@ class AttrSetMonad(SetMixin, Monad):
             else:
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
-            result = translator.BoolExprMonad(translator, sql_ast)
+            result = BoolExprMonad(translator, sql_ast)
             result.nogroup = True
             return result
         elif not not_in:
@@ -2365,7 +2363,7 @@ class AttrSetMonad(SetMixin, Monad):
             tableref = monad.make_tableref(translator.subquery)
             expr_list = monad.make_expr_list()
             expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in izip(expr_list, item.getsql()) ])
-            return translator.BoolExprMonad(translator, expr_ast)
+            return BoolExprMonad(translator, expr_ast)
         else:
             subquery = Subquery(translator.subquery)
             tableref = monad.make_tableref(subquery)
@@ -2380,7 +2378,7 @@ class AttrSetMonad(SetMixin, Monad):
             conditions.extend(subquery.conditions)
             from_ast[-1][-1] = sqland([ from_ast[-1][-1] ] + conditions)
             expr_ast = sqland([ [ 'IS_NULL', expr ] for expr in expr_list ])
-            return translator.BoolExprMonad(translator, expr_ast)
+            return BoolExprMonad(translator, expr_ast)
     def getattr(monad, name):
         try: return Monad.getattr(monad, name)
         except AttributeError: pass
@@ -2388,7 +2386,7 @@ class AttrSetMonad(SetMixin, Monad):
         if not isinstance(entity, EntityMeta): throw(AttributeError)
         attr = entity._adict_.get(name)
         if attr is None: throw(AttributeError)
-        return monad.translator.AttrSetMonad(monad, attr)
+        return AttrSetMonad(monad, attr)
     def requires_distinct(monad, joined=False, for_count=False):
         if monad.parent.requires_distinct(joined): return True
         reverse = monad.attr.reverse
@@ -2396,7 +2394,7 @@ class AttrSetMonad(SetMixin, Monad):
         if reverse.is_collection:
             translator = monad.translator
             if not for_count and not translator.hint_join: return True
-            if isinstance(monad.parent, monad.translator.AttrSetMonad): return True
+            if isinstance(monad.parent, AttrSetMonad): return True
         return False
     def count(monad, distinct=None):
         translator = monad.translator
@@ -2450,7 +2448,7 @@ class AttrSetMonad(SetMixin, Monad):
         else:
             sql_ast, optimized = monad._aggregated_scalar_subselect(make_aggr, extra_grouping)
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
-        result = translator.ExprMonad.new(translator, int, sql_ast)
+        result = ExprMonad.new(translator, int, sql_ast)
         if optimized: result.aggregated = True
         else: result.nogroup = True
         return result
@@ -2494,7 +2492,7 @@ class AttrSetMonad(SetMixin, Monad):
         else:
             result_type = item_type
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
-        result = translator.ExprMonad.new(monad.translator, result_type, sql_ast)
+        result = ExprMonad.new(monad.translator, result_type, sql_ast)
         if optimized: result.aggregated = True
         else: result.nogroup = True
         return result
@@ -2503,20 +2501,20 @@ class AttrSetMonad(SetMixin, Monad):
         sql_ast = [ 'EXISTS', subquery.from_ast,
                     [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         translator = monad.translator
-        return translator.BoolExprMonad(translator, sql_ast)
+        return BoolExprMonad(translator, sql_ast)
     def negate(monad):
         subquery = monad._subselect()
         sql_ast = [ 'NOT_EXISTS', subquery.from_ast,
                     [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         translator = monad.translator
-        return translator.BoolExprMonad(translator, sql_ast)
+        return BoolExprMonad(translator, sql_ast)
     call_is_empty = negate
     def make_tableref(monad, subquery):
         parent = monad.parent
         attr = monad.attr
         translator = monad.translator
         if isinstance(parent, ObjectMixin): parent_tableref = parent.tableref
-        elif isinstance(parent, translator.AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
+        elif isinstance(parent, AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
         else: assert False  # pragma: no cover
         if attr.reverse:
             name_path = parent_tableref.name_path + '-' + attr.name
@@ -2638,7 +2636,6 @@ class AttrSetMonad(SetMixin, Monad):
 
 def make_numericset_binop(op, sqlop):
     def numericset_binop(monad, monad2):
-        NumericSetExprMonad = monad.translator.NumericSetExprMonad
         return NumericSetExprMonad(op, sqlop, monad, monad2)
     return numericset_binop
 
@@ -2676,7 +2673,7 @@ class NumericSetExprMonad(SetMixin, Monad):
             sql_ast = [ 'SELECT', [ 'AGGREGATES', aggr_ast ],
                         subquery.from_ast,
                         [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
-            result = translator.ExprMonad.new(translator, result_type, sql_ast)
+            result = ExprMonad.new(translator, result_type, sql_ast)
             result.nogroup = True
         else:
             if not translator.from_optimized:
@@ -2685,7 +2682,7 @@ class NumericSetExprMonad(SetMixin, Monad):
                 translator.subquery.from_ast.extend(from_ast)
                 translator.from_optimized = True
             sql_ast = aggr_ast
-            result = translator.ExprMonad.new(translator, result_type, sql_ast)
+            result = ExprMonad.new(translator, result_type, sql_ast)
             result.aggregated = True
         return result
     def getsql(monad, subquery=None):
@@ -2722,7 +2719,7 @@ class QuerySetMonad(SetMixin, Monad):
     def contains(monad, item, not_in=False):
         translator = monad.translator
         check_comparable(item, monad, 'in')
-        if isinstance(item, translator.ListMonad):
+        if isinstance(item, ListMonad):
             item_columns = []
             for subitem in item.items: item_columns.extend(subitem.getsql())
         else: item_columns = item.getsql()
@@ -2779,17 +2776,17 @@ class QuerySetMonad(SetMixin, Monad):
                     having_ast = find_or_create_having_ast(subquery_ast)
                     having_ast += in_conditions
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS' ] + subquery_ast[2:]
-        return translator.BoolExprMonad(translator, sql_ast)
+        return BoolExprMonad(translator, sql_ast)
     def nonzero(monad):
         subquery_ast = monad.subtranslator.shallow_copy_of_subquery_ast()
         subquery_ast = [ 'EXISTS' ] + subquery_ast[2:]
         translator = monad.translator
-        return translator.BoolExprMonad(translator, subquery_ast)
+        return BoolExprMonad(translator, subquery_ast)
     def negate(monad):
         sql = monad.nonzero().sql
         assert sql[0] == 'EXISTS'
         translator = monad.translator
-        return translator.BoolExprMonad(translator, [ 'NOT_EXISTS' ] + sql[1:])
+        return BoolExprMonad(translator, [ 'NOT_EXISTS' ] + sql[1:])
     def count(monad, distinct=None):
         distinct = distinct_from_monad(distinct)
         translator = monad.translator
@@ -2831,7 +2828,7 @@ class QuerySetMonad(SetMixin, Monad):
         else: throw(NotImplementedError)  # pragma: no cover
 
         if sql_ast is None: sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
-        return translator.ExprMonad.new(translator, int, sql_ast)
+        return ExprMonad.new(translator, int, sql_ast)
     len = count
     def aggregate(monad, func_name, distinct=None, sep=None):
         distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
@@ -2866,7 +2863,7 @@ class QuerySetMonad(SetMixin, Monad):
             result_type = unicode
         else:
             result_type = expr_type
-        return translator.ExprMonad.new(translator, result_type, sql_ast)
+        return ExprMonad.new(translator, result_type, sql_ast)
     def call_count(monad, distinct=None):
         return monad.count(distinct=distinct)
     def call_sum(monad, distinct=None):
@@ -2894,8 +2891,3 @@ def find_or_create_having_ast(subquery_ast):
     having_ast = [ 'HAVING' ]
     subquery_ast.insert(groupby_offset + 1, having_ast)
     return having_ast
-
-for name, value in items_list(globals()):
-    if name.endswith('Monad') or name.endswith('Mixin'):
-        setattr(SQLTranslator, name, value)
-del name, value
