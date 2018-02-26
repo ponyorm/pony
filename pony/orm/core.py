@@ -5585,7 +5585,6 @@ class Query(object):
             cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
-            subquery = prev_translator.subquery
             func_id = id(func.func_code if PY2 else func.__code__)
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
