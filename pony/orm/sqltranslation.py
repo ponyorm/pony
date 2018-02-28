@@ -163,14 +163,17 @@ class SQLTranslator(ASTTranslator):
                     else: throw(TranslationError, 'Too complex aggregation, expressions cannot be combined: %s' % ast2src(node))
             return monad
 
-    def __init__(translator, tree, filter_num, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
+    def __init__(translator, tree, filter_num, extractors, vars, vartypes, parent_translator=None, left_join=False, optimize=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
+        translator.can_be_cached = True
         translator.database = None
         translator.lambda_argnames = None
         translator.filter_num = translator.original_filter_num = filter_num
         translator.extractors = extractors
+        translator.vars = vars.copy() if vars is not None else None
         translator.vartypes = vartypes.copy()
+        translator.getattr_values = {}
         translator.parent = parent_translator
         translator.left_join = left_join
         translator.optimize = optimize
@@ -362,6 +365,7 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
+        translator.vars = None
     def shallow_copy_of_subquery_ast(translator, move_outer_conditions=True, is_not_null_checks=False):
         subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=is_not_null_checks)
         assert attr_offsets is None
@@ -616,11 +620,12 @@ class SQLTranslator(ASTTranslator):
                 monads.append(CmpMonad('==', attr_monad, param_monad))
         for m in monads: translator.conditions.extend(m.getsql())
         return translator
-    def apply_lambda(translator, filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes):
+    def apply_lambda(translator, filter_num, order_by, func_ast, argnames, original_names, extractors, vars, vartypes):
         translator = deepcopy(translator)
         func_ast = copy_ast(func_ast)  # func_ast = deepcopy(func_ast)
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
+        translator.vars = vars.copy() if vars is not None else None
         translator.vartypes.update(vartypes)
         translator.lambda_argnames = list(argnames)
         translator.original_names = original_names
@@ -647,11 +652,12 @@ class SQLTranslator(ASTTranslator):
                 for m in cond_monads:
                     if not m.aggregated: translator.conditions.extend(m.getsql())
                     else: translator.having_conditions.extend(m.getsql())
+        translator.vars = None
         return translator
     def preGenExpr(translator, node):
         inner_tree = node.code
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_tree, translator.filter_num, translator.extractors, translator.vartypes, translator)
+        subtranslator = translator_cls(inner_tree, translator.filter_num, translator.extractors, translator.vars, translator.vartypes, translator)
         return QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
@@ -775,7 +781,7 @@ class SQLTranslator(ASTTranslator):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), name_ast, [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_expr, translator.filter_num, translator.extractors, translator.vartypes, translator)
+        subtranslator = translator_cls(inner_expr, translator.filter_num, translator.extractors, translator.vars, translator.vartypes, translator)
         return QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
@@ -2165,8 +2171,23 @@ class FuncLenMonad(FuncMonad):
 class GetattrMonad(FuncMonad):
     func = getattr
     def call(monad, obj_monad, name_monad):
-        name = name_monad.node._attrname_value
-        return obj_monad.getattr(name)
+        if isinstance(name_monad, ConstMonad):
+            attrname = name_monad.value
+        elif isinstance(name_monad, ParamMonad):
+            translator = monad.translator
+            while translator.parent:
+                translator = translator.parent
+            key = name_monad.paramkey[0]
+            if key in translator.getattr_values:
+                attrname = translator.getattr_values[key]
+            else:
+                attrname = translator.vars[key]
+                translator.getattr_values[key] = attrname
+        else: throw(TranslationError, 'Expression `{EXPR}` cannot be translated into SQL '
+                                      'because %s will be different for each row' % ast2src(name_monad.node))
+        if not isinstance(attrname, basestring):
+            throw(TypeError, 'In `{EXPR}` second argument should be a string. Got: %r' % attrname)
+        return obj_monad.getattr(attrname)
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count

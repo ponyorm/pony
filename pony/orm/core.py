@@ -5282,8 +5282,7 @@ filter_num_counter = itertools.count()
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, tree, extractors_key = create_extractors(
-            code_key, tree, globals, locals, special_functions, const_functions)
+        tree, extractors = create_extractors(code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = next(filter_num_counter)
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
@@ -5300,23 +5299,26 @@ class Query(object):
         database.provider.normalize_vars(vars, vartypes)
 
         query._vars = vars
-        query._key = HashableDict(extractors_key, vartypes=vartypes, left_join=left_join, filters=())
+        query._key = HashableDict(code_key=code_key, vartypes=vartypes, left_join=left_join, filters=())
         query._database = database
 
-        translator = database._translator_cache.get(query._key)
+        translator = query._get_translator(query._key, vars)
+
         if translator is None:
             pickled_tree = pickle_ast(tree)
             tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree_copy, filter_num, extractors, vartypes, left_join=left_join)
+            translator = translator_cls(tree_copy, filter_num, extractors, vars, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
                 tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
-                try: translator = translator_cls(tree_copy, filter_num, extractors, vartypes,
+                try: translator = translator_cls(tree_copy, filter_num, extractors, vars, vartypes,
                                                  left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
-            database._translator_cache[query._key] = translator
+            if translator.can_be_cached:
+                database._translator_cache[query._key] = translator
+
         query._translator = translator
         query._filters = ()
         query._next_kwarg_id = 0
@@ -5332,6 +5334,17 @@ class Query(object):
         return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
+    def _get_translator(query, query_key, vars):
+        database = query._database
+        translator = database._translator_cache.get(query_key)
+        all_func_vartypes = {}
+        if translator is not None:
+            for key, attrname in iteritems(translator.getattr_values):
+                assert key in vars
+                if attrname != vars[key]:
+                    del database._translator_cache[query_key]
+                    return None
+        return translator
     def _construct_sql_and_arguments(query, range=None, aggr_func_name=None, aggr_func_distinct=None, sep=None):
         translator = query._translator
         expr_type = translator.expr_type
@@ -5339,8 +5352,18 @@ class Query(object):
             attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
-        sql_key = (query._key, range, query._distinct, (aggr_func_name, aggr_func_distinct, sep),
-                   query._for_update, query._nowait, options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
+        sql_key = HashableDict(
+            query._key,
+            vartypes=HashableDict(query._translator.vartypes),
+            getattr_values=HashableDict(translator.getattr_values),
+            range=range,
+            distinct=query._distinct,
+            aggr_func=(aggr_func_name, aggr_func_distinct, sep),
+            for_update=query._for_update,
+            nowait=query._nowait,
+            inner_join_syntax=options.INNER_JOIN_SYNTAX,
+            attrs_to_prefetch=attrs_to_prefetch
+        )
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
@@ -5357,7 +5380,7 @@ class Query(object):
             arguments_key = HashableDict(arguments) if type(arguments) is dict else arguments
             try: hash(arguments_key)
             except: query_key = None  # arguments are unhashable
-            else: query_key = sql_key + (arguments_key,)
+            else: query_key = HashableDict(sql_key, arguments_key=arguments_key)
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
     def get_sql(query):
@@ -5549,7 +5572,8 @@ class Query(object):
             tup = (('without_order',),)
             new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
             new_filters = query._filters + tup
-            new_translator = query._database._translator_cache.get(new_key)
+
+            new_translator = query._get_translator(new_key, query._vars)
             if new_translator is None:
                 new_translator = query._translator.without_order()
                 query._database._translator_cache[new_key] = new_translator
@@ -5574,7 +5598,8 @@ class Query(object):
         tup = (('order_by_numbers' if numbers else 'order_by_attributes', args),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
-        new_translator = query._database._translator_cache.get(new_key)
+
+        new_translator = query._get_translator(new_key, query._vars)
         if new_translator is None:
             if numbers: new_translator = query._translator.order_by_numbers(args)
             else: new_translator = query._translator.order_by_attributes(args)
@@ -5611,32 +5636,32 @@ class Query(object):
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = next(filter_num_counter)
-        extractors, func_ast, extractors_key = create_extractors(
-            func_id, func_ast, globals, locals, special_functions, const_functions,
-            argnames or prev_translator.subquery)
+        func_ast, extractors = create_extractors(
+            func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_vars = query._vars.copy()
             new_vars.update(vars)
         else: new_vars, vartypes = query._vars, HashableDict()
-        tup = (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
+        tup = (('order_by' if order_by else 'where' if original_names else 'filter', func_id, vartypes),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
-        new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
-        new_translator = query._database._translator_cache.get(new_key)
+        new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
+
+        new_translator = query._get_translator(new_key, new_vars)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
-            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
+            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
                     tree_copy = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     translator_cls = prev_translator.__class__
                     new_translator = translator_cls(
-                            tree_copy, prev_translator.original_filter_num, prev_translator.extractors, prev_translator.vartypes,
+                            tree_copy, prev_translator.original_filter_num, prev_translator.extractors, None, prev_translator.vartypes,
                             left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
-                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
+                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             query._database._translator_cache[new_key] = new_translator
         return query._clone(_vars=new_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):

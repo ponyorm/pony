@@ -223,7 +223,6 @@ class PreTranslator(ASTTranslator):
     def __init__(translator, tree, globals, locals,
                  special_functions, const_functions, outer_names=()):
         ASTTranslator.__init__(translator, tree)
-        translator.getattr_nodes = set()
         translator.globals = globals
         translator.locals = locals
         translator.special_functions = special_functions
@@ -303,7 +302,6 @@ class PreTranslator(ASTTranslator):
                 elif x is getattr:
                     attr_node = node.args[1]
                     attr_node.parent_node = node
-                    translator.getattr_nodes.add(attr_node)
                 else: node.external = False
             elif x in translator.const_functions:
                 for arg in node.args:
@@ -312,23 +310,10 @@ class PreTranslator(ASTTranslator):
                 if node.dstar_args is not None and not node.dstar_args.constant: return
                 node.constant = True
 
-getattr_cache = {}
 extractors_cache = {}
 
 def create_extractors(code_key, tree, globals, locals, special_functions, const_functions, outer_names=()):
-    result = None
-    getattr_extractors = getattr_cache.get(code_key)
-    if getattr_extractors:
-        getattr_attrnames = HashableDict({src: extractor(globals, locals)
-                                          for src, extractor in iteritems(getattr_extractors)})
-        extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
-        try:
-            result = extractors_cache.get(extractors_key)
-        except TypeError:
-            pass # unhashable type
-        if not result:
-            tree = copy_ast(tree)
-
+    result = extractors_cache.get(code_key)
     if not result:
         pretranslator = PreTranslator(tree, globals, locals, special_functions, const_functions, outer_names)
         extractors = {}
@@ -342,24 +327,5 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
                 def extractor(globals, locals, code=code):
                     return eval(code, globals, locals)
             extractors[src] = extractor
-
-        getattr_extractors = {}
-        getattr_attrnames = HashableDict()
-        for node in pretranslator.getattr_nodes:
-            if node in pretranslator.externals:
-                src = node.src
-                extractor = extractors[src]
-                getattr_extractors[src] = extractor
-                attrname_value = extractor(globals, locals)
-                getattr_attrnames[src] = attrname_value
-            elif isinstance(node, ast.Const):
-                attrname_value = node.value
-            else: throw(TypeError, '`%s` should be either external expression or constant.' % ast2src(node))
-            if not isinstance(attrname_value, basestring): throw(TypeError,
-                '%s: attribute name must be string. Got: %r' % (ast2src(node.parent_node), attrname_value))
-            node._attrname_value = attrname_value
-        getattr_cache[code_key] = getattr_extractors
-
-        extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
-        result = extractors_cache[extractors_key] = extractors, tree, extractors_key
+        result = extractors_cache[code_key] = tree, extractors
     return result
