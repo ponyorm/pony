@@ -79,6 +79,18 @@ class PythonTranslator(ASTTranslator):
         return 'if %s' % node.test.src
     def postIfExp(translator, node):
         return '%s if %s else %s' % (node.then.src, node.test.src, node.else_.src)
+    def postLambda(translator, node):
+        argnames = list(node.argnames)
+        kwargs_name = argnames.pop() if node.kwargs else None
+        varargs_name = argnames.pop() if node.varargs else None
+        def_argnames = argnames[-len(node.defaults):] if node.defaults else []
+        nodef_argnames = argnames[:-len(node.defaults)] if node.defaults else argnames
+        args = ', '.join(nodef_argnames)
+        d_args = ', '.join('%s=%s' % (argname, default.src) for argname, default in zip(def_argnames, node.defaults))
+        v_arg = '*%s' % varargs_name if varargs_name else None
+        kw_arg = '**%s' % kwargs_name if kwargs_name else None
+        args = ', '.join(x for x in [args, d_args, v_arg, kw_arg] if x)
+        return 'lambda %s: %s' % (args, node.code.src)
     @priority(14)
     def postOr(translator, node):
         return ' or '.join(expr.src for expr in node.nodes)
