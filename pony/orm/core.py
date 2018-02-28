@@ -5702,14 +5702,14 @@ class Query(object):
         tup = (('apply_kwfilters', filterattrs, original_names),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
+        new_vars = query._vars.copy()
+        new_vars.update(value_dict)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             new_translator = translator.apply_kwfilters(filterattrs, original_names)
             query._database._translator_cache[new_key] = new_translator
-        new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
-                                 _next_kwarg_id=next_id, _vars=query._vars.copy())
-        new_query._vars.update(value_dict)
-        return new_query
+        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
+                            _next_kwarg_id=next_id, _vars=new_vars)
     @cut_traceback
     def __getitem__(query, key):
         if isinstance(key, slice):
