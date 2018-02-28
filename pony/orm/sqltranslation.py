@@ -288,8 +288,6 @@ class SQLTranslator(ASTTranslator):
         if isinstance(expr_type, EntityMeta):
             monad.orderby_columns = list(xrange(1, len(expr_type._pk_columns_)+1))
             if monad.aggregated: throw(TranslationError)
-            if translator.aggregated: translator.groupby_monads = [ monad ]
-            else: translator.distinct |= monad.requires_distinct()
             if isinstance(monad, translator.ObjectMixin):
                 entity = monad.type
                 tableref = monad.tableref
@@ -297,6 +295,10 @@ class SQLTranslator(ASTTranslator):
                 entity = monad.type.item_type
                 tableref = monad.make_tableref(translator.subquery)
             else: assert False  # pragma: no cover
+            if translator.aggregated:
+                translator.groupby_monads = [ monad ]
+            else:
+                translator.distinct |= monad.requires_distinct()
             translator.tableref = tableref
             pk_only = parent_translator is not None or translator.aggregated
             alias, pk_columns = tableref.make_join(pk_only=pk_only)
@@ -2715,6 +2717,8 @@ class QuerySetMonad(SetMixin, Monad):
         monad.item_type = item_type
         monad_type = SetType(item_type)
         Monad.__init__(monad, translator, monad_type)
+    def requires_distinct(monad, joined=False):
+        assert False
     def contains(monad, item, not_in=False):
         translator = monad.translator
         check_comparable(item, monad, 'in')
