@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, xrange
 
-import sys, types
+import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
@@ -363,24 +363,39 @@ class Decompiler(object):
         return decompiler.MAKE_FUNCTION(argc)
 
     def MAKE_FUNCTION(decompiler, argc):
+        defaults = []
+        flags = 0
         if sys.version_info >= (3, 6):
-            if argc:
-                if argc != 0x08: throw(NotImplementedError, argc)
             qualname = decompiler.stack.pop()
             tos = decompiler.stack.pop()
-            if (argc & 0x08): func_closure = decompiler.stack.pop()
+            if argc & 0x08:
+                func_closure = decompiler.stack.pop()
+            if argc & 0x04:
+                annotations = decompiler.stack.pop()
+            if argc & 0x02:
+                kwonly_defaults = decompiler.stack.pop()
+            if argc & 0x01:
+                defaults = decompiler.stack.pop()
+                throw(NotImplementedError)
         else:
-            if argc: throw(NotImplementedError)
+            if not PY2:
+                qualname = decompiler.stack.pop()
             tos = decompiler.stack.pop()
-            if not PY2: tos = decompiler.stack.pop()
+            if argc:
+                defaults = [ decompiler.stack.pop() for i in range(argc) ]
+                defaults.reverse()
         codeobject = tos.value
         func_decompiler = Decompiler(codeobject)
         # decompiler.names.update(decompiler.names)  ???
         if codeobject.co_varnames[:1] == ('.0',):
             return func_decompiler.ast  # generator
-        argnames = codeobject.co_varnames[:codeobject.co_argcount]
-        defaults = []  # todo
-        flags = 0  # todo
+        argnames, varargs, keywords = inspect.getargs(codeobject)
+        if varargs:
+            argnames.append(varargs)
+            flags |= inspect.CO_VARARGS
+        if keywords:
+            argnames.append(keywords)
+            flags |= inspect.CO_VARKEYWORDS
         return ast.Lambda(argnames, defaults, flags, func_decompiler.ast)
 
     POP_JUMP_IF_FALSE = JUMP_IF_FALSE
