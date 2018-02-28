@@ -648,7 +648,8 @@ class SQLTranslator(ASTTranslator):
         return translator
     def preGenExpr(translator, node):
         inner_tree = node.code
-        subtranslator = translator.__class__(inner_tree, translator.extractors, translator.vartypes, translator)
+        translator_cls = translator.__class__
+        subtranslator = translator_cls(inner_tree, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
@@ -771,7 +772,8 @@ class SQLTranslator(ASTTranslator):
         name_ast.monad = entity_monad
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), name_ast, [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
-        subtranslator = translator.__class__(inner_expr, translator.extractors, translator.vartypes, translator)
+        translator_cls = translator.__class__
+        subtranslator = translator_cls(inner_expr, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
