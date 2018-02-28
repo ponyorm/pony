@@ -318,17 +318,17 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
             tree = copy_ast(tree)
 
     if not result:
-        pretranslator = PreTranslator(
-            tree, globals, locals, special_functions, const_functions, outer_names)
-
+        pretranslator = PreTranslator(tree, globals, locals, special_functions, const_functions, outer_names)
         extractors = {}
         for node in pretranslator.externals:
             src = node.src = ast2src(node)
             if src == '.0':
-                extractor = lambda globals, locals: locals['.0']
+                def extractor(globals, locals):
+                    return locals['.0']
             else:
                 code = compile(src, src, 'eval')
-                extractor = lambda globals, locals, code=code: eval(code, globals, locals)
+                def extractor(globals, locals, code=code):
+                    return eval(code, globals, locals)
             extractors[src] = extractor
 
         getattr_extractors = {}
