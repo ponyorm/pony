@@ -2020,6 +2020,11 @@ class FuncBufferMonad(FuncMonad):
             else: value = buffer(source)
             return translator.ConstMonad.new(translator, value)
 
+class FuncBoolMonad(FuncMonad):
+    func = bool
+    def call(monad, x):
+        return x.nonzero()
+
 class FuncIntMonad(FuncMonad):
     func = int
     def call(monad, x):
