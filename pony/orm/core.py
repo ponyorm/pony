@@ -5617,9 +5617,9 @@ class Query(object):
         if extractors:
             vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
-            new_query_vars = query._vars.copy()
-            new_query_vars.update(vars)
-        else: new_query_vars, vartypes = query._vars, HashableDict()
+            new_vars = query._vars.copy()
+            new_vars.update(vars)
+        else: new_vars, vartypes = query._vars, HashableDict()
         tup = (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
@@ -5638,7 +5638,7 @@ class Query(object):
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
+        return query._clone(_vars=new_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
             method_name, args = tup[0], tup[1:]
