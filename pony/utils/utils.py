@@ -158,7 +158,7 @@ def get_lambda_args(func):
 
     if type(func) is types.FunctionType:
         if hasattr(inspect, 'signature'):
-            names, argsname, kwname, defaults = [], None, None, None
+            names, argsname, kwname, defaults = [], None, None, []
             for p in inspect.signature(func).parameters.values():
                 if p.default is not p.empty:
                     defaults.append(p.default)
