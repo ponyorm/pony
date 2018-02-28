@@ -4118,7 +4118,9 @@ class EntityMeta(type):
 
         if obj is None:
             with cache.flush_disabled():
-                obj = obj_to_init or object.__new__(entity)
+                obj = obj_to_init
+                if obj_to_init is None:
+                    obj = object.__new__(entity)
                 cache.objects.add(obj)
                 obj._pkval_ = pkval
                 obj._status_ = status
