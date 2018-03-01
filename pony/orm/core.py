@@ -221,6 +221,7 @@ def adapt_sql(sql, paramstyle):
     result = []
     args = []
     kwargs = {}
+    original_sql = sql
     if paramstyle in ('format', 'pyformat'): sql = sql.replace('%', '%%')
     while True:
         try: i = sql.index('$', pos)
@@ -256,16 +257,14 @@ def adapt_sql(sql, paramstyle):
                 kwargs[key] = expr
                 result.append('%%(%s)s' % key)
             else: throw(NotImplementedError)
-    adapted_sql = ''.join(result)
-    if args:
-        source = '(%s,)' % ', '.join(args)
-        code = compile(source, '<?>', 'eval')
-    elif kwargs:
-        source = '{%s}' % ','.join('%r:%s' % item for item in kwargs.items())
+    if args or kwargs:
+        adapted_sql = ''.join(result)
+        if args: source = '(%s,)' % ', '.join(args)
+        else: source = '{%s}' % ','.join('%r:%s' % item for item in kwargs.items())
         code = compile(source, '<?>', 'eval')
     else:
+        adapted_sql = original_sql
         code = compile('None', '<?>', 'eval')
-        if paramstyle in ('format', 'pyformat'): sql = sql.replace('%%', '%')
     result = adapted_sql, code
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
