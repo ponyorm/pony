@@ -1092,6 +1092,8 @@ class Monad(with_metaclass(MonadMeta)):
     def cast_from_json(monad, type): assert False, monad
     def to_int(monad):
         return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ])
+    def to_real(monad):
+        return NumericExprMonad(monad.translator, float, [ 'TO_REAL', monad.getsql()[0] ])
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -2021,6 +2023,11 @@ class FuncIntMonad(FuncMonad):
     func = int
     def call(monad, x):
         return x.to_int()
+
+class FuncFloatMonad(FuncMonad):
+    func = float
+    def call(monad, x):
+        return x.to_real()
 
 class FuncDecimalMonad(FuncMonad):
     func = Decimal
