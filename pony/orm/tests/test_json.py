@@ -657,5 +657,5 @@ class TestJson(TestCase):
 
     @db_session
     def test_avg(self):
-        result = select(avg(float(p.info['display']['size'])) for p in self.Product)[:]
-        self.assertEqual(1, 0)
+        result = select(avg(p.info['display']['size']) for p in self.Product).first()
+        self.assertAlmostEqual(result, 9.7)

@@ -1053,8 +1053,9 @@ class Monad(with_metaclass(MonadMeta)):
         # if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if func_name in ('SUM', 'AVG'):
             if expr_type not in numeric_types:
-                throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
-                                 % (func_name, type2str(expr_type)))
+                if expr_type is Json: monad = monad.to_real()
+                else: throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
+                                       % (func_name, type2str(expr_type)))
         elif func_name in ('MIN', 'MAX'):
             if expr_type not in comparable_types:
                 throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
