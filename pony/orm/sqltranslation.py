@@ -1053,8 +1053,9 @@ class Monad(with_metaclass(MonadMeta)):
         # if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if func_name in ('SUM', 'AVG'):
             if expr_type not in numeric_types:
-                throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
-                                 % (func_name, type2str(expr_type)))
+                if expr_type is Json: monad = monad.to_real()
+                else: throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
+                                       % (func_name, type2str(expr_type)))
         elif func_name in ('MIN', 'MAX'):
             if expr_type not in comparable_types:
                 throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
@@ -1092,6 +1093,8 @@ class Monad(with_metaclass(MonadMeta)):
     def cast_from_json(monad, type): assert False, monad
     def to_int(monad):
         return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ])
+    def to_real(monad):
+        return NumericExprMonad(monad.translator, float, [ 'TO_REAL', monad.getsql()[0] ])
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -2017,10 +2020,20 @@ class FuncBufferMonad(FuncMonad):
             else: value = buffer(source)
             return translator.ConstMonad.new(translator, value)
 
+class FuncBoolMonad(FuncMonad):
+    func = bool
+    def call(monad, x):
+        return x.nonzero()
+
 class FuncIntMonad(FuncMonad):
     func = int
     def call(monad, x):
         return x.to_int()
+
+class FuncFloatMonad(FuncMonad):
+    func = float
+    def call(monad, x):
+        return x.to_real()
 
 class FuncDecimalMonad(FuncMonad):
     func = Decimal

@@ -62,6 +62,8 @@ class MySQLBuilder(SQLBuilder):
         return 'trim(trailing ', builder(chars), ' from ' ,builder(expr), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS SIGNED)'
+    def TO_REAL(builder, expr):
+        return 'CAST(', builder(expr), ' AS DOUBLE)'
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
     def MONTH(builder, expr):
