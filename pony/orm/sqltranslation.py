@@ -101,7 +101,7 @@ class SQLTranslator(ASTTranslator):
             if not isinstance(obj, EntityMeta): throw(NotImplementedError)
             entity_monad = translator.EntityMonad(translator, obj)
             if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
-            monad = translator.MethodMonad(translator, entity_monad, func.__name__)
+            monad = translator.MethodMonad(entity_monad, func.__name__)
         elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
             value = True if node.name == 'True' else False
             monad = translator.ConstMonad.new(translator, value)
@@ -164,7 +164,7 @@ class SQLTranslator(ASTTranslator):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
-        translator.argnames = None
+        translator.lambda_argnames = None
         translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
         translator.vartypes = vartypes
@@ -603,7 +603,7 @@ class SQLTranslator(ASTTranslator):
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
-        translator.argnames = list(argnames)
+        translator.lambda_argnames = list(argnames)
         translator.original_names = original_names
         translator.dispatch(func_ast)
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
@@ -676,7 +676,7 @@ class SQLTranslator(ASTTranslator):
         name = node.name
         t = translator
         while t is not None:
-            argnames = t.argnames
+            argnames = t.lambda_argnames
             if argnames is not None and not t.original_names and name in argnames:
                 i = argnames.index(name)
                 return t.expr_monads[i]
@@ -999,6 +999,7 @@ class Monad(with_metaclass(MonadMeta)):
     disable_distinct = False
     disable_ordering = False
     def __init__(monad, translator, type):
+        monad.node = None
         monad.translator = translator
         monad.type = type
         monad.mixin_init()
@@ -1014,9 +1015,9 @@ class Monad(with_metaclass(MonadMeta)):
         try: property_method = getattr(monad, 'attr_' + attrname)
         except AttributeError:
             if not hasattr(monad, 'call_' + attrname):
-                throw(AttributeError, '%r object has no attribute %r' % (type2str(monad.type), attrname))
+                throw(AttributeError, '%r object has no attribute %r: {EXPR}' % (type2str(monad.type), attrname))
             translator = monad.translator
-            return translator.MethodMonad(translator, monad, attrname)
+            return translator.MethodMonad(monad, attrname)
         return property_method()
     def len(monad): throw(TypeError)
     def count(monad):
@@ -1168,8 +1169,8 @@ def raise_forgot_parentheses(monad):
     throw(TranslationError, 'You seems to forgot parentheses after %s' % ast2src(monad.node))
 
 class MethodMonad(Monad):
-    def __init__(monad, translator, parent, attrname):
-        Monad.__init__(monad, translator, 'METHOD')
+    def __init__(monad, parent, attrname):
+        Monad.__init__(monad, parent.translator, 'METHOD')
         monad.parent = parent
         monad.attrname = attrname
     def getattr(monad, attrname):

@@ -54,7 +54,7 @@ def decorator_with_params(dec):
 
 @decorator
 def cut_traceback(func, *args, **kwargs):
-    if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
+    if not options.CUT_TRACEBACK:
         return func(*args, **kwargs)
 
     try: return func(*args, **kwargs)
@@ -77,6 +77,13 @@ def cut_traceback(func, *args, **kwargs):
             reraise(exc_type, exc, full_tb)
         finally:
             del exc, full_tb, tb, last_pony_tb
+
+cut_traceback_depth = 2
+
+if pony.MODE != 'INTERACTIVE':
+    cut_traceback_depth = 0
+    def cut_traceback(func):
+        return func
 
 if PY2:
     exec('''def reraise(exc_type, exc, tb):
