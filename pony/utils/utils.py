@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import PY2, imap, basestring, unicode, pickle
+from pony.py23compat import PY2, imap, basestring, unicode, pickle, iteritems
 
 import io, re, os.path, sys, inspect, types, warnings
 
@@ -8,8 +8,9 @@ from itertools import count as _count
 from inspect import isfunction
 from time import strptime
 from collections import defaultdict
-from functools import update_wrapper
+from functools import update_wrapper, wraps
 from xml.etree import cElementTree
+from copy import deepcopy
 
 import pony
 from pony import options
@@ -395,3 +396,30 @@ def unpickle_ast(pickled):
 
 def copy_ast(tree):
     return unpickle_ast(pickle_ast(tree))
+
+def _hashable_wrap(func):
+    @wraps(func, assigned=('__name__', '__doc__'))
+    def new_func(self, *args, **kwargs):
+        if getattr(self, '_hash', None) is not None:
+            assert False, 'Cannot mutate HashableDict instance after the hash value is calculated'
+        return func(self, *args, **kwargs)
+    return new_func
+
+class HashableDict(dict):
+    def __hash__(self):
+        result = getattr(self, '_hash', None)
+        if result is None:
+            result = self._hash = hash(tuple(sorted(self.items())))
+        return result
+    def __deepcopy__(self, memo):
+        if getattr(self, '_hash', None) is not None:
+            return self
+        return HashableDict({deepcopy(key, memo): deepcopy(value, memo)
+                            for key, value in iteritems(self)})
+    __setitem__ = _hashable_wrap(dict.__setitem__)
+    __delitem__ = _hashable_wrap(dict.__delitem__)
+    clear = _hashable_wrap(dict.clear)
+    pop = _hashable_wrap(dict.pop)
+    popitem = _hashable_wrap(dict.popitem)
+    setdefault = _hashable_wrap(dict.setdefault)
+    update = _hashable_wrap(dict.update)

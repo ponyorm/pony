@@ -28,7 +28,7 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
      get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce
+     between, concat, coalesce, HashableDict
 
 __all__ = [
     'pony',
@@ -5245,7 +5245,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
         for name, cell in cells.items():
             locals[name] = cell.cell_contents
     vars = {}
-    vartypes = {}
+    vartypes = HashableDict()
     for src, code in iteritems(extractors):
         key = filter_num, src
         if src == '.0': value = locals['.0']
@@ -5276,7 +5276,7 @@ def unpickle_query(query_result):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, varnames, tree, pretranslator_key = create_extractors(
+        extractors, tree, extractors_key = create_extractors(
             code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = 0
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
@@ -5292,8 +5292,9 @@ class Query(object):
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
+
         query._vars = vars
-        query._key = pretranslator_key, tuple(vartypes[filter_num, name] for name in varnames), left_join
+        query._key = HashableDict(extractors_key, vartypes=vartypes, left_join=left_join, filters=())
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -5331,8 +5332,8 @@ class Query(object):
             attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
-        sql_key = query._key + (range, query._distinct, aggr_func_name, query._for_update, query._nowait,
-                                options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
+        sql_key = (query._key, range, query._distinct, aggr_func_name, query._for_update, query._nowait,
+                   options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
@@ -5345,9 +5346,7 @@ class Query(object):
         else: sql, adapter, attr_offsets = cache_entry
         arguments = adapter(query._vars)
         if query._translator.query_result_is_cacheable:
-            arguments_type = type(arguments)
-            if arguments_type is tuple: arguments_key = arguments
-            elif arguments_type is dict: arguments_key = tuple(sorted(iteritems(arguments)))
+            arguments_key = HashableDict(arguments) if type(arguments) is dict else arguments
             try: hash(arguments_key)
             except: query_key = None  # arguments are unhashable
             else: query_key = sql_key + (arguments_key,)
@@ -5509,7 +5508,7 @@ class Query(object):
             for obj in objects: obj._delete_()
             return len(objects)
         translator = query._translator
-        sql_key = query._key + ('DELETE',)
+        sql_key = HashableDict(query._key, sql_command='DELETE')
         database = query._database
         cache = database._get_cache()
         cache_entry = database._constructed_sql_cache.get(sql_key)
@@ -5540,7 +5539,7 @@ class Query(object):
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of %s() method is None, it must be the only argument' % method_name)
             tup = (('without_order',),)
-            new_key = query._key + tup
+            new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
             new_filters = query._filters + tup
             new_translator = query._database._translator_cache.get(new_key)
             if new_translator is None:
@@ -5565,7 +5564,7 @@ class Query(object):
             throw(TypeError, 'order_by() method receive invalid combination of arguments')
 
         tup = (('order_by_numbers' if numbers else 'order_by_attributes', args),)
-        new_key = query._key + tup
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
@@ -5604,7 +5603,7 @@ class Query(object):
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
-        extractors, varnames, func_ast, pretranslator_key = create_extractors(
+        extractors, func_ast, extractors_key = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
@@ -5612,10 +5611,9 @@ class Query(object):
             query._database.provider.normalize_vars(vars, vartypes)
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
-            sorted_vartypes = tuple(vartypes[filter_num, name] for name in varnames)
-        else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
-
-        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', pretranslator_key, sorted_vartypes),)
+        else: new_query_vars, vartypes = query._vars, HashableDict()
+        tup = (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
@@ -5695,7 +5693,7 @@ class Query(object):
 
         filterattrs = tuple(filterattrs)
         tup = (('apply_kwfilters', filterattrs, original_names),)
-        new_key = query._key + tup
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
