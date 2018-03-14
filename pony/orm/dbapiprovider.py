@@ -69,9 +69,9 @@ def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     except dbapi_module.Warning as e: raise Warning(e)
 
 def unexpected_args(attr, args):
-    throw(TypeError,
-        'Unexpected positional argument%s for attribute %s: %r'
-        % ((args > 1 and 's' or ''), attr, ', '.join(repr(arg) for arg in args)))
+    throw(TypeError, 'Unexpected positional argument{} for attribute {}: {}'.format(
+        len(args) > 1 and 's' or '', attr, ', '.join(repr(arg) for arg in args))
+    )
 
 version_re = re.compile('[0-9\.]+')
 
