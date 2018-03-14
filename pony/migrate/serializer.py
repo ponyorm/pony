@@ -144,7 +144,8 @@ class Serializer(object):
 
         for name, value in cls_dict.items():
             if name in ('__slots__', '__qualname__', '__module__', '_indexes_'): continue
-            if isinstance(value, (core.Attribute, types.MethodType, types.FunctionType, property)): continue
+            if isinstance(value, (core.Attribute, types.MethodType, types.FunctionType,
+                                  staticmethod, classmethod, property)): continue
             lines.append('%s = %s' % (name, self.serialize(value)))
 
         for attr in entity._new_attrs_:
@@ -242,4 +243,4 @@ class Serializer(object):
             return self.serialize_tuple(value)
         if isinstance(value, (COMPILED_REGEX_TYPE, RegexObject)):
             return self.serialize_regex(value)
-        raise ValueError
+        raise TypeError(type(value))
