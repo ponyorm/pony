@@ -77,6 +77,8 @@ licence = "Apache License Version 2.0"
 
 packages = [
     "pony",
+    "pony.flask",
+    "pony.flask.example",
     "pony.orm",
     "pony.orm.dbproviders",
     "pony.orm.examples",
@@ -86,6 +88,11 @@ packages = [
     "pony.thirdparty.compiler",
     "pony.utils"
 ]
+
+package_data = {
+    'pony.flask.example': ['templates/*.html'],
+    'pony.orm.tests': ['queries.txt']
+}
 
 download_url = "http://pypi.python.org/pypi/pony/"
 
@@ -108,5 +115,6 @@ if __name__ == "__main__":
         url=url,
         license=licence,
         packages=packages,
+        package_data=package_data,
         download_url=download_url
     )
