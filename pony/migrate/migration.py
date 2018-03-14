@@ -402,10 +402,12 @@ class MigrationGraph(object):
                             for op in to_execute:
                                 sql = op.get_sql().strip()
                                 if sql:
-                                    if dry_run: print(sql)
+                                    if dry_run:
+                                        print(sql)
                                     else:
                                         prev_db.execute(sql)
                         prev_db.schema = prev_db_schema
+                        prev_db.commit()
 
                     if not dry_run:
                         migration_db.Migration(name=migration.name, applied=datetime.now())
