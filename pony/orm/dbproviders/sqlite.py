@@ -18,7 +18,8 @@ from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise
+from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, \
+    cut_traceback_depth
 
 from pony.migrate.operations import Op, OperationBatch
 
@@ -432,7 +433,7 @@ class SQLiteProvider(DBAPIProvider):
             # 2 - pony.dbapiprovider.DBAPIProvider.__init__()
             # 1 - SQLiteProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
-            filename = absolutize_path(filename, frame_depth=7)
+            filename = absolutize_path(filename, frame_depth=cut_traceback_depth+5)
         return SQLitePool(filename, create_db, **kwargs)
 
     def table_exists(provider, cursor, table_name, case_sensitive=True):

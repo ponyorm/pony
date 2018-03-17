@@ -1,11 +1,11 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring
+from pony.py23compat import basestring, iteritems
 
 from functools import update_wrapper
 
 from pony.thirdparty.compiler import ast
 
-from pony.utils import throw, copy_ast
+from pony.utils import HashableDict, throw, copy_ast
 
 class TranslationError(Exception): pass
 
@@ -307,8 +307,9 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
     result = None
     getattr_extractors = getattr_cache.get(code_key)
     if getattr_extractors:
-        getattr_attrname_values = tuple(eval(code, globals, locals) for src, code in getattr_extractors)
-        extractors_key = (code_key, getattr_attrname_values)
+        getattr_attrnames = HashableDict({src: eval(code, globals, locals)
+                                          for src, code in iteritems(getattr_extractors)})
+        extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
         try:
             result = extractors_cache.get(extractors_key)
         except TypeError:
@@ -328,24 +329,22 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
             extractors[src] = code
 
         getattr_extractors = {}
-        getattr_attrname_dict = {}
+        getattr_attrnames = HashableDict()
         for node in pretranslator.getattr_nodes:
             if node in pretranslator.externals:
                 src = node.src
                 code = extractors[src]
                 getattr_extractors[src] = code
                 attrname_value = eval(code, globals, locals)
-                getattr_attrname_dict[src] = attrname_value
+                getattr_attrnames[src] = attrname_value
             elif isinstance(node, ast.Const):
                 attrname_value = node.value
             else: throw(TypeError, '`%s` should be either external expression or constant.' % ast2src(node))
             if not isinstance(attrname_value, basestring): throw(TypeError,
                 '%s: attribute name must be string. Got: %r' % (ast2src(node.parent_node), attrname_value))
             node._attrname_value = attrname_value
-        getattr_cache[code_key] = tuple(sorted(getattr_extractors.items()))
+        getattr_cache[code_key] = getattr_extractors
 
-        varnames = list(sorted(extractors))
-        getattr_attrname_values = tuple(val for key, val in sorted(getattr_attrname_dict.items()))
-        extractors_key = (code_key, getattr_attrname_values)
-        result = extractors_cache[extractors_key] = extractors, varnames, tree, extractors_key
+        extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
+        result = extractors_cache[extractors_key] = extractors, tree, extractors_key
     return result

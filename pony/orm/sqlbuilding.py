@@ -508,6 +508,8 @@ class SQLBuilder(object):
         return 'replace(', builder(str), ', ', builder(from_), ', ', builder(to), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS integer)'
+    def TO_REAL(builder, expr):
+        return 'CAST(', builder(expr), ' AS real)'
     def TODAY(builder):
         return 'CURRENT_DATE'
     def NOW(builder):

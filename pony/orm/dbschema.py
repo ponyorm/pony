@@ -77,9 +77,10 @@ class DBSchema(object):
         created_tables = set()
         for table in schema.order_tables_to_create():
             for db_object in table.get_objects_to_create(created_tables):
+                base_name = provider.base_name(db_object.name)
                 name = db_object.exists(provider, cursor, case_sensitive=False)
                 if name is None: db_object.create(provider, cursor)
-                elif schema.provider.dialect != 'SQLite' and name != db_object.name:
+                elif schema.provider.dialect != 'SQLite' and name != base_name:
                     quote_name = provider.quote_name
                     n1, n2 = quote_name(db_object.name), quote_name(name)
                     tn1, tn2 = db_object.typename, db_object.typename.lower()
@@ -135,10 +136,7 @@ class Table(DBObject):
             table.options = entity._table_options_
         table.m2m = set()
     def __repr__(table):
-        table_name = table.name
-        if isinstance(table_name, tuple):
-            table_name = '.'.join(table_name)
-        return '<Table `%s`>' % table_name
+        return '<Table %s>' % table.schema.provider.format_table_name(table.name)
     def add_entity(table, entity):
         for e in table.entities:
             if e._root_ is not entity._root_:
@@ -594,10 +592,10 @@ class ForeignKey(Constraint):
 
         if index_name is not False:
             child_columns_len = len(col_names)
-            for index_col_names in table.indexes:
-                if index_col_names[:child_columns_len] == col_names: break
-            else: table.add_index(col_names, is_pk=False, is_unique=False,
-                                        m2m=bool(table.m2m), provided_name=index_name)
+            if all(index_col_names[:child_columns_len] != col_names for index_col_names in table.indexes):
+                table.add_index(col_names, is_pk=False, is_unique=False,
+                                m2m=bool(table.m2m), provided_name=index_name)
+
     def remove(fk):
         del fk.table.foreign_keys[fk.col_names]
         if not any(fk2.parent_table is fk.parent_table

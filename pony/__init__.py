@@ -16,28 +16,32 @@ def detect_mode():
         except ImportError: return 'GAE-SERVER'
         return 'GAE-LOCAL'
 
-    try: mod_wsgi = sys.modules['mod_wsgi']
-    except KeyError: pass
+    try: from mod_wsgi import version
+    except: pass
     else: return 'MOD_WSGI'
 
+    try:
+        sys.modules['__main__'].__file__
+    except AttributeError:
+        return 'INTERACTIVE'
+
     if 'flup.server.fcgi' in sys.modules: return 'FCGI-FLUP'
-
     if 'uwsgi' in sys.modules: return 'UWSGI'
-
-    try: sys.modules['__main__'].__file__
-    except AttributeError:  return 'INTERACTIVE'
-    return 'CHERRYPY'
+    if 'flask' in sys.modules: return 'FLASK'
+    if 'cherrypy' in sys.modules: return 'CHERRYPY'
+    if 'bottle' in sys.modules: return 'BOTTLE'
+    return 'UNKNOWN'
 
 MODE = detect_mode()
 
 MAIN_FILE = None
-if MODE in ('CHERRYPY', 'GAE-LOCAL', 'GAE-SERVER', 'FCGI-FLUP'):
-    MAIN_FILE = sys.modules['__main__'].__file__
-elif MODE == 'MOD_WSGI':
+if MODE == 'MOD_WSGI':
     for module_name, module in sys.modules.items():
         if module_name.startswith('_mod_wsgi_'):
             MAIN_FILE = module.__file__
             break
+elif MODE != 'INTERACTIVE':
+    MAIN_FILE = sys.modules['__main__'].__file__
 
 if MAIN_FILE is not None: MAIN_DIR = dirname(MAIN_FILE)
 else: MAIN_DIR = None

@@ -116,6 +116,8 @@ class MySQLBuilder(SQLBuilder):
         return 'trim(trailing ', builder(chars), ' from ' ,builder(expr), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS SIGNED)'
+    def TO_REAL(builder, expr):
+        return 'CAST(', builder(expr), ' AS DOUBLE)'
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
     def MONTH(builder, expr):
@@ -339,7 +341,6 @@ class MySQLProvider(DBAPIProvider):
                     raise
         DBAPIProvider.release(provider, connection, cache)
 
-
     def table_exists(provider, cursor, table_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         if case_sensitive: sql = 'SELECT table_name FROM information_schema.tables ' \
@@ -377,4 +378,7 @@ provider_cls = MySQLProvider
 def str2datetime(s):
     if 19 < len(s) < 26: s += '000000'[:26-len(s)]
     s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
-    return datetime(*imap(int, s.split()))
+    try:
+        return datetime(*imap(int, s.split()))
+    except ValueError:
+        return None  # for incorrect values like 0000-00-00 00:00:00

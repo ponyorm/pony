@@ -101,7 +101,7 @@ class SQLTranslator(ASTTranslator):
             if not isinstance(obj, EntityMeta): throw(NotImplementedError)
             entity_monad = translator.EntityMonad(translator, obj)
             if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
-            monad = translator.MethodMonad(translator, entity_monad, func.__name__)
+            monad = translator.MethodMonad(entity_monad, func.__name__)
         elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
             value = True if node.name == 'True' else False
             monad = translator.ConstMonad.new(translator, value)
@@ -164,10 +164,10 @@ class SQLTranslator(ASTTranslator):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
-        translator.argnames = None
+        translator.lambda_argnames = None
         translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
-        translator.vartypes = vartypes
+        translator.vartypes = vartypes.copy()
         translator.parent = parent_translator
         translator.left_join = left_join
         translator.optimize = optimize
@@ -328,11 +328,9 @@ class SQLTranslator(ASTTranslator):
                 for tr in tablerefs.values():
                     if not tr.can_affect_distinct: continue
                     if tr.name_path in expr_set: continue
-                    for attr in tr.entity._pk_attrs_:
-                        if (tr.name_path, attr) not in expr_set: break
-                    else: continue
-                    translator.distinct = True
-                    break
+                    if any((tr.name_path, attr) not in expr_set for attr in tr.entity._pk_attrs_):
+                        translator.distinct = True
+                        break
             row_layout = []
             offset = 0
             provider = translator.database.provider
@@ -607,7 +605,7 @@ class SQLTranslator(ASTTranslator):
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
-        translator.argnames = list(argnames)
+        translator.lambda_argnames = list(argnames)
         translator.original_names = original_names
         translator.dispatch(func_ast)
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
@@ -664,6 +662,8 @@ class SQLTranslator(ASTTranslator):
         return translator.AndMonad(monads)
     def postConst(translator, node):
         value = node.value
+        if type(value) is frozenset:
+            value = tuple(sorted(value))
         if type(value) is not tuple:
             return translator.ConstMonad.new(translator, value)
         else:
@@ -678,7 +678,7 @@ class SQLTranslator(ASTTranslator):
         name = node.name
         t = translator
         while t is not None:
-            argnames = t.argnames
+            argnames = t.lambda_argnames
             if argnames is not None and not t.original_names and name in argnames:
                 i = argnames.index(name)
                 return t.expr_monads[i]
@@ -1001,6 +1001,7 @@ class Monad(with_metaclass(MonadMeta)):
     disable_distinct = False
     disable_ordering = False
     def __init__(monad, translator, type):
+        monad.node = None
         monad.translator = translator
         monad.type = type
         monad.mixin_init()
@@ -1016,9 +1017,9 @@ class Monad(with_metaclass(MonadMeta)):
         try: property_method = getattr(monad, 'attr_' + attrname)
         except AttributeError:
             if not hasattr(monad, 'call_' + attrname):
-                throw(AttributeError, '%r object has no attribute %r' % (type2str(monad.type), attrname))
+                throw(AttributeError, '%r object has no attribute %r: {EXPR}' % (type2str(monad.type), attrname))
             translator = monad.translator
-            return translator.MethodMonad(translator, monad, attrname)
+            return translator.MethodMonad(monad, attrname)
         return property_method()
     def len(monad): throw(TypeError)
     def count(monad):
@@ -1055,8 +1056,9 @@ class Monad(with_metaclass(MonadMeta)):
         # if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if func_name in ('SUM', 'AVG'):
             if expr_type not in numeric_types:
-                throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
-                                 % (func_name, type2str(expr_type)))
+                if expr_type is Json: monad = monad.to_real()
+                else: throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
+                                       % (func_name, type2str(expr_type)))
         elif func_name in ('MIN', 'MAX'):
             if expr_type not in comparable_types:
                 throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
@@ -1094,6 +1096,8 @@ class Monad(with_metaclass(MonadMeta)):
     def cast_from_json(monad, type): assert False, monad
     def to_int(monad):
         return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ])
+    def to_real(monad):
+        return NumericExprMonad(monad.translator, float, [ 'TO_REAL', monad.getsql()[0] ])
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -1167,8 +1171,8 @@ def raise_forgot_parentheses(monad):
     throw(TranslationError, 'You seems to forgot parentheses after %s' % ast2src(monad.node))
 
 class MethodMonad(Monad):
-    def __init__(monad, translator, parent, attrname):
-        Monad.__init__(monad, translator, 'METHOD')
+    def __init__(monad, parent, attrname):
+        Monad.__init__(monad, parent.translator, 'METHOD')
         monad.parent = parent
         monad.attrname = attrname
     def getattr(monad, attrname):
@@ -1708,7 +1712,7 @@ class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
 class DateParamMonad(DateMixin, ParamMonad): pass
 class TimeParamMonad(TimeMixin, ParamMonad): pass
-class TimedeltaParamMonad(TimeMixin, ParamMonad): pass
+class TimedeltaParamMonad(TimedeltaMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
@@ -2019,10 +2023,20 @@ class FuncBufferMonad(FuncMonad):
             else: value = buffer(source)
             return translator.ConstMonad.new(translator, value)
 
+class FuncBoolMonad(FuncMonad):
+    func = bool
+    def call(monad, x):
+        return x.nonzero()
+
 class FuncIntMonad(FuncMonad):
     func = int
     def call(monad, x):
         return x.to_int()
+
+class FuncFloatMonad(FuncMonad):
+    func = float
+    def call(monad, x):
+        return x.to_real()
 
 class FuncDecimalMonad(FuncMonad):
     func = Decimal

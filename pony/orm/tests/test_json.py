@@ -273,6 +273,11 @@ class TestJson(TestCase):
             self.assertDictEqual(p.info['os'], {'type': 'iOS', 'version': '9'})
 
     @orm.db_session
+    def test_set_same_value(self):
+        p = orm.get(p for p in self.Product)
+        p.info = p.info
+
+    @orm.db_session
     def test_len(self):
         with raises_if(self, self.db.provider.dialect == 'Oracle',
                        orm.TranslationError, 'Oracle does not provide `length` function for JSON arrays'):
@@ -633,3 +638,18 @@ class TestJson(TestCase):
         with orm.db_session:
             val = orm.select(p.info['id'] for p in Product if not p.info['val'])
             self.assertEqual(tuple(sorted(val)), (2, 3, 5, 7, 9, 11))
+
+    @orm.db_session
+    def test_optimistic_check(self):
+        p1 = self.Product.select().first()
+        p1.info['foo'] = 'bar'
+        orm.flush()
+        p1.name = 'name2'
+        orm.flush()
+        p1.name = 'name3'
+        orm.flush()
+
+    @orm.db_session
+    def test_avg(self):
+        result = orm.select(orm.avg(p.info['display']['size']) for p in self.Product).first()
+        self.assertAlmostEqual(result, 9.7)

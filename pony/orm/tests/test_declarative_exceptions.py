@@ -134,7 +134,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "'chars' argument must be of '%s' type in s.name.strip(1), got: 'int'" % unicode.__name__)
     def test25(self):
         select(s.name for s in Student if s.name.strip(1))
-    @raises_exception(AttributeError, "'%s' object has no attribute 'unknown'" % unicode.__name__)
+    @raises_exception(AttributeError, "'%s' object has no attribute 'unknown': s.name.unknown" % unicode.__name__)
     def test26(self):
         result = set(select(s for s in Student if s.name.unknown() == "joe"))
     @raises_exception(AttributeError, "Entity Group does not have attribute foo: s.group.foo")

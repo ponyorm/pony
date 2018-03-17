@@ -18,16 +18,16 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of, Json
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of, Json, TrackedValue
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony import utils
-from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
-     pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce, get_version_tuple
+from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
+     get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
+     between, concat, coalesce, get_version_tuple, HashableDict
 
 
 from pony.migrate.utils import deconstructible
@@ -225,6 +225,7 @@ def adapt_sql(sql, paramstyle):
     result = []
     args = []
     kwargs = {}
+    original_sql = sql
     if paramstyle in ('format', 'pyformat'): sql = sql.replace('%', '%%')
     while True:
         try: i = sql.index('$', pos)
@@ -260,16 +261,14 @@ def adapt_sql(sql, paramstyle):
                 kwargs[key] = expr
                 result.append('%%(%s)s' % key)
             else: throw(NotImplementedError)
-    adapted_sql = ''.join(result)
-    if args:
-        source = '(%s,)' % ', '.join(args)
-        code = compile(source, '<?>', 'eval')
-    elif kwargs:
-        source = '{%s}' % ','.join('%r:%s' % item for item in kwargs.items())
+    if args or kwargs:
+        adapted_sql = ''.join(result)
+        if args: source = '(%s,)' % ', '.join(args)
+        else: source = '{%s}' % ','.join('%r:%s' % item for item in kwargs.items())
         code = compile(source, '<?>', 'eval')
     else:
+        adapted_sql = original_sql
         code = compile('None', '<?>', 'eval')
-        if paramstyle in ('format', 'pyformat'): sql = sql.replace('%%', '%')
     result = adapted_sql, code
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
@@ -461,7 +460,10 @@ class DBSessionContextManager(object):
                 for i in xrange(db_session.retry+1):
                     db_session._enter()
                     exc_type = exc = tb = None
-                    try: return func(*args, **kwargs)
+                    try:
+                        result = func(*args, **kwargs)
+                        commit()
+                        return result
                     except:
                         exc_type, exc, tb = sys.exc_info()
                         retry_exceptions = db_session.retry_exceptions
@@ -833,7 +835,7 @@ class Database(object):
             except: transact_reraise(RollbackException, [sys.exc_info()])
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
+        return database._exec_raw_sql(sql, globals, locals, frame_depth=cut_traceback_depth+1, start_transaction=True)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth, start_transaction=False):
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
@@ -849,7 +851,7 @@ class Database(object):
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 3)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth+cut_traceback_depth+1)
         max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             result = cursor.fetchmany(max_fetch_count)
@@ -865,7 +867,7 @@ class Database(object):
         return [ row_class(row) for row in result ]
     @cut_traceback
     def get(database, sql, globals=None, locals=None):
-        rows = database.select(sql, globals, locals, frame_depth=3)
+        rows = database.select(sql, globals, locals, frame_depth=cut_traceback_depth+1)
         if not rows: throw(RowNotFound)
         if len(rows) > 1: throw(MultipleRowsFound)
         row = rows[0]
@@ -873,7 +875,7 @@ class Database(object):
     @cut_traceback
     def exists(database, sql, globals=None, locals=None):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=3)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=cut_traceback_depth+1)
         result = cursor.fetchone()
         return bool(result)
     @cut_traceback
@@ -995,7 +997,6 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
-        table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     def _get_table_name(database, table_name):
         if isinstance(table_name, EntityMeta):
@@ -1009,9 +1010,13 @@ class Database(object):
         elif table_name is None:
             if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
             else: throw(TypeError, 'Table name cannot be None')
-        elif not isinstance(table_name, basestring):
-            throw(TypeError, 'Invalid table name: %r' % table_name)
-        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        elif isinstance(table_name, tuple):
+            for component in table_name:
+                if not isinstance(component, basestring):
+                    throw(TypeError, 'Invalid table name component: {}'.format(component))
+        elif isinstance(table_name, basestring):
+            table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        else: throw(TypeError, 'Invalid table name: {}'.format(table_name))
         return table_name
     @cut_traceback
     @db_session(ddl=True)
@@ -1028,17 +1033,22 @@ class Database(object):
             if provider.table_exists(cursor, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
-                    normalized_table_name = provider.normalize_name(table_name)
-                    if normalized_table_name != table_name \
-                    and provider.table_exists(cursor, normalized_table_name):
-                        throw(TableDoesNotExist, 'Table `%s` does not exist (probably you meant table `%s`)'
-                                                 % (table_name, normalized_table_name))
-                throw(TableDoesNotExist, 'Table `%s` does not exist' % table_name)
+                    if isinstance(table_name, basestring):
+                        normalized_table_name = provider.normalize_name(table_name)
+                    else:
+                        schema_name, base_name = provider.split_table_name(table_name)
+                        normalized_table_name = schema_name, provider.normalize_name(base_name)
+                    if normalized_table_name != table_name and provider.table_exists(connection, normalized_table_name):
+                        throw(TableDoesNotExist, 'Table %s does not exist (probably you meant table %s)' % (
+                                                 provider.format_table_name(table_name),
+                                                 provider.format_table_name(normalized_table_name)))
+                throw(TableDoesNotExist, 'Table %s does not exist' % provider.format_table_name(table_name))
         if not with_all_data:
             for table_name in existed_tables:
                 if provider.table_has_data(cursor, table_name): throw(TableIsNotEmpty,
                     'Cannot drop table `%s` because it is not empty. Specify option '
-                    'with_all_data=True if you want to drop table with all data' % table_name)
+                    'with_all_data=True if you want to drop table with all data'
+                    % provider.format_table_name(table_name))
         for table_name in existed_tables:
             provider.drop_table(cursor, table_name)
     @contextmanager
@@ -1775,6 +1785,7 @@ class SessionCache(object):
                 # attribute which was created or updated lately clashes with one stored in database
         cache_index.pop(old_dbval, None)
     def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
+        assert prev_vals != new_vals
         if None in prev_vals: prev_vals = None
         if None in new_vals: new_vals = None
         if prev_vals is None and new_vals is None: return
@@ -1788,6 +1799,7 @@ class SessionCache(object):
         if prev_vals is not None: del cache_index[prev_vals]
         undo.append((cache_index, prev_vals, new_vals))
     def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
+        assert prev_vals != new_vals
         cache_index = cache.indexes[attrs]
         if None not in new_vals:
             obj2 = cache_index.setdefault(new_vals, obj)
@@ -2183,8 +2195,9 @@ class Attribute(object):
         if vals is None: throw_db_session_is_over('read value of', obj, attr)
         val = vals[attr] if attr in vals else attr.load(obj)
         if val is not None and attr.reverse and val._subclasses_ and val._status_ not in ('deleted', 'cancelled'):
-            seeds = obj._session_cache_.seeds[val._pk_attrs_]
-            if val in seeds: val._load_()
+            cache = obj._session_cache_
+            if cache is not None and val in cache.seeds[val._pk_attrs_]:
+                val._load_()
         return val
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
@@ -3144,8 +3157,8 @@ class Set(Collection):
             if attr in m2m_table.m2m:
                 assert reverse in m2m_table.m2m and not m2m_table.entities
                 return m2m_table
-            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
-            throw(MappingError, "Table name '%s' is already in use" % table_name)
+            provider = schema.provider
+            throw(MappingError, "Table name %s is already in use" % provider.format_table_name(table_name))
 
         m2m_table = schema.add_table(table_name)
         m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
@@ -3510,7 +3523,7 @@ class SetInstance(object):
         s = 'lambda item: JOIN(obj in item.%s)' if reverse.is_collection else 'lambda item: item.%s == obj'
         query = query.filter(s % reverse.name, {'obj' : obj, 'JOIN': JOIN})
         if args:
-            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=cut_traceback_depth+1)
             query = query.filter(func, globals, locals)
         return query
     filter = select
@@ -4020,34 +4033,34 @@ class EntityMeta(type):
         return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
-        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).exists()
         try: obj = entity._find_one_(kwargs)
         except ObjectNotFound: return False
         except MultipleObjectsFoundError: return True
         return True
     @cut_traceback
     def get(entity, *args, **kwargs):
-        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).get()
         try: return entity._find_one_(kwargs)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_for_update(entity, *args, **kwargs):
         nowait = kwargs.pop('nowait', False)
-        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).for_update(nowait).get()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).for_update(nowait).get()
         try: return entity._find_one_(kwargs, True, nowait)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
-        objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
+        objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=cut_traceback_depth+1)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
     def select(entity, *args):
-        return entity._query_from_args_(args, kwargs=None, frame_depth=3)
+        return entity._query_from_args_(args, kwargs=None, frame_depth=cut_traceback_depth+1)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
-        return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
+        return entity._find_by_sql_(None, sql, globals, locals, frame_depth=cut_traceback_depth+1)
     @cut_traceback
     def select_random(entity, limit):
         if entity._pk_is_composite_: return entity.select().random(limit)
@@ -4428,7 +4441,9 @@ class EntityMeta(type):
 
         if obj is None:
             with cache.flush_disabled():
-                obj = obj_to_init or object.__new__(entity)
+                obj = obj_to_init
+                if obj_to_init is None:
+                    obj = object.__new__(entity)
                 cache.objects.add(obj)
                 obj._pkval_ = pkval
                 obj._status_ = status
@@ -4490,6 +4505,8 @@ class EntityMeta(type):
                 def fget(wrapper, attr=attr):
                     attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ x for x in (attr.__get__(item) for item in wrapper) if x is not None ]
+                    if attr.py_type is Json:
+                        return [ item.get_untracked() if isinstance(item, TrackedValue) else item for item in items ]
                     return Multiset(wrapper._obj_, attrnames, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
@@ -4872,15 +4889,13 @@ class Entity(with_metaclass(EntityMeta)):
                     cache.db_update_simple_index(obj, attr, old_val, new_dbval)
 
         for attrs in obj._composite_keys_:
-            for attr in attrs:
-                if attr in avdict: break
-            else: continue
-            vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
-            prev_vals = tuple(vals)
-            for i, attr in enumerate(attrs):
-                if attr in avdict: vals[i] = avdict[attr]
-            new_vals = tuple(vals)
-            cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
+            if any(attr in avdict for attr in attrs):
+                vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
+                prev_vals = tuple(vals)
+                for i, attr in enumerate(attrs):
+                    if attr in avdict: vals[i] = avdict[attr]
+                new_vals = tuple(vals)
+                cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
 
         for attr, new_val in iteritems(avdict):
             if not attr.reverse:
@@ -5009,6 +5024,7 @@ class Entity(with_metaclass(EntityMeta)):
                 for attr in avdict:
                     if attr not in obj._vals_ and attr.reverse and not attr.reverse.is_collection:
                         attr.load(obj)  # loading of one-to-one relations
+
                 if wbits is not None:
                     new_wbits = wbits
                     for attr in avdict: new_wbits |= obj._bits_[attr]
@@ -5020,12 +5036,16 @@ class Entity(with_metaclass(EntityMeta)):
                         obj._save_pos_ = len(objects_to_save)
                         objects_to_save.append(obj)
                         cache.modified = True
+
                 if not collection_avdict:
-                    for attr in avdict:
-                        if attr.reverse or attr.is_part_of_unique_index: break
-                    else:
+                    if not any(attr.reverse or attr.is_part_of_unique_index for attr in avdict):
                         obj._vals_.update(avdict)
                         return
+
+                for attr, value in items_list(avdict):
+                    if value == get_val(attr):
+                        avdict.pop(attr)
+
             undo_funcs = []
             undo = []
             def undo_func():
@@ -5044,17 +5064,15 @@ class Entity(with_metaclass(EntityMeta)):
                     if attr not in avdict: continue
                     new_val = avdict[attr]
                     old_val = get_val(attr)
-                    if old_val != new_val: cache.update_simple_index(obj, attr, old_val, new_val, undo)
+                    cache.update_simple_index(obj, attr, old_val, new_val, undo)
                 for attrs in obj._composite_keys_:
-                    for attr in attrs:
-                        if attr in avdict: break
-                    else: continue
-                    vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
-                    prev_vals = tuple(vals)
-                    for i, attr in enumerate(attrs):
-                        if attr in avdict: vals[i] = avdict[attr]
-                    new_vals = tuple(vals)
-                    cache.update_composite_index(obj, attrs, prev_vals, new_vals, undo)
+                    if any(attr in avdict for attr in attrs):
+                        vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
+                        prev_vals = tuple(vals)
+                        for i, attr in enumerate(attrs):
+                            if attr in avdict: vals[i] = avdict[attr]
+                        new_vals = tuple(vals)
+                        cache.update_composite_index(obj, attrs, prev_vals, new_vals, undo)
                 for attr, new_val in iteritems(avdict):
                     if not attr.reverse: continue
                     old_val = get_val(attr)
@@ -5097,10 +5115,7 @@ class Entity(with_metaclass(EntityMeta)):
             optimistic_converters.extend(attr.converters)
             values = attr.get_raw_values(dbval)
             optimistic_values.extend(values)
-            if dbval is None:
-                optimistic_operations.append('IS_NULL')
-            else:
-                optimistic_operations.extend(converter.EQ for converter in converters)
+            optimistic_operations.extend('IS_NULL' if dbval is None else converter.EQ for converter in converters)
         return optimistic_operations, optimistic_columns, optimistic_converters, optimistic_values
     def _save_principal_objects_(obj, dependent_objects):
         if dependent_objects is None: dependent_objects = []
@@ -5136,7 +5151,8 @@ class Entity(with_metaclass(EntityMeta)):
             elif after_create and val is None:
                 obj._rbits_ &= ~bits[attr]
             else:
-                dbvals[attr] = new_dbvals.get(attr, val)
+                if attr in new_dbvals:
+                    dbvals[attr] = new_dbvals[attr]
                 continue
             # Clear value of volatile attribute or null values after create, because the value may be changed in the DB
             del vals[attr]
@@ -5158,6 +5174,7 @@ class Entity(with_metaclass(EntityMeta)):
                     new_dbvals[attr] = dbval
                     values.append(dbval)
                 else:
+                    new_dbvals[attr] = val
                     values.extend(attr.get_raw_values(val))
         attrs = tuple(attrs)
 
@@ -5222,6 +5239,7 @@ class Entity(with_metaclass(EntityMeta)):
                 new_dbvals[attr] = dbval
                 values.append(dbval)
             else:
+                new_dbvals[attr] = val
                 values.extend(attr.get_raw_values(val))
         if update_columns:
             for attr in obj._pk_attrs_:
@@ -5256,7 +5274,7 @@ class Entity(with_metaclass(EntityMeta)):
             else: sql, adapter = cached_sql
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments, start_transaction=True)
-            if cursor.rowcount == 0:
+            if cursor.rowcount == 0 and cache.db_session.optimistic:
                 throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
@@ -5287,7 +5305,7 @@ class Entity(with_metaclass(EntityMeta)):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments, start_transaction=True)
-        if cursor.rowcount == 0:
+        if cursor.rowcount == 0 and cache.db_session.optimistic:
             throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
@@ -5486,23 +5504,23 @@ def make_query(args, frame_depth, left_join=False):
 
 @cut_traceback
 def select(*args):
-    return make_query(args, frame_depth=3)
+    return make_query(args, frame_depth=cut_traceback_depth+1)
 
 @cut_traceback
 def left_join(*args):
-    return make_query(args, frame_depth=3, left_join=True)
+    return make_query(args, frame_depth=cut_traceback_depth+1, left_join=True)
 
 @cut_traceback
 def get(*args):
-    return make_query(args, frame_depth=3).get()
+    return make_query(args, frame_depth=cut_traceback_depth+1).get()
 
 @cut_traceback
 def exists(*args):
-    return make_query(args, frame_depth=3).exists()
+    return make_query(args, frame_depth=cut_traceback_depth+1).exists()
 
 @cut_traceback
 def delete(*args):
-    return make_query(args, frame_depth=3).delete()
+    return make_query(args, frame_depth=cut_traceback_depth+1).delete()
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
@@ -5551,7 +5569,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
         for name, cell in cells.items():
             locals[name] = cell.cell_contents
     vars = {}
-    vartypes = {}
+    vartypes = HashableDict()
     for src, code in iteritems(extractors):
         key = filter_num, src
         if src == '.0': value = locals['.0']
@@ -5582,7 +5600,7 @@ def unpickle_query(query_result):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, varnames, tree, pretranslator_key = create_extractors(
+        extractors, tree, extractors_key = create_extractors(
             code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = 0
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
@@ -5598,20 +5616,21 @@ class Query(object):
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
+
         query._vars = vars
-        query._key = pretranslator_key, tuple(vartypes[filter_num, name] for name in varnames), left_join
+        query._key = HashableDict(extractors_key, vartypes=vartypes, left_join=left_join, filters=())
         query._database = database
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
             pickled_tree = pickle_ast(tree)
-            tree = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
+            tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
+            translator = translator_cls(tree_copy, extractors, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
-                tree = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
-                try: translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
+                tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
+                try: translator = translator_cls(tree_copy, extractors, vartypes, left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
             database._translator_cache[query._key] = translator
@@ -5637,8 +5656,8 @@ class Query(object):
             attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
-        sql_key = query._key + (range, query._distinct, aggr_func_name, query._for_update, query._nowait,
-                                options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
+        sql_key = (query._key, range, query._distinct, aggr_func_name, query._for_update, query._nowait,
+                   options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
@@ -5651,12 +5670,10 @@ class Query(object):
         else: sql, adapter, attr_offsets = cache_entry
         arguments = adapter(query._vars)
         if query._translator.query_result_is_cacheable:
-            arguments_type = type(arguments)
-            if arguments_type is tuple: arguments_key = arguments
-            elif arguments_type is dict: arguments_key = tuple(sorted(iteritems(arguments)))
+            arguments_key = HashableDict(arguments) if type(arguments) is dict else arguments
             try: hash(arguments_key)
             except: query_key = None  # arguments are unhashable
-            else: query_key = sql_key + (arguments_key)
+            else: query_key = sql_key + (arguments_key,)
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
     def get_sql(query):
@@ -5815,7 +5832,7 @@ class Query(object):
             for obj in objects: obj._delete_()
             return len(objects)
         translator = query._translator
-        sql_key = query._key + ('DELETE',)
+        sql_key = HashableDict(query._key, sql_command='DELETE')
         database = query._database
         cache = database._get_cache()
         cache_entry = database._constructed_sql_cache.get(sql_key)
@@ -5846,7 +5863,7 @@ class Query(object):
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of %s() method is None, it must be the only argument' % method_name)
             tup = (('without_order',),)
-            new_key = query._key + tup
+            new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
             new_filters = query._filters + tup
             new_translator = query._database._translator_cache.get(new_key)
             if new_translator is None:
@@ -5855,7 +5872,7 @@ class Query(object):
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         if isinstance(args[0], (basestring, types.FunctionType)):
-            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=4)
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=cut_traceback_depth+2)
             return query._process_lambda(func, globals, locals, order_by=True)
 
         if isinstance(args[0], RawSQL):
@@ -5871,7 +5888,7 @@ class Query(object):
             throw(TypeError, 'order_by() method receive invalid combination of arguments')
 
         tup = (('order_by_numbers' if numbers else 'order_by_attributes', args),)
-        new_key = query._key + tup
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
@@ -5891,7 +5908,6 @@ class Query(object):
             cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
-            subquery = prev_translator.subquery
             func_id = id(func.func_code if PY2 else func.__code__)
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
@@ -5911,7 +5927,7 @@ class Query(object):
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
-        extractors, varnames, func_ast, pretranslator_key = create_extractors(
+        extractors, func_ast, extractors_key = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
@@ -5919,10 +5935,9 @@ class Query(object):
             query._database.provider.normalize_vars(vars, vartypes)
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
-            sorted_vartypes = tuple(vartypes[filter_num, name] for name in varnames)
-        else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
-
-        new_key = query._key + (('order_by' if order_by else 'where' if original_names else 'filter', pretranslator_key, sorted_vartypes),)
+        else: new_query_vars, vartypes = query._vars, HashableDict()
+        tup = (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
@@ -5931,11 +5946,11 @@ class Query(object):
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
-                    tree = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
+                    tree_copy = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = prev_translator.extractors
                     prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__
-                    new_translator = translator_cls(tree, prev_extractors, prev_vartypes,
+                    new_translator = translator_cls(tree_copy, prev_extractors, prev_vartypes,
                                                     left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
@@ -5953,7 +5968,7 @@ class Query(object):
             if isinstance(args[0], RawSQL):
                 raw = args[0]
                 return query.filter(lambda: raw)
-            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=cut_traceback_depth+1)
             return query._process_lambda(func, globals, locals, order_by=False)
         if not kwargs: return query
 
@@ -5967,7 +5982,7 @@ class Query(object):
             if isinstance(args[0], RawSQL):
                 raw = args[0]
                 return query.where(lambda: raw)
-            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=cut_traceback_depth+1)
             return query._process_lambda(func, globals, locals, order_by=False, original_names=True)
         if not kwargs: return query
 
@@ -6002,7 +6017,7 @@ class Query(object):
 
         filterattrs = tuple(filterattrs)
         tup = (('apply_kwfilters', filterattrs, original_names),)
-        new_key = query._key + tup
+        new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
