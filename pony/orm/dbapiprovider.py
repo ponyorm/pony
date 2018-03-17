@@ -72,9 +72,9 @@ def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     except dbapi_module.Warning as e: raise Warning(e)
 
 def unexpected_args(attr, args):
-    throw(TypeError,
-        'Unexpected positional argument%s for attribute %s: %r'
-        % ((args > 1 and 's' or ''), attr, ', '.join(repr(arg) for arg in args)))
+    throw(TypeError, 'Unexpected positional argument{} for attribute {}: {}'.format(
+        len(args) > 1 and 's' or '', attr, ', '.join(repr(arg) for arg in args))
+    )
 
 class Name(unicode):
     __slots__ = ['obsolete_name']
@@ -169,12 +169,18 @@ class DBAPIProvider(object):
     def get_default_m2m_table_name(provider, attr, reverse):
         if attr.symmetric:
             assert reverse is attr
-            name = obsolete_name = '%s_%s' % (attr.entity.__name__, attr.name)
+            entity = attr.entity
+            name = obsolete_name = '%s_%s' % (entity.__name__, attr.name)
         else:
             first_attr = sorted((attr, reverse), key=lambda attr: (attr.entity.__name__, attr.name))[0]
+            entity = first_attr.entity
             name = '%s_%s' % (first_attr.entity.__name__, first_attr.name)
             obsolete_name = '%s_%s' % tuple(sorted((attr.entity.__name__, reverse.entity.__name__)))
-        return provider.normalize_name(name, obsolete_name=obsolete_name)
+        name = provider.normalize_name(name, obsolete_name=obsolete_name)
+        if isinstance(entity._table_, tuple):
+            schema_name, base_name = provider.split_table_name(entity._table_)
+            name = schema_name, name
+        return name
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
         normalize = provider.normalize_name
@@ -196,6 +202,7 @@ class DBAPIProvider(object):
             return tuple(normalize(prefix + column) for column in columns)
 
     def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
+        table_name = provider.base_name(table_name)
         name = provider._get_default_index_name(table_name, column_names, is_pk, is_unique, m2m)
         obsolete_name = provider._get_default_index_name(obsolete(table_name), column_names, is_pk, is_unique, m2m)
         return provider.normalize_name(name, obsolete_name)
@@ -243,6 +250,9 @@ class DBAPIProvider(object):
             name = name.replace(quote_char, quote_char+quote_char)
             return quote_char + name + quote_char
         return '.'.join(provider.quote_name(item) for item in name)
+
+    def format_table_name(provider, name):
+        return provider.quote_name(name)
 
     def normalize_vars(provider, vars, vartypes):
         pass
@@ -833,7 +843,7 @@ class JsonConverter(Converter):
     def validate(converter, val, obj=None):
         if obj is None or converter.attr is None:
             return val
-        if isinstance(val, TrackedValue) and val.obj is obj and val.attr is converter.attr:
+        if isinstance(val, TrackedValue) and val.obj_ref() is obj and val.attr is converter.attr:
             return val
         return TrackedValue.make(obj, converter.attr, val)
     def val2dbval(converter, val, obj=None):
@@ -846,6 +856,7 @@ class JsonConverter(Converter):
             return val
         return TrackedValue.make(obj, converter.attr, val)
     def dbvals_equal(converter, x, y):
+        if x == y: return True  # optimization
         if isinstance(x, basestring): x = json.loads(x)
         if isinstance(y, basestring): y = json.loads(y)
         return x == y

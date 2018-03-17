@@ -45,6 +45,8 @@ class FuncType(object):
         return type(other) is not FuncType or self.func != other.func
     def __hash__(self):
         return hash(self.func) + 1
+    def __repr__(self):
+        return 'FuncType(%s at %d)' % (self.func.__name__, id(self.func))
 
 class MethodType(object):
     __slots__ = 'obj', 'func'

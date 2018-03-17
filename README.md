@@ -1,21 +1,21 @@
 Pony Object-Relational Mapper
 =============================
 
-Pony is an advanced object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using Python generator expressions. Pony analyzes the abstract syntax tree of the generator expression and translates it to into SQL query.
+Pony is an advanced object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using Python generator expressions. Pony analyzes the abstract syntax tree of the generator expression and translates it into a SQL query.
 
-Here is the example of a query in Pony:
+Here is an example query in Pony:
 
     select(p for p in Product if p.name.startswith('A') and p.cost <= 1000)
 
 Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
 
-By providing a Pythonic API, Pony facilitates fast app development. Pony is an easy-to-learn and easy-to-use library. It makes your work more productive and helps saving resources. Pony achieves the easiness of use through the following:
+By providing a Pythonic API, Pony facilitates fast app development. Pony is an easy-to-learn and easy-to-use library. It makes your work more productive and helps to save resources. Pony achieves this ease of use through the following:
 
 * Compact entity definitions
-* Concise query language
-* Ability to work with Pony interactively in Python interpreter
-* Comprehensive error messages, showing the exact part where error happened in the query
-* Displaying the generated SQL in readable format with indentation
+* The concise query language
+* Ability to work with Pony interactively in a Python interpreter
+* Comprehensive error messages, showing the exact part where an error occurred in the query
+* Displaying of the generated SQL in a readable format with indentation
 
 All this helps the developer to focus on implementing the business logic of an application, instead of struggling with a mapper trying to understand how to get the data from the database.
 

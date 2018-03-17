@@ -253,6 +253,8 @@ class OraBuilder(SQLBuilder):
         return builder.ALL(*expr_list)
     def LIMIT(builder, limit, offset=None):
         assert False  # pragma: no cover
+    def TO_REAL(builder, expr):
+        return 'CAST(', builder(expr), ' AS NUMBER)'
     def DATE(builder, expr):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):
