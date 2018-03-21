@@ -210,9 +210,16 @@ class SQLTranslator(ASTTranslator):
             monad = getattr(node, 'monad', None)
             src = getattr(node, 'src', None)
             if monad:  # Lambda was encountered inside generator
-                assert isinstance(monad, EntityMonad)
+                assert parent_translator and i == 0
                 entity = monad.type.item_type
-                tablerefs[name] = TableRef(subquery, name, entity)
+                if isinstance(monad, EntityMonad):
+                    tablerefs[name] = TableRef(subquery, name, entity)
+                elif isinstance(monad, AttrSetMonad):
+                    translator.subquery = monad._subselect(translator.subquery)
+                    tableref = monad.tableref
+                    translator.method_argnames_mapping_stack.append({
+                        name: ObjectIterMonad(translator, tableref, entity)})
+                else: assert False  # pragma: no cover
             elif src:
                 iterable = translator.vartypes[translator.filter_num, src]
                 if not isinstance(iterable, SetType): throw(TranslationError,
@@ -287,7 +294,7 @@ class SQLTranslator(ASTTranslator):
                 if isinstance(if_.monad, AndMonad): cond_monads = if_.monad.operands
                 else: cond_monads = [ if_.monad ]
                 for m in cond_monads:
-                    if not m.aggregated: translator.conditions.extend(m.getsql())
+                    if not getattr(m, 'aggregated', False): translator.conditions.extend(m.getsql())
                     else: translator.having_conditions.extend(m.getsql())
 
         translator.dispatch(tree.expr)
@@ -300,13 +307,15 @@ class SQLTranslator(ASTTranslator):
         expr_type = monad.type
         if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if isinstance(expr_type, EntityMeta):
-            monad.orderby_columns = list(xrange(1, len(expr_type._pk_columns_)+1))
+            entity = expr_type
+            translator.expr_type = entity
+            monad.orderby_columns = list(xrange(1, len(entity._pk_columns_)+1))
             if monad.aggregated: throw(TranslationError)
-            if isinstance(monad, ObjectMixin):
-                entity = monad.type
+            if isinstance(monad, QuerySetMonad):
+                throw(NotImplementedError)
+            elif isinstance(monad, ObjectMixin):
                 tableref = monad.tableref
             elif isinstance(monad, AttrSetMonad):
-                entity = monad.type.item_type
                 tableref = monad.make_tableref(translator.subquery)
             else: assert False  # pragma: no cover
             if translator.aggregated:
@@ -317,7 +326,6 @@ class SQLTranslator(ASTTranslator):
             pk_only = parent_translator is not None or translator.aggregated
             alias, pk_columns = tableref.make_join(pk_only=pk_only)
             translator.alias = alias
-            translator.expr_type = entity
             translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in pk_columns ]
             translator.row_layout = None
             translator.col_names = [ attr.name for attr in entity._attrs_
@@ -783,9 +791,10 @@ class SQLTranslator(ASTTranslator):
         method_monad = func_node.monad
         if not isinstance(method_monad, MethodMonad): throw(NotImplementedError)
         entity_monad = method_monad.parent
-        if not isinstance(entity_monad, EntityMonad): throw(NotImplementedError)
+        if not isinstance(entity_monad, (EntityMonad, AttrSetMonad)): throw(NotImplementedError)
         entity = entity_monad.type.item_type
-        if method_monad.attrname != 'select': throw(TypeError)
+        method_name = method_monad.attrname
+        if method_name not in ('select', 'filter', 'exists'): throw(TypeError)
         if len(lambda_expr.argnames) != 1: throw(TypeError)
         if lambda_expr.varargs: throw(TypeError)
         if lambda_expr.kwargs: throw(TypeError)
@@ -799,7 +808,10 @@ class SQLTranslator(ASTTranslator):
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         translator_cls = translator.__class__
         subtranslator = translator_cls(inner_expr, translator.filter_num, translator.extractors, translator.vars, translator.vartypes, translator)
-        return QuerySetMonad(translator, subtranslator)
+        monad = QuerySetMonad(translator, subtranslator)
+        if method_name == 'exists':
+            monad = monad.nonzero()
+        return monad
     def postCallFunc(translator, node):
         args = []
         kwargs = {}
@@ -2482,6 +2494,12 @@ class AttrSetMonad(SetMixin, Monad):
         attr = entity._adict_.get(name)
         if attr is None: throw(AttributeError)
         return AttrSetMonad(monad, attr)
+    def call_select(monad):
+        # calling with lambda argument processed in preCallFunc
+        return monad
+    call_filter = call_select
+    def call_exists(monad):
+        return monad
     def requires_distinct(monad, joined=False, for_count=False):
         if monad.parent.requires_distinct(joined): return True
         reverse = monad.attr.reverse
@@ -2704,11 +2722,12 @@ class AttrSetMonad(SetMixin, Monad):
         expr_ast = [ 'COLUMN', alias, expr_name ]
         if coalesce_to_zero: expr_ast = [ 'COALESCE', expr_ast, [ 'VALUE', 0 ] ]
         return expr_ast, False
-    def _subselect(monad):
+    def _subselect(monad, subquery=None):
         if monad.subquery is not None: return monad.subquery
         attr = monad.attr
         translator = monad.translator
-        subquery = Subquery(translator.subquery)
+        if subquery is None:
+            subquery = Subquery(translator.subquery)
         monad.make_tableref(subquery)
         subquery.expr_list = monad.make_expr_list()
         if not attr.reverse and not attr.is_required:
@@ -2974,6 +2993,8 @@ class QuerySetMonad(SetMixin, Monad):
             if not isinstance(sep, basestring):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
         return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
+    def getsql(monad):
+        throw(NotImplementedError)
 
 def find_or_create_having_ast(subquery_ast):
     groupby_offset = None
