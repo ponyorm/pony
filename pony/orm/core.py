@@ -5246,7 +5246,10 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
-            locals[name] = cell.cell_contents
+            try:
+                locals[name] = cell.cell_contents
+            except ValueError:
+                throw(NameError, 'Free variable `%s` referenced before assignment in enclosing scope' % name)
     vars = {}
     vartypes = HashableDict()
     for src, code in iteritems(extractors):
