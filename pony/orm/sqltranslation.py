@@ -86,7 +86,7 @@ class SQLTranslator(ASTTranslator):
 
     def dispatch_external(translator, node):
         varkey = translator.filter_num, node.src
-        t = translator.vartypes[varkey]
+        t = translator.root_translator.vartypes[varkey]
         tt = type(t)
         if t is NoneType:
             monad = ConstMonad.new(translator, None)
@@ -165,28 +165,36 @@ class SQLTranslator(ASTTranslator):
                     else: throw(TranslationError, 'Too complex aggregation, expressions cannot be combined: %s' % ast2src(node))
             return monad
 
-    def __init__(translator, tree, filter_num, extractors, vars, vartypes, parent_translator=None, left_join=False, optimize=None):
+    def __init__(translator, tree, parent_translator, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.can_be_cached = True
-        translator.database = None
-        translator.lambda_argnames = None
-        translator.filter_num = translator.original_filter_num = filter_num
+        translator.parent = parent_translator
+        if parent_translator is None:
+            translator.root_translator = translator
+            translator.database = None
+            translator.subquery = Subquery(left_join=left_join)
+            assert filter_num is not None
+            translator.filter_num = translator.original_filter_num = filter_num
+        else:
+            translator.root_translator = parent_translator.root_translator
+            translator.database = parent_translator.database
+            translator.subquery = Subquery(parent_translator.subquery, left_join=left_join)
+            translator.filter_num = parent_translator.filter_num
+            translator.original_filter_num = None
         translator.extractors = extractors
+        translator.vars = vars
+        translator.vartypes = vartypes
+        translator.lambda_argnames = None
         translator.method_argnames_mapping_stack = []
         translator.func_extractors_map = {}
-        translator.vars = vars.copy() if vars is not None else None
-        translator.vartypes = vartypes.copy()
         translator.getattr_values = {}
         translator.func_vartypes = {}
-        translator.parent = parent_translator
         translator.left_join = left_join
         translator.optimize = optimize
         translator.from_optimized = False
         translator.optimization_failed = False
-        if not parent_translator: subquery = Subquery(left_join=left_join)
-        else: subquery = Subquery(parent_translator.subquery, left_join=left_join)
-        translator.subquery = subquery
+        subquery = translator.subquery
         tablerefs = subquery.tablerefs
         translator.distinct = False
         translator.conditions = subquery.conditions
@@ -221,7 +229,7 @@ class SQLTranslator(ASTTranslator):
                         name: ObjectIterMonad(translator, tableref, entity)})
                 else: assert False  # pragma: no cover
             elif src:
-                iterable = translator.vartypes[translator.filter_num, src]
+                iterable = translator.root_translator.vartypes[translator.filter_num, src]
                 if not isinstance(iterable, SetType): throw(TranslationError,
                     'Inside declarative query, iterator must be entity. '
                     'Got: for %s in %s' % (name, ast2src(qual.iter)))
@@ -645,6 +653,7 @@ class SQLTranslator(ASTTranslator):
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vars = vars.copy() if vars is not None else None
+        translator.vartypes = translator.vartypes.copy()  # make HashableDict mutable again
         translator.vartypes.update(vartypes)
         translator.lambda_argnames = list(argnames)
         translator.original_names = original_names
@@ -676,7 +685,7 @@ class SQLTranslator(ASTTranslator):
     def preGenExpr(translator, node):
         inner_tree = node.code
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_tree, translator.filter_num, translator.extractors, translator.vars, translator.vartypes, translator)
+        subtranslator = translator_cls(inner_tree, translator)
         return QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
@@ -807,7 +816,7 @@ class SQLTranslator(ASTTranslator):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), name_ast, [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_expr, translator.filter_num, translator.extractors, translator.vars, translator.vartypes, translator)
+        subtranslator = translator_cls(inner_expr, translator)
         monad = QuerySetMonad(translator, subtranslator)
         if method_name == 'exists':
             monad = monad.nonzero()
@@ -1288,19 +1297,17 @@ class HybridMethodMonad(MethodMonad):
         func_ast, func_extractors = create_extractors(
             func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
 
-        t = translator
-        while t.parent is not None:
-            t = t.parent
-        if func not in t.func_extractors_map:
+        root_translator = translator.root_translator
+        if func not in root_translator.func_extractors_map:
             func_vars, func_vartypes = extract_vars(func_filter_num, func_extractors, func.__globals__, {}, cells)
             translator.database.provider.normalize_vars(func_vars, func_vartypes)
             if func.__closure__:
                 translator.can_be_cached = False
             if func_extractors:
-                t.func_extractors_map[func] = func_extractors
-                t.func_vartypes.update(func_vartypes)
-                t.vartypes.update(func_vartypes)
-                t.vars.update(func_vars)
+                root_translator.func_extractors_map[func] = func_extractors
+                root_translator.func_vartypes.update(func_vartypes)
+                root_translator.vartypes.update(func_vartypes)
+                root_translator.vars.update(func_vars)
 
         stack = translator.method_argnames_mapping_stack
         stack.append(name_mapping)
@@ -2260,9 +2267,7 @@ class GetattrMonad(FuncMonad):
         if isinstance(name_monad, ConstMonad):
             attrname = name_monad.value
         elif isinstance(name_monad, ParamMonad):
-            translator = monad.translator
-            while translator.parent:
-                translator = translator.parent
+            translator = monad.translator.root_translator
             key = name_monad.paramkey[0]
             if key in translator.getattr_values:
                 attrname = translator.getattr_values[key]

@@ -5308,11 +5308,11 @@ class Query(object):
             pickled_tree = pickle_ast(tree)
             tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree_copy, filter_num, extractors, vars, vartypes, left_join=left_join)
+            translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(), left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
                 tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
-                try: translator = translator_cls(tree_copy, filter_num, extractors, vars, vartypes,
+                try: translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(),
                                                  left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
@@ -5669,7 +5669,8 @@ class Query(object):
                     tree_copy = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     translator_cls = prev_translator.__class__
                     new_translator = translator_cls(
-                            tree_copy, prev_translator.original_filter_num, prev_translator.extractors, None, prev_translator.vartypes,
+                            tree_copy, None, prev_translator.original_filter_num,
+                            prev_translator.extractors, None, prev_translator.vartypes.copy(),
                             left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
