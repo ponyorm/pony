@@ -223,7 +223,7 @@ class SQLTranslator(ASTTranslator):
                 if isinstance(monad, EntityMonad):
                     tablerefs[name] = TableRef(subquery, name, entity)
                 elif isinstance(monad, AttrSetMonad):
-                    translator.subquery = monad._subselect(translator.subquery)
+                    translator.subquery = monad._subselect(translator.subquery, extract_outer_conditions=False)
                     tableref = monad.tableref
                     translator.method_argnames_mapping_stack.append({
                         name: ObjectIterMonad(translator, tableref, entity)})
@@ -901,6 +901,7 @@ class Subquery(object):
         subquery.left_join = left_join
         subquery.from_ast = [ 'LEFT_JOIN' if left_join else 'FROM' ]
         subquery.conditions = []
+        subquery.outer_conditions = []
         subquery.tablerefs = {}
         if parent_subquery is None:
             subquery.alias_counters = {}
@@ -2660,6 +2661,7 @@ class AttrSetMonad(SetMixin, Monad):
             optimized = True
             if not translator.from_optimized:
                 from_ast = monad.subquery.from_ast[1:]
+                assert subquery.outer_conditions
                 from_ast[0] = from_ast[0] + [ sqland(subquery.outer_conditions) ]
                 translator.subquery.from_ast.extend(from_ast)
                 translator.from_optimized = True
@@ -2727,7 +2729,7 @@ class AttrSetMonad(SetMixin, Monad):
         expr_ast = [ 'COLUMN', alias, expr_name ]
         if coalesce_to_zero: expr_ast = [ 'COALESCE', expr_ast, [ 'VALUE', 0 ] ]
         return expr_ast, False
-    def _subselect(monad, subquery=None):
+    def _subselect(monad, subquery=None, extract_outer_conditions=True):
         if monad.subquery is not None: return monad.subquery
         attr = monad.attr
         translator = monad.translator
@@ -2737,7 +2739,7 @@ class AttrSetMonad(SetMixin, Monad):
         subquery.expr_list = monad.make_expr_list()
         if not attr.reverse and not attr.is_required:
             subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in subquery.expr_list)
-        if subquery is not translator.subquery:
+        if subquery is not translator.subquery and extract_outer_conditions:
             outer_cond = subquery.from_ast[1].pop()
             if outer_cond[0] == 'AND': subquery.outer_conditions = outer_cond[1:]
             else: subquery.outer_conditions = [ outer_cond ]
@@ -2797,6 +2799,7 @@ class NumericSetExprMonad(SetMixin, Monad):
         else:
             if not translator.from_optimized:
                 from_ast = subquery.from_ast[1:]
+                assert subquery.outer_conditions
                 from_ast[0] = from_ast[0] + [ sqland(subquery.outer_conditions) ]
                 translator.subquery.from_ast.extend(from_ast)
                 translator.from_optimized = True
