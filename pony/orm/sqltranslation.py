@@ -1882,16 +1882,14 @@ class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
 
 class BoolMonad(Monad):
     def __init__(monad, translator):
-        monad.translator = translator
-        monad.type = bool
+        Monad.__init__(monad, translator, bool)
 
 sql_negation = { 'IN' : 'NOT_IN', 'EXISTS' : 'NOT_EXISTS', 'LIKE' : 'NOT_LIKE', 'BETWEEN' : 'NOT_BETWEEN', 'IS_NULL' : 'IS_NOT_NULL' }
 sql_negation.update((value, key) for key, value in items_list(sql_negation))
 
 class BoolExprMonad(BoolMonad):
     def __init__(monad, translator, sql):
-        monad.translator = translator
-        monad.type = bool
+        BoolMonad.__init__(monad, translator)
         monad.sql = sql
     def getsql(monad, subquery=None):
         return [ monad.sql ]
