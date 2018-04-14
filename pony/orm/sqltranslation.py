@@ -504,7 +504,7 @@ class SQLTranslator(ASTTranslator):
         if is_not_null_checks:
             for monad in translator.expr_monads:
                 if isinstance(monad, ObjectIterMonad): pass
-                elif isinstance(monad, AttrMonad) and not monad.attr.nullable: pass
+                elif not monad.nullable: pass
                 else:
                     notnull_conditions = [ [ 'IS_NOT_NULL', column_ast ] for column_ast in monad.getsql() ]
                     if monad.aggregated: having_conditions.extend(notnull_conditions)
@@ -874,21 +874,25 @@ class SQLTranslator(ASTTranslator):
         elif not translator.row_value_syntax: throw(NotImplementedError)
         else: then_sql, else_sql = [ 'ROW' ] + then_sql, [ 'ROW' ] + else_sql
         expr = [ 'CASE', None, [ [ test_sql, then_sql ] ], else_sql ]
-        result = ExprMonad.new(translator, result_type, expr)
+        result = ExprMonad.new(translator, result_type, expr,
+                               nullable=test_monad.nullable or then_monad.nullable or else_monad.nullable)
         result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
         return result
 
-def coerce_monads(m1, m2):
+def coerce_monads(m1, m2, for_comparison=False):
     result_type = coerce_types(m1.type, m2.type)
-    if result_type in numeric_types and bool in (m1.type, m2.type) and result_type is not bool:
+    if result_type in numeric_types and bool in (m1.type, m2.type) and (
+                result_type is not bool or not for_comparison):
         translator = m1.translator
         if translator.dialect == 'PostgreSQL':
+            if result_type is bool:
+                result_type = int
             if m1.type is bool:
-                new_m1 = NumericExprMonad(translator, int, [ 'TO_INT', m1.getsql()[0] ])
+                new_m1 = NumericExprMonad(translator, int, [ 'TO_INT', m1.getsql()[0] ], nullable=m1.nullable)
                 new_m1.aggregated = m1.aggregated
                 m1 = new_m1
             if m2.type is bool:
-                new_m2 = NumericExprMonad(translator, int, [ 'TO_INT', m2.getsql()[0] ])
+                new_m2 = NumericExprMonad(translator, int, [ 'TO_INT', m2.getsql()[0] ], nullable=m2.nullable)
                 new_m2.aggregated = m2.aggregated
                 m2 = new_m2
     return result_type, m1, m2
@@ -1064,10 +1068,11 @@ class MonadMixin(with_metaclass(MonadMeta)):
 class Monad(with_metaclass(MonadMeta)):
     disable_distinct = False
     disable_ordering = False
-    def __init__(monad, translator, type):
+    def __init__(monad, translator, type, nullable=True):
         monad.node = None
         monad.translator = translator
         monad.type = type
+        monad.nullable = nullable
         monad.mixin_init()
     def mixin_init(monad):
         pass
@@ -1110,7 +1115,7 @@ class Monad(with_metaclass(MonadMeta)):
                     '%s database provider does not support entities '
                     'with composite primary keys inside aggregate functions. Got: {EXPR}'
                     % translator.dialect)
-        result = ExprMonad.new(translator, int, [ 'COUNT', distinct, expr ])
+        result = ExprMonad.new(translator, int, [ 'COUNT', distinct, expr ], nullable=False)
         result.aggregated = True
         return result
     def aggregate(monad, func_name, distinct=None, sep=None):
@@ -1152,7 +1157,7 @@ class Monad(with_metaclass(MonadMeta)):
         if func_name == 'GROUP_CONCAT':
             if sep is not None:
                 aggr_ast.append(['VALUE', sep])
-        result = ExprMonad.new(translator, result_type, aggr_ast)
+        result = ExprMonad.new(translator, result_type, aggr_ast, nullable=True)
         result.aggregated = True
         return result
     def __call__(monad, *args, **kwargs): throw(TypeError)
@@ -1170,9 +1175,9 @@ class Monad(with_metaclass(MonadMeta)):
     def abs(monad): throw(TypeError)
     def cast_from_json(monad, type): assert False, monad
     def to_int(monad):
-        return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ])
+        return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ], nullable=monad.nullable)
     def to_real(monad):
-        return NumericExprMonad(monad.translator, float, [ 'TO_REAL', monad.getsql()[0] ])
+        return NumericExprMonad(monad.translator, float, [ 'TO_REAL', monad.getsql()[0] ], nullable=monad.nullable)
 
 def distinct_from_monad(distinct, default=None):
     if distinct is None:
@@ -1182,10 +1187,10 @@ def distinct_from_monad(distinct, default=None):
     throw(TypeError, '`distinct` value should be True or False. Got: %s' % ast2src(distinct.node))
 
 class RawSQLMonad(Monad):
-    def __init__(monad, translator, rawtype, varkey):
+    def __init__(monad, translator, rawtype, varkey, nullable=True):
         if rawtype.result_type is None: type = rawtype
         else: type = normalize_type(rawtype.result_type)
-        Monad.__init__(monad, translator, type)
+        Monad.__init__(monad, translator, type, nullable=nullable)
         monad.rawtype = rawtype
         monad.varkey = varkey
     def contains(monad, item, not_in=False):
@@ -1197,7 +1202,7 @@ class RawSQLMonad(Monad):
                     '%s database provider does not support tuples. Got: {EXPR} ' % translator.dialect)
         op = 'NOT_IN' if not_in else 'IN'
         sql = [ op, expr, monad.getsql() ]
-        return BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql, nullable=item.nullable)
     def nonzero(monad): return monad
     def getsql(monad, subquery=None):
         provider = monad.translator.database.provider
@@ -1254,7 +1259,7 @@ def raise_forgot_parentheses(monad):
 
 class MethodMonad(Monad):
     def __init__(monad, parent, attrname):
-        Monad.__init__(monad, parent.translator, 'METHOD')
+        Monad.__init__(monad, parent.translator, 'METHOD', nullable=False)
         monad.parent = parent
         monad.attrname = attrname
     def getattr(monad, attrname):
@@ -1353,7 +1358,7 @@ class ListMonad(Monad):
             sql = sqland([ sqlor([ [ 'NE', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
         else:
             sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
-        return BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql, nullable=x.nullable or any(item.nullable for item in monad.items))
     def getsql(monad, subquery=None):
         return [ [ 'ROW' ] + [ item.getsql()[0] for item in monad.items ] ]
 
@@ -1396,31 +1401,41 @@ class NumericMixin(MonadMixin):
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return NumericExprMonad(translator, float, [ 'POW', left_sql[0], right_sql[0] ])
+        return NumericExprMonad(translator, float, [ 'POW', left_sql[0], right_sql[0] ],
+                                nullable=monad.nullable or monad2.nullable)
     def __neg__(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        return NumericExprMonad(translator, monad.type, [ 'NEG', sql ])
+        return NumericExprMonad(translator, monad.type, [ 'NEG', sql ], nullable=monad.nullable)
     def abs(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        return NumericExprMonad(translator, monad.type, [ 'ABS', sql ])
+        return NumericExprMonad(translator, monad.type, [ 'ABS', sql ], nullable=monad.nullable)
     def nonzero(monad):
         translator = monad.translator
-        return CmpMonad('!=', monad, ConstMonad.new(translator, 0))
+        sql = monad.getsql()[0]
+        if not (translator.dialect == 'PostgreSQL' and monad.type is bool):
+            sql = [ 'NE', sql, [ 'VALUE', 0 ] ]
+        return BoolExprMonad(translator, sql, nullable=False)
     def negate(monad):
+        sql = monad.getsql()[0]
         translator = monad.translator
-        result = CmpMonad('==', monad, ConstMonad.new(translator, 0))
-        if isinstance(monad, AttrMonad) and not monad.attr.nullable:
-            return result
-        sql = [ 'OR', result.getsql()[0], [ 'IS_NULL', monad.getsql()[0] ] ]
-        return BoolExprMonad(translator, sql)
+        pg_bool = translator.dialect == 'PostgreSQL' and monad.type is bool
+        result_sql = [ 'NOT', sql ] if pg_bool else [ 'EQ', sql, [ 'VALUE', 0 ] ]
+        if monad.nullable:
+            if isinstance(monad, AttrMonad):
+                result_sql = [ 'OR', result_sql, [ 'IS_NULL', sql ] ]
+            elif pg_bool:
+                result_sql = [ 'NOT', [ 'COALESCE', sql, [ 'VALUE', True ] ] ]
+            else:
+                result_sql = [ 'EQ', [ 'COALESCE', sql, [ 'VALUE', 0 ] ], [ 'VALUE', 0 ] ]
+        return BoolExprMonad(translator, result_sql, nullable=False)
 
 def numeric_attr_factory(name):
     def attr_func(monad):
         sql = [ name, monad.getsql()[0] ]
         translator = monad.translator
-        return NumericExprMonad(translator, int, sql)
+        return NumericExprMonad(translator, int, sql, nullable=monad.nullable)
     attr_func.__name__ = name.lower()
     return attr_func
 
@@ -1431,7 +1446,8 @@ def make_datetime_binop(op, sqlop):
             _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         expr_monad_cls = DateExprMonad if monad.type is date else DatetimeExprMonad
         delta = monad2.value if isinstance(monad2, TimedeltaConstMonad) else monad2.getsql()[0]
-        return expr_monad_cls(translator, monad.type, [ sqlop, monad.getsql()[0], delta ])
+        return expr_monad_cls(translator, monad.type, [ sqlop, monad.getsql()[0], delta ],
+                              nullable=monad.nullable or monad2.nullable)
     datetime_binop.__name__ = sqlop
     return datetime_binop
 
@@ -1461,7 +1477,7 @@ class DatetimeMixin(DateMixin):
     def call_date(monad):
         translator = monad.translator
         sql = [ 'DATE', monad.getsql()[0] ]
-        return ExprMonad.new(translator, date, sql)
+        return ExprMonad.new(translator, date, sql, nullable=monad.nullable)
     attr_hour = numeric_attr_factory('HOUR')
     attr_minute = numeric_attr_factory('MINUTE')
     attr_second = numeric_attr_factory('SECOND')
@@ -1477,7 +1493,8 @@ def make_string_binop(op, sqlop):
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return StringExprMonad(translator, monad.type, [ sqlop, left_sql[0], right_sql[0] ])
+        return StringExprMonad(translator, monad.type, [ sqlop, left_sql[0], right_sql[0] ],
+                               nullable=monad.nullable or monad2.nullable)
     string_binop.__name__ = sqlop
     return string_binop
 
@@ -1486,7 +1503,7 @@ def make_string_func(sqlop):
         sql = monad.getsql()
         assert len(sql) == 1
         translator = monad.translator
-        return StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
+        return StringExprMonad(translator, monad.type, [ sqlop, sql[0] ], nullable=monad.nullable)
     func.__name__ = sqlop
     return func
 
@@ -1539,7 +1556,8 @@ class StringMixin(MonadMixin):
                     len_sql = [ 'SUB', stop_sql, start.getsql()[0] ]
 
             sql = [ 'SUBSTR', expr_sql, start_sql, len_sql ]
-            return StringExprMonad(translator, monad.type, sql)
+            return StringExprMonad(translator, monad.type, sql,
+                                   nullable=monad.nullable or start.nullable or stop is not None and stop.nullable)
 
         if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
             return ConstMonad.new(translator, monad.value[index.value])
@@ -1554,17 +1572,30 @@ class StringMixin(MonadMixin):
             inner_sql = index.getsql()[0]
             index_sql = [ 'ADD', inner_sql, [ 'CASE', None, [ (['GE', inner_sql, [ 'VALUE', 0 ]], [ 'VALUE', 1 ]) ], [ 'VALUE', 0 ] ] ]
         sql = [ 'SUBSTR', expr_sql, index_sql, [ 'VALUE', 1 ] ]
-        return StringExprMonad(translator, monad.type, sql)
+        return StringExprMonad(translator, monad.type, sql, nullable=monad.nullable)
     def negate(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        result = BoolExprMonad(translator, [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        if translator.dialect == 'Oracle':
+            result_sql = [ 'IS_NULL', sql ]
+        else:
+            result_sql = [ 'EQ', sql, [ 'VALUE', '' ] ]
+            if monad.nullable:
+                if isinstance(monad, AttrMonad):
+                    result_sql = [ 'OR', result_sql, [ 'IS_NULL', sql ] ]
+                else:
+                    result_sql = [ 'EQ', [ 'COALESCE', sql, [ 'VALUE', '' ] ], [ 'VALUE', '' ]]
+        result = BoolExprMonad(translator, result_sql, nullable=False)
         result.aggregated = monad.aggregated
         return result
     def nonzero(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        result = BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        if translator.dialect == 'Oracle':
+            result_sql = [ 'IS_NOT_NULL', sql ]
+        else:
+            result_sql = [ 'NE', sql, [ 'VALUE', '' ] ]
+        result = BoolExprMonad(translator, result_sql, nullable=False)
         result.aggregated = monad.aggregated
         return result
     def len(monad):
@@ -1608,9 +1639,14 @@ class StringMixin(MonadMixin):
             if before and after: item_sql = [ 'CONCAT', [ 'VALUE', before ], item_sql, [ 'VALUE', after ] ]
             elif before: item_sql = [ 'CONCAT', [ 'VALUE', before ], item_sql ]
             elif after: item_sql = [ 'CONCAT', item_sql, [ 'VALUE', after ] ]
-        sql = [ 'NOT_LIKE' if not_like else 'LIKE', monad.getsql()[0], item_sql ]
-        if escape: sql.append([ 'VALUE', '!' ])
-        return BoolExprMonad(translator, sql)
+        sql = monad.getsql()[0]
+        if not_like and monad.nullable and not isinstance(monad, AttrMonad) and translator.dialect != 'Oracle':
+            sql = [ 'COALESCE', sql, [ 'VALUE', '' ] ]
+        result_sql = [ 'NOT_LIKE' if not_like else 'LIKE', sql, item_sql ]
+        if escape: result_sql.append([ 'VALUE', '!' ])
+        if not_like and monad.nullable and (isinstance(monad, AttrMonad) or translator.dialect == 'Oracle'):
+            result_sql = [ 'OR', result_sql, [ 'IS_NULL', sql ] ]
+        return BoolExprMonad(translator, result_sql, nullable=not_like)
     def strip(monad, chars, strip_type):
         translator = monad.translator
         if chars is not None and not are_comparable_types(monad.type, chars.type, None):
@@ -1620,7 +1656,7 @@ class StringMixin(MonadMixin):
         parent_sql = monad.getsql()[0]
         sql = [ strip_type, parent_sql ]
         if chars is not None: sql.append(chars.getsql()[0])
-        return StringExprMonad(translator, monad.type, sql)
+        return StringExprMonad(translator, monad.type, sql, nullable=monad.nullable)
     def call_strip(monad, chars=None):
         return monad.strip(chars, 'TRIM')
     def call_lstrip(monad, chars=None):
@@ -1740,6 +1776,7 @@ class AttrMonad(Monad):
         Monad.__init__(monad, parent.translator, attr_type)
         monad.parent = parent
         monad.attr = attr
+        monad.nullable = attr.nullable
     def getsql(monad, subquery=None):
         parent = monad.parent
         attr = monad.attr
@@ -1772,24 +1809,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             parent_subquery = parent_monad.tableref.subquery
             monad.tableref = parent_subquery.add_tableref(name_path, parent_monad.tableref, attr)
 
-class StringAttrMonad(StringMixin, AttrMonad):
-    def negate(monad):
-        sql = monad.getsql()[0]
-        translator = monad.translator
-        result_sql = [ 'EQ', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
-        if monad.attr.nullable:
-            result_sql = [ 'OR', result_sql, [ 'IS_NULL', sql ] ]
-        result = BoolExprMonad(translator, result_sql)
-        result.aggregated = monad.aggregated
-        return result
-    def nonzero(monad):
-        sql = monad.getsql()[0]
-        translator = monad.translator
-        result_sql = [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ] ]
-        result = BoolExprMonad(translator,  result_sql)
-        result.aggregated = monad.aggregated
-        return result
-
+class StringAttrMonad(StringMixin, AttrMonad): pass
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class DateAttrMonad(DateMixin, AttrMonad): pass
 class TimeAttrMonad(TimeMixin, AttrMonad): pass
@@ -1822,7 +1842,7 @@ class ParamMonad(Monad):
         return Monad.__new__(cls)
     def __init__(monad, translator, type, paramkey):
         type = normalize_type(type)
-        Monad.__init__(monad, translator, type)
+        Monad.__init__(monad, translator, type, nullable=False)
         monad.paramkey = paramkey
         if not isinstance(type, EntityMeta):
             provider = translator.database.provider
@@ -1860,7 +1880,7 @@ class JsonParamMonad(JsonMixin, ParamMonad):
 
 class ExprMonad(Monad):
     @staticmethod
-    def new(translator, type, sql):
+    def new(translator, type, sql, nullable=True):
         if type in numeric_types: cls = NumericExprMonad
         elif type is unicode: cls = StringExprMonad
         elif type is date: cls = DateExprMonad
@@ -1870,12 +1890,12 @@ class ExprMonad(Monad):
         elif type is Json: cls = JsonExprMonad
         elif isinstance(type, EntityMeta): cls = ObjectExprMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
-        return cls(translator, type, sql)
-    def __new__(cls, *args):
+        return cls(translator, type, sql, nullable=nullable)
+    def __new__(cls, *args, **kwargs):
         if cls is ExprMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
-    def __init__(monad, translator, type, sql):
-        Monad.__init__(monad, translator, type)
+    def __init__(monad, translator, type, sql, nullable=True):
+        Monad.__init__(monad, translator, type, nullable=nullable)
         monad.sql = sql
     def getsql(monad, subquery=None):
         return [ monad.sql ]
@@ -1955,7 +1975,7 @@ class ConstMonad(Monad):
         return Monad.__new__(cls)
     def __init__(monad, translator, value):
         value_type, value = normalize(value)
-        Monad.__init__(monad, translator, value_type)
+        Monad.__init__(monad, translator, value_type, nullable=value_type is NoneType)
         monad.value = value
     def getsql(monad, subquery=None):
         return [ [ 'VALUE', monad.value ] ]
@@ -1982,15 +2002,15 @@ class TimedeltaConstMonad(TimedeltaMixin, ConstMonad): pass
 class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
 
 class BoolMonad(Monad):
-    def __init__(monad, translator):
-        Monad.__init__(monad, translator, bool)
+    def __init__(monad, translator, nullable=True):
+        Monad.__init__(monad, translator, bool, nullable=nullable)
 
 sql_negation = { 'IN' : 'NOT_IN', 'EXISTS' : 'NOT_EXISTS', 'LIKE' : 'NOT_LIKE', 'BETWEEN' : 'NOT_BETWEEN', 'IS_NULL' : 'IS_NOT_NULL' }
 sql_negation.update((value, key) for key, value in items_list(sql_negation))
 
 class BoolExprMonad(BoolMonad):
-    def __init__(monad, translator, sql):
-        BoolMonad.__init__(monad, translator)
+    def __init__(monad, translator, sql, nullable=True):
+        BoolMonad.__init__(monad, translator, nullable=nullable)
         monad.sql = sql
     def getsql(monad, subquery=None):
         return [ monad.sql ]
@@ -2004,8 +2024,8 @@ class BoolExprMonad(BoolMonad):
         elif negated_op == 'NOT':
             assert len(sql) == 2
             negated_sql = sql[1]
-        else: return NotMonad(translator, sql)
-        return BoolExprMonad(translator, negated_sql)
+        else: return NotMonad(monad)
+        return BoolExprMonad(translator, negated_sql, nullable=monad.nullable)
 
 cmp_ops = { '>=' : 'GE', '>' : 'GT', '<=' : 'LE', '<' : 'LT' }
 
@@ -2027,8 +2047,8 @@ class CmpMonad(BoolMonad):
         elif op == 'is': op = '=='
         elif op == 'is not': op = '!='
         check_comparable(left, right, op)
-        result_type, left, right = coerce_monads(left, right)
-        BoolMonad.__init__(monad, translator)
+        result_type, left, right = coerce_monads(left, right, for_comparison=True)
+        BoolMonad.__init__(monad, translator, nullable=left.nullable or right.nullable)
         monad.op = op
         monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
 
@@ -2082,7 +2102,8 @@ class LogicalBinOpMonad(BoolMonad):
             elif isinstance(operand, LogicalBinOpMonad) and monad.binop == operand.binop:
                 items.extend(operand.operands)
             else: items.append(operand)
-        BoolMonad.__init__(monad, items[0].translator)
+        nullable = any(item.nullable for item in items)
+        BoolMonad.__init__(monad, items[0].translator, nullable=nullable)
         monad.operands = items
     def getsql(monad, subquery=None):
         result = [ monad.binop ]
@@ -2101,7 +2122,7 @@ class OrMonad(LogicalBinOpMonad):
 class NotMonad(BoolMonad):
     def __init__(monad, operand):
         if operand.type is not bool: operand = operand.nonzero()
-        BoolMonad.__init__(monad, operand.translator)
+        BoolMonad.__init__(monad, operand.translator, nullable=operand.nullable)
         monad.operand = operand
     def negate(monad):
         return monad.operand
@@ -2192,7 +2213,7 @@ class FuncDateMonad(FuncMonad):
         return ConstMonad.new(translator, date(year.value, month.value, day.value))
     def call_today(monad):
         translator = monad.translator
-        return DateExprMonad(translator, date, [ 'TODAY' ])
+        return DateExprMonad(translator, date, [ 'TODAY' ], nullable=monad.nullable)
 
 class FuncTimeMonad(FuncMonad):
     func = time
@@ -2231,7 +2252,7 @@ class FuncDatetimeMonad(FuncDateMonad):
         return ConstMonad.new(translator, value)
     def call_now(monad):
         translator = monad.translator
-        return DatetimeExprMonad(translator, datetime, [ 'NOW' ])
+        return DatetimeExprMonad(translator, datetime, [ 'NOW' ], nullable=monad.nullable)
 
 class FuncBetweenMonad(FuncMonad):
     func = between
@@ -2242,7 +2263,7 @@ class FuncBetweenMonad(FuncMonad):
             '%s instance cannot be argument of between() function: {EXPR}' % x.type.__name__)
         translator = x.translator
         sql = [ 'BETWEEN', x.getsql()[0], a.getsql()[0], b.getsql()[0] ]
-        return BoolExprMonad(translator, sql)
+        return BoolExprMonad(translator, sql, nullable=x.nullable or a.nullable or b.nullable)
 
 class FuncConcatMonad(FuncMonad):
     func = concat
@@ -2255,7 +2276,7 @@ class FuncConcatMonad(FuncMonad):
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
             result_ast.extend(arg.getsql())
-        return ExprMonad.new(translator, unicode, result_ast)
+        return ExprMonad.new(translator, unicode, result_ast, nullable=any(arg.nullable for arg in args))
 
 class FuncLenMonad(FuncMonad):
     func = len
@@ -2287,7 +2308,7 @@ class FuncCountMonad(FuncMonad):
         translator = monad.translator
         if isinstance(x, StringConstMonad) and x.value == '*': x = None
         if x is not None: return x.count(distinct)
-        result = ExprMonad.new(translator, int, [ 'COUNT', None ])
+        result = ExprMonad.new(translator, int, [ 'COUNT', None ], nullable=False)
         result.aggregated = True
         return result
 
@@ -2329,7 +2350,7 @@ class FuncCoalesceMonad(FuncMonad):
                 result[i].append(sql)
         sql = [ [ 'COALESCE' ] + coalesce_args for coalesce_args in result ]
         if not isinstance(t, EntityMeta): sql = sql[0]
-        return ExprMonad.new(translator, t, sql)
+        return ExprMonad.new(translator, t, sql, nullable=all(arg.nullable for arg in args))
 
 class FuncDistinctMonad(FuncMonad):
     func = utils.distinct, core.distinct
@@ -2373,9 +2394,9 @@ def minmax(monad, sqlop, *args):
         args = list(args)
         for i, arg in enumerate(args):
             if arg.type is bool:
-                args[i] = NumericExprMonad(translator, int, [ 'TO_INT', arg.getsql() ])
+                args[i] = NumericExprMonad(translator, int, [ 'TO_INT', arg.getsql() ], nullable=arg.nullable)
     sql = [ sqlop, None ] + [ arg.getsql()[0] for arg in args ]
-    return ExprMonad.new(translator, t, sql)
+    return ExprMonad.new(translator, t, sql, nullable=any(arg.nullable for arg in args))
 
 class FuncSelectMonad(FuncMonad):
     func = core.select
@@ -2399,7 +2420,7 @@ class FuncDescMonad(FuncMonad):
 
 class DescMonad(Monad):
     def __init__(monad, expr):
-        Monad.__init__(monad, expr.translator, expr.type)
+        Monad.__init__(monad, expr.translator, expr.type, nullable=expr.nullable)
         monad.expr = expr
     def getsql(monad):
         return [ [ 'DESC', item ] for item in monad.expr.getsql() ]
@@ -2420,7 +2441,7 @@ class FuncRandomMonad(FuncMonad):
         FuncMonad.__init__(monad, translator, type)
         translator.query_result_is_cacheable = False
     def __call__(monad):
-        return NumericExprMonad(monad.translator, float, [ 'RANDOM' ])
+        return NumericExprMonad(monad.translator, float, [ 'RANDOM' ], nullable=False)
 
 class SetMixin(MonadMixin):
     forced_distinct = False
@@ -2468,7 +2489,7 @@ class AttrSetMonad(SetMixin, Monad):
             else:
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
-            result = BoolExprMonad(translator, sql_ast)
+            result = BoolExprMonad(translator, sql_ast, nullable=False)
             result.nogroup = True
             return result
         elif not not_in:
@@ -2476,7 +2497,7 @@ class AttrSetMonad(SetMixin, Monad):
             tableref = monad.make_tableref(translator.subquery)
             expr_list = monad.make_expr_list()
             expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in izip(expr_list, item.getsql()) ])
-            return BoolExprMonad(translator, expr_ast)
+            return BoolExprMonad(translator, expr_ast, nullable=False)
         else:
             subquery = Subquery(translator.subquery)
             tableref = monad.make_tableref(subquery)
@@ -2491,7 +2512,7 @@ class AttrSetMonad(SetMixin, Monad):
             conditions.extend(subquery.conditions)
             from_ast[-1][-1] = sqland([ from_ast[-1][-1] ] + conditions)
             expr_ast = sqland([ [ 'IS_NULL', expr ] for expr in expr_list ])
-            return BoolExprMonad(translator, expr_ast)
+            return BoolExprMonad(translator, expr_ast, nullable=False)
     def getattr(monad, name):
         try: return Monad.getattr(monad, name)
         except AttributeError: pass
@@ -2567,7 +2588,7 @@ class AttrSetMonad(SetMixin, Monad):
         else:
             sql_ast, optimized = monad._aggregated_scalar_subselect(make_aggr, extra_grouping)
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
-        result = ExprMonad.new(translator, int, sql_ast)
+        result = ExprMonad.new(translator, int, sql_ast, nullable=False)
         if optimized: result.aggregated = True
         else: result.nogroup = True
         return result
@@ -2611,7 +2632,7 @@ class AttrSetMonad(SetMixin, Monad):
         else:
             result_type = item_type
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
-        result = ExprMonad.new(monad.translator, result_type, sql_ast)
+        result = ExprMonad.new(monad.translator, result_type, sql_ast, nullable=func_name != 'SUM')
         if optimized: result.aggregated = True
         else: result.nogroup = True
         return result
@@ -2620,13 +2641,13 @@ class AttrSetMonad(SetMixin, Monad):
         sql_ast = [ 'EXISTS', subquery.from_ast,
                     [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         translator = monad.translator
-        return BoolExprMonad(translator, sql_ast)
+        return BoolExprMonad(translator, sql_ast, nullable=False)
     def negate(monad):
         subquery = monad._subselect()
         sql_ast = [ 'NOT_EXISTS', subquery.from_ast,
                     [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         translator = monad.translator
-        return BoolExprMonad(translator, sql_ast)
+        return BoolExprMonad(translator, sql_ast, nullable=False)
     call_is_empty = negate
     def make_tableref(monad, subquery):
         parent = monad.parent
@@ -2794,7 +2815,7 @@ class NumericSetExprMonad(SetMixin, Monad):
             sql_ast = [ 'SELECT', [ 'AGGREGATES', aggr_ast ],
                         subquery.from_ast,
                         [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
-            result = ExprMonad.new(translator, result_type, sql_ast)
+            result = ExprMonad.new(translator, result_type, sql_ast, nullable=func_name != 'SUM')
             result.nogroup = True
         else:
             if not translator.from_optimized:
@@ -2804,7 +2825,7 @@ class NumericSetExprMonad(SetMixin, Monad):
                 translator.subquery.from_ast.extend(from_ast)
                 translator.from_optimized = True
             sql_ast = aggr_ast
-            result = ExprMonad.new(translator, result_type, sql_ast)
+            result = ExprMonad.new(translator, result_type, sql_ast, nullable=func_name != 'SUM')
             result.aggregated = True
         return result
     def getsql(monad, subquery=None):
@@ -2898,17 +2919,17 @@ class QuerySetMonad(SetMixin, Monad):
                     having_ast = find_or_create_having_ast(subquery_ast)
                     having_ast += in_conditions
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS' ] + subquery_ast[2:]
-        return BoolExprMonad(translator, sql_ast)
+        return BoolExprMonad(translator, sql_ast, nullable=False)
     def nonzero(monad):
         subquery_ast = monad.subtranslator.shallow_copy_of_subquery_ast()
         subquery_ast = [ 'EXISTS' ] + subquery_ast[2:]
         translator = monad.translator
-        return BoolExprMonad(translator, subquery_ast)
+        return BoolExprMonad(translator, subquery_ast, nullable=False)
     def negate(monad):
         sql = monad.nonzero().sql
         assert sql[0] == 'EXISTS'
         translator = monad.translator
-        return BoolExprMonad(translator, [ 'NOT_EXISTS' ] + sql[1:])
+        return BoolExprMonad(translator, [ 'NOT_EXISTS' ] + sql[1:], nullable=False)
     def count(monad, distinct=None):
         distinct = distinct_from_monad(distinct)
         translator = monad.translator
@@ -2950,7 +2971,7 @@ class QuerySetMonad(SetMixin, Monad):
         else: throw(NotImplementedError)  # pragma: no cover
 
         if sql_ast is None: sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
-        return ExprMonad.new(translator, int, sql_ast)
+        return ExprMonad.new(translator, int, sql_ast, nullable=False)
     len = count
     def aggregate(monad, func_name, distinct=None, sep=None):
         distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
@@ -2985,7 +3006,7 @@ class QuerySetMonad(SetMixin, Monad):
             result_type = unicode
         else:
             result_type = expr_type
-        return ExprMonad.new(translator, result_type, sql_ast)
+        return ExprMonad.new(translator, result_type, sql_ast, func_name != 'SUM')
     def call_count(monad, distinct=None):
         return monad.count(distinct=distinct)
     def call_sum(monad, distinct=None):
