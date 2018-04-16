@@ -5356,7 +5356,7 @@ class Query(object):
                     del database._translator_cache[query_key]
                     return None, vars.copy()
         return translator, new_vars
-    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None, aggr_func_distinct=None, sep=None):
+    def _construct_sql_and_arguments(query, limit=None, offset=None, range=None, aggr_func_name=None, aggr_func_distinct=None, sep=None):
         translator = query._translator
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta) and query._attrs_to_prefetch_dict:
@@ -5367,7 +5367,8 @@ class Query(object):
             query._key,
             vartypes=HashableDict(query._translator.vartypes),
             getattr_values=HashableDict(translator.getattr_values),
-            range=range,
+            limit=limit,
+            offset=offset,
             distinct=query._distinct,
             aggr_func=(aggr_func_name, aggr_func_distinct, sep),
             for_update=query._for_update,
@@ -5379,7 +5380,7 @@ class Query(object):
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
-                range, query._distinct, aggr_func_name, aggr_func_distinct, sep,
+                limit, offset, query._distinct, aggr_func_name, aggr_func_distinct, sep,
                 query._for_update, query._nowait, attrs_to_prefetch)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
@@ -5397,9 +5398,9 @@ class Query(object):
     def get_sql(query):
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments()
         return sql
-    def _fetch(query, range=None):
+    def _fetch(query, limit=None, offset=None):
         translator = query._translator
-        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(limit, offset)
         database = query._database
         cache = database._get_cache()
         if query._for_update: cache.immediate = True
@@ -5761,7 +5762,9 @@ class Query(object):
             if not start: return query._fetch()
             else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
         if start >= stop: return []
-        return query._fetch(range=(start, stop))
+        limit = stop - start
+        offset = start
+        return query._fetch(limit, offset)
     @cut_traceback
     def limit(query, limit, offset=None):
         start = offset or 0

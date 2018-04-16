@@ -425,7 +425,8 @@ class SQLTranslator(ASTTranslator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         return next(iter(translator.aggregated_subquery_paths))
-    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, aggr_func_distinct=None, sep=None,
+    def construct_sql_ast(translator, limit=None, offset=None, distinct=None,
+                          aggr_func_name=None, aggr_func_distinct=None, sep=None,
                           for_update=False, nowait=False, attrs_to_prefetch=(), is_not_null_checks=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
@@ -526,12 +527,8 @@ class SQLTranslator(ASTTranslator):
 
         if translator.order and not aggr_func_name: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
-        if range:
+        if limit is not None:
             assert not aggr_func_name
-            start, stop = range
-            limit = stop - start
-            offset = start
-            assert limit is not None
             limit_section = [ 'LIMIT', [ 'VALUE', limit ]]
             if offset: limit_section.append([ 'VALUE', offset ])
             sql_ast = sql_ast + [ limit_section ]
