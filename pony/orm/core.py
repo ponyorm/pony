@@ -5712,17 +5712,17 @@ class Query(object):
                             _next_kwarg_id=next_id, _vars=new_vars)
     @cut_traceback
     def __getitem__(query, key):
-        if isinstance(key, slice):
-            step = key.step
-            if step is not None and step != 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
-            start = key.start
-            if start is None: start = 0
-            elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
-            stop = key.stop
-            if stop is None:
-                if not start: return query._fetch()
-                else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
-        else: throw(TypeError, 'If you want apply index to query, convert it to list first')
+        if not isinstance(key, slice):
+            throw(TypeError, 'If you want apply index to a query, convert it to list first')
+        step = key.step
+        if step is not None and step != 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
+        start = key.start
+        if start is None: start = 0
+        elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
+        stop = key.stop
+        if stop is None:
+            if not start: return query._fetch()
+            else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
         if start >= stop: return []
         return query._fetch(range=(start, stop))
     @cut_traceback
