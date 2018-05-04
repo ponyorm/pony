@@ -60,5 +60,22 @@ class TestCrudRawSQL(unittest.TestCase):
     def test4(self):
         students = Student.select(123)
 
+    def test5(self):
+        x = 1
+        y = 30
+        cursor = db.execute("select name from Student where id = $x and age = $y")
+        self.assertEqual(cursor.fetchone()[0], 'A')
+
+    def test6(self):
+        x = 1
+        y = 30
+        cursor = db.execute("select name, 'abc$$def%' from Student where id = $x and age = $y")
+        self.assertEqual(cursor.fetchone(), ('A', 'abc$def%'))
+
+    def test7(self):
+        cursor = db.execute("select name, 'abc$$def%' from Student where id = 1")
+        self.assertEqual(cursor.fetchone(), ('A', 'abc$def%'))
+
+
 if __name__ == '__main__':
     unittest.main()

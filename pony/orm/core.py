@@ -263,7 +263,7 @@ def adapt_sql(sql, paramstyle):
         else: source = '{%s}' % ','.join('%r:%s' % item for item in kwargs.items())
         code = compile(source, '<?>', 'eval')
     else:
-        adapted_sql = original_sql
+        adapted_sql = original_sql.replace('$$', '$')
         code = compile('None', '<?>', 'eval')
     result = adapted_sql, code
     adapted_sql_cache[(sql, paramstyle)] = result
