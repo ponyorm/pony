@@ -225,11 +225,16 @@ if sys.platform == 'win32':
       _absolute_re = re.compile(r'^(?:[A-Za-z]:)?[\\/]')
 else: _absolute_re = re.compile(r'^/')
 
+_uri_re = re.compile(r'^\w+:(\/?\/?)[^\s]+$')
+
 def is_absolute_path(filename):
     return bool(_absolute_re.match(filename))
 
+def is_uri(filename):
+    return bool(_uri_re.match(filename))
+
 def absolutize_path(filename, frame_depth):
-    if is_absolute_path(filename): return filename
+    if is_absolute_path(filename) or is_uri(filename): return filename
     code_filename = sys._getframe(frame_depth+1).f_code.co_filename
     if not is_absolute_path(code_filename):
         if code_filename.startswith('<') and code_filename.endswith('>'):
