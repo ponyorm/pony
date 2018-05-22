@@ -18,7 +18,7 @@ from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, \
-    cut_traceback_depth
+    cut_traceback_depth, is_uri
 
 class SqliteExtensionUnavailable(Exception):
     pass
@@ -524,9 +524,9 @@ class SQLitePool(Pool):
         pool.con = None
     def _connect(pool):
         filename = pool.filename
-        if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
+        if filename != ':memory:' and not pool.create_db and not os.path.exists(filename) and not is_uri(filename):
             throw(IOError, "Database file is not found: %r" % filename)
-        pool.con = con = sqlite.connect(filename, isolation_level=None, **pool.kwargs)
+        pool.con = con = sqlite.connect(filename, isolation_level=None, uri=is_uri(filename), **pool.kwargs)
         con.text_factory = _text_factory
 
         def create_function(name, num_params, func):
