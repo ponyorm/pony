@@ -269,8 +269,6 @@ def adapt_sql(sql, paramstyle):
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
 
-num_counter = itertools.count()
-
 class Local(localbase):
     def __init__(local):
         local.debug = False
@@ -1593,6 +1591,8 @@ class QueryStat(object):
     def avg_time(stat):
         if not stat.db_count: return None
         return stat.sum_time / stat.db_count
+
+num_counter = itertools.count()
 
 class SessionCache(object):
     def __init__(cache, database):
