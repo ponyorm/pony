@@ -5276,12 +5276,14 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
 def unpickle_query(query_result):
     return query_result
 
+filter_num_counter = itertools.count()
+
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         extractors, tree, extractors_key = create_extractors(
             code_key, tree, globals, locals, special_functions, const_functions)
-        filter_num = 0
+        filter_num = next(filter_num_counter)
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
@@ -5305,11 +5307,12 @@ class Query(object):
             pickled_tree = pickle_ast(tree)
             tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree_copy, extractors, vartypes, left_join=left_join)
+            translator = translator_cls(tree_copy, filter_num, extractors, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
                 tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
-                try: translator = translator_cls(tree_copy, extractors, vartypes, left_join=True, optimize=name_path)
+                try: translator = translator_cls(tree_copy, filter_num, extractors, vartypes,
+                                                 left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
             database._translator_cache[query._key] = translator
@@ -5606,7 +5609,7 @@ class Query(object):
                     throw(TypeError, 'Incorrect number of lambda arguments. '
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
-        filter_num = len(query._filters) + 1
+        filter_num = next(filter_num_counter)
         extractors, func_ast, extractors_key = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
@@ -5627,11 +5630,10 @@ class Query(object):
                 name_path = new_translator.can_be_optimized()
                 if name_path:
                     tree_copy = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
-                    prev_extractors = prev_translator.extractors
-                    prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__
-                    new_translator = translator_cls(tree_copy, prev_extractors, prev_vartypes,
-                                                    left_join=True, optimize=name_path)
+                    new_translator = translator_cls(
+                            tree_copy, prev_translator.original_filter_num, prev_translator.extractors, prev_translator.vartypes,
+                            left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator

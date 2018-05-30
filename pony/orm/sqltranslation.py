@@ -163,12 +163,12 @@ class SQLTranslator(ASTTranslator):
                     else: throw(TranslationError, 'Too complex aggregation, expressions cannot be combined: %s' % ast2src(node))
             return monad
 
-    def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
+    def __init__(translator, tree, filter_num, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
         translator.lambda_argnames = None
-        translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
+        translator.filter_num = translator.original_filter_num = filter_num
         translator.extractors = extractors
         translator.vartypes = vartypes.copy()
         translator.parent = parent_translator
@@ -649,7 +649,7 @@ class SQLTranslator(ASTTranslator):
     def preGenExpr(translator, node):
         inner_tree = node.code
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_tree, translator.extractors, translator.vartypes, translator)
+        subtranslator = translator_cls(inner_tree, translator.filter_num, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
@@ -773,7 +773,7 @@ class SQLTranslator(ASTTranslator):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), name_ast, [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_expr, translator.extractors, translator.vartypes, translator)
+        subtranslator = translator_cls(inner_expr, translator.filter_num, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
