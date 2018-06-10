@@ -235,7 +235,7 @@ class SQLBuilder(object):
             if alias is not None: builder.suppress_aliases = True
             if not where: return 'DELETE ', builder(from_ast)
             return 'DELETE ', builder(from_ast), builder(where)
-    def subquery(builder, *sections):
+    def _subquery(builder, *sections):
         builder.indent += 1
         if not builder.inner_join_syntax:
             sections = move_conditions_from_inner_join_to_where(sections)
@@ -246,7 +246,7 @@ class SQLBuilder(object):
         prev_suppress_aliases = builder.suppress_aliases
         builder.suppress_aliases = False
         try:
-            result = builder.subquery(*sections)
+            result = builder._subquery(*sections)
             if builder.indent:
                 indent = builder.indent_spaces * builder.indent
                 return '(\n', result, indent + ')'
@@ -258,7 +258,7 @@ class SQLBuilder(object):
         result = builder.SELECT(*sections)
         return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
     def EXISTS(builder, *sections):
-        result = builder.subquery(*sections)
+        result = builder._subquery(*sections)
         indent = builder.indent_spaces * builder.indent
         return 'EXISTS (\n', indent, 'SELECT 1\n', result, indent, ')'
     def NOT_EXISTS(builder, *sections):

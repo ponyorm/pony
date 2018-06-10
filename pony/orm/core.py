@@ -5638,7 +5638,7 @@ class Query(object):
         if argnames:
             if original_names:
                 for name in argnames:
-                    if name not in prev_translator.subquery.tablerefs: throw(TypeError,
+                    if name not in prev_translator.sqlquery.tablerefs: throw(TypeError,
                         'Lambda argument %s does not correspond to any loop variable in original query' % name)
             else:
                 expr_type = prev_translator.expr_type
@@ -5649,7 +5649,7 @@ class Query(object):
 
         filter_num = next(filter_num_counter)
         func_ast, extractors = create_extractors(
-            func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.subquery)
+            func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.sqlquery)
         if extractors:
             vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
@@ -5713,7 +5713,7 @@ class Query(object):
     def _apply_kwargs(query, kwargs, original_names=False):
         translator = query._translator
         if original_names:
-            tablerefs = translator.subquery.tablerefs
+            tablerefs = translator.sqlquery.tablerefs
             alias = translator.tree.quals[0].assign.name
             tableref = tablerefs[alias]
             entity = tableref.entity
