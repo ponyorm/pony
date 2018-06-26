@@ -187,8 +187,7 @@ class PGProvider(DBAPIProvider):
         provider.table_if_not_exists_syntax = provider.server_version >= 90100
 
     def should_reconnect(provider, exc):
-        return isinstance(exc, psycopg2.OperationalError) \
-               and exc.pgcode is exc.pgerror is exc.cursor is None
+        return isinstance(exc, psycopg2.OperationalError) and exc.pgcode is None
 
     def get_pool(provider, *args, **kwargs):
         return PGPool(provider.dbapi_module, *args, **kwargs)
