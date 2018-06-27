@@ -141,7 +141,8 @@ def show_migrations(db, fail_fast=False):
             return
         return
     leaf = leaves[0]
-    names = leaf.forwards_list()
+    migrations = leaf.forwards_list()
+    names = [m.name for m in migrations]
 
     try:
         with orm.db_session:
