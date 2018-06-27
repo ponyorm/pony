@@ -79,15 +79,19 @@ class Decompiler(object):
         co_code = code.co_code
         free = code.co_cellvars + code.co_freevars
         try:
-            extended_arg = 0
             while decompiler.pos < decompiler.end:
                 i = decompiler.pos
                 if i in decompiler.targets: decompiler.process_target(i)
                 op = ord(code.co_code[i])
                 if PY36:
-                    if op >= HAVE_ARGUMENT:
-                        oparg = ord(co_code[i + 1]) | extended_arg
-                        extended_arg = (arg << 8) if op == EXTENDED_ARG else 0
+                    extended_arg = 0
+                    oparg = ord(code.co_code[i+1])
+                    while op == EXTENDED_ARG:
+                        extended_arg = (extended_arg | oparg) << 8
+                        i += 2
+                        op = ord(code.co_code[i])
+                        oparg = ord(code.co_code[i+1])
+                    oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
                     i += 2
                 else:
                     i += 1
