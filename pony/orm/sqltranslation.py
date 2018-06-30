@@ -1674,7 +1674,7 @@ class ParamMonad(Monad):
         elif type is UUID: cls = translator.UuidParamMonad
         elif type is Json: cls = translator.JsonParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
-        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type))
+        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type,))
         result = cls(translator, type, paramkey)
         result.aggregated = False
         return result
