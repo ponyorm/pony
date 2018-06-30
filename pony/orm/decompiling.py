@@ -351,6 +351,8 @@ class Decompiler(object):
     def LOAD_METHOD(decompiler, methname):
         return decompiler.LOAD_ATTR(methname)
 
+    LOOKUP_METHOD = LOAD_METHOD  # For PyPy
+
     def LOAD_NAME(decompiler, varname):
         decompiler.names.add(varname)
         return ast.Name(varname)
