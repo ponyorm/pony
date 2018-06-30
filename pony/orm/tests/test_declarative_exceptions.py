@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import PYPY, PYPY2
 
 import sys, unittest
 from datetime import date
@@ -71,7 +72,8 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         def test5(self):
             select(s for s in Student if s.name.upper(**{'a':'b', 'c':'d'}))
 
-    @raises_exception(ExprEvalError, "1 in 2 raises TypeError: argument of type 'int' is not iterable")
+    @raises_exception(ExprEvalError, "1 in 2 raises TypeError: argument of type 'int' is not iterable" if not PYPY else
+                                     "1 in 2 raises TypeError: 'int' object is not iterable")
     def test6(self):
         select(s for s in Student if 1 in 2)
     @raises_exception(NotImplementedError, 'Group[s.group.number]')
@@ -151,7 +153,8 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
     def test30(self):
         select(s for s in Student if s.dob < date(s.id, 1, 1))
-    @raises_exception(ExprEvalError, "max() raises TypeError: max expected 1 arguments, got 0")
+    @raises_exception(ExprEvalError, "max() raises TypeError: max expected 1 arguments, got 0" if not PYPY else
+                                     "max() raises TypeError: max() expects at least one argument")
     def test31(self):
         select(s for s in Student if s.id < max())
     @raises_exception(TypeError, "Incomparable types 'Student' and 'Course' in expression: s in s.courses")
@@ -178,7 +181,10 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "strip() takes at most 1 argument (3 given)")
     def test39(self):
         select(s for s in Student if s.name.strip(1, 2, 3))
-    @raises_exception(ExprEvalError, "len(1, 2) == 3 raises TypeError: len() takes exactly one argument (2 given)")
+    @raises_exception(ExprEvalError,
+                      "len(1, 2) == 3 raises TypeError: len() takes exactly 1 argument (2 given)" if PYPY2 else
+                      "len(1, 2) == 3 raises TypeError: len() takes 1 positional argument but 2 were given" if PYPY else
+                      "len(1, 2) == 3 raises TypeError: len() takes exactly one argument (2 given)")
     def test40(self):
         select(s for s in Student if len(1, 2) == 3)
     @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'Student' in sum(s for s in Student if s.group == g)")
