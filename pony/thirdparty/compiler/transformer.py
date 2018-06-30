@@ -31,6 +31,7 @@ from pony.py23compat import PY2, unicode
 from .ast import *
 import parser
 import symbol
+import sys
 import token
 
 # Python 2.6 compatibility fix
@@ -1224,6 +1225,9 @@ class Transformer:
         # comp_iter: comp_for | comp_if
         # comp_for: 'for' exprlist 'in' test [comp_iter]
         # comp_if: 'if' test [comp_iter]
+
+        if sys.version_info >= (3, 7):
+            node = node[1]  # remove async part
 
         lineno = node[1][2]
         fors = []
