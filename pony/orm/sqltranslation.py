@@ -393,6 +393,10 @@ class SQLTranslator(ASTTranslator):
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
         translator.vars = None
+    def can_be_optimized(translator):
+        if translator.groupby_monads: return False
+        if len(translator.aggregated_subquery_paths) != 1: return False
+        return next(iter(translator.aggregated_subquery_paths))
     def shallow_copy_of_subquery_ast(translator, move_outer_conditions=True, is_not_null_checks=False):
         subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=is_not_null_checks)
         assert attr_offsets is None
@@ -421,10 +425,6 @@ class SQLTranslator(ASTTranslator):
             else: where_ast.insert(1, outer_conditions)
 
         return [ 'SELECT', select_ast, from_ast, where_ast ] + other_ast
-    def can_be_optimized(translator):
-        if translator.groupby_monads: return False
-        if len(translator.aggregated_subquery_paths) != 1: return False
-        return next(iter(translator.aggregated_subquery_paths))
     def construct_sql_ast(translator, limit=None, offset=None, distinct=None,
                           aggr_func_name=None, aggr_func_distinct=None, sep=None,
                           for_update=False, nowait=False, attrs_to_prefetch=(), is_not_null_checks=False):
