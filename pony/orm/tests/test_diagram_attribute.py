@@ -233,6 +233,12 @@ class TestAttribute(unittest.TestCase):
             d = Optional('Entity1', reverse='a')
         db.generate_mapping()
 
+    @raises_exception(TypeError, '`auto=True` option can be specified for `int` attributes only, not for `str`')
+    def test_attribute24(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(str, auto=True)
+
     @raises_exception(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
     def test_columns1(self):
         db = Database('sqlite', ':memory:')
