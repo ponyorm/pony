@@ -3138,7 +3138,7 @@ class SetInstance(object):
                 where_list.append([ converter.EQ, [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection: table_name = reverse.entity._table_
             else: table_name = attr.table
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
+            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', None ] ],
                                   [ 'FROM', [ None, 'TABLE', table_name ] ], where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_count_sql = sql, adapter
@@ -3752,7 +3752,7 @@ class EntityMeta(type):
         if max_id is None:
             max_id_sql = entity._cached_max_id_sql_
             if max_id_sql is None:
-                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'MAX', [ 'COLUMN', None, pk.column ] ] ],
+                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'MAX', None, [ 'COLUMN', None, pk.column ] ] ],
                                       [ 'FROM', [ None, 'TABLE', entity._table_ ] ] ]
                 max_id_sql, adapter = database._ast2sql(sql_ast)
                 entity._cached_max_id_sql_ = max_id_sql

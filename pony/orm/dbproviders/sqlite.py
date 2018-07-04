@@ -55,6 +55,8 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
+    least_func_name = 'min'
+    greatest_func_name = 'max'
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)
@@ -118,16 +120,6 @@ class SQLiteBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return builder.datetime_add('datetime', expr, -delta)
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
-    def MIN(builder, *args):
-        if len(args) == 0: assert False  # pragma: no cover
-        elif len(args) == 1: fname = 'MIN'
-        else: fname = 'min'
-        return fname, '(',  join(', ', imap(builder, args)), ')'
-    def MAX(builder, *args):
-        if len(args) == 0: assert False  # pragma: no cover
-        elif len(args) == 1: fname = 'MAX'
-        else: fname = 'max'
-        return fname, '(',  join(', ', imap(builder, args)), ')'
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
     PY_UPPER = make_unary_func('py_upper')
