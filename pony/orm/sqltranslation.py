@@ -392,8 +392,8 @@ class SQLTranslator(ASTTranslator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         return next(iter(translator.aggregated_subquery_paths))
-    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, for_update=False, nowait=False,
-                          attrs_to_prefetch=(), is_not_null_checks=False):
+    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, aggr_func_distinct=None,
+                          for_update=False, nowait=False, attrs_to_prefetch=(), is_not_null_checks=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
@@ -422,28 +422,31 @@ class SQLTranslator(ASTTranslator):
                 assert len(translator.expr_columns) == 1
             aggr_ast = None
             if groupby_monads or (aggr_func_name == 'COUNT' and distinct
-                                             and isinstance(translator.expr_type, EntityMeta)
-                                             and len(translator.expr_columns) > 1):
+                                  and isinstance(translator.expr_type, EntityMeta)
+                                  and len(translator.expr_columns) > 1):
                 outer_alias = 't'
-                if aggr_func_name == 'COUNT':
+                if aggr_func_name == 'COUNT' and not aggr_func_distinct:
                     outer_aggr_ast = [ 'COUNT', None ]
                 else:
                     assert len(translator.expr_columns) == 1
                     expr_ast = translator.expr_columns[0]
                     if expr_ast[0] == 'COLUMN':
                         outer_alias, column_name = expr_ast[1:]
-                        outer_aggr_ast = [ aggr_func_name, None, [ 'COLUMN', outer_alias, column_name ] ]
+                        outer_aggr_ast = [ aggr_func_name, aggr_func_distinct, [ 'COLUMN', outer_alias, column_name ] ]
                     else:
                         select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + [ [ 'AS', expr_ast, 'expr' ] ]
-                        outer_aggr_ast = [ aggr_func_name, None, [ 'COLUMN', 't', 'expr' ] ]
+                        outer_aggr_ast = [ aggr_func_name, aggr_func_distinct, [ 'COLUMN', 't', 'expr' ] ]
                 def ast_transformer(ast):
                     return [ 'SELECT', [ 'AGGREGATES', outer_aggr_ast ],
                                        [ 'FROM', [ outer_alias, 'SELECT', ast[1:] ] ] ]
             else:
                 if aggr_func_name == 'COUNT':
-                    if isinstance(expr_type, (tuple, EntityMeta)) and not distinct: aggr_ast = [ 'COUNT', None ]
-                    else: aggr_ast = [ 'COUNT', True, translator.expr_columns[0] ]
-                else: aggr_ast = [ aggr_func_name, None, translator.expr_columns[0] ]
+                    if isinstance(expr_type, (tuple, EntityMeta)) and not distinct and not aggr_func_distinct:
+                        aggr_ast = [ 'COUNT', aggr_func_distinct ]
+                    else:
+                        aggr_ast = [ 'COUNT', True if aggr_func_distinct is None else aggr_func_distinct,
+                                     translator.expr_columns[0] ]
+                else: aggr_ast = [ aggr_func_name, aggr_func_distinct, translator.expr_columns[0] ]
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:

@@ -73,20 +73,49 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(c for c in Course if count(s for s in c.students) > 1))
         self.assertEqual(result, {Course['C1', 1], Course['C2', 1]})
 
+    def test_count_5(self):
+        result = select(c.semester for c in Course).count(distinct=True)
+        self.assertEqual(result, 2)
+
+    def test_count_6(self):
+        result = select(c for c in Course).count()
+        self.assertEqual(result, 3)
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
+    def test_count_7(self):
+        result = select(c for c in Course).count(distinct=True)
+        self.assertEqual(result, 3)
+        self.assertTrue('DISTINCT' in db.last_sql)
+
     @raises_exception(TypeError)
     def test_sum_1(self):
         result = set(select(g for g in Group if sum(s for s in Student if s.group == g) > 1))
-        self.assertEqual(result, set())
 
     @raises_exception(TypeError)
     def test_sum_2(self):
         select(g for g in Group if sum(s.name for s in Student if s.group == g) > 1)
 
     def test_sum_3(self):
+        result = sum(s.scholarship for s in Student)
+        self.assertEqual(result, 600)
+
+    def test_sum_4(self):
+        result = sum(s.scholarship for s in Student if s.name == 'Unnamed')
+        self.assertEqual(result, 0)
+
+    def test_sum_5(self):
+        result = select(c.semester for c in Course).sum()
+        self.assertEqual(result, 4)
+
+    def test_sum_6(self):
+        result = select(c.semester for c in Course).sum(distinct=True)
+        self.assertEqual(result, 3)
+
+    def test_sum_7(self):
         result = set(select(g for g in Group if sum(s.scholarship for s in Student if s.group == g) > 500))
         self.assertEqual(result, set())
 
-    def test_sum_4(self):
+    def test_sum_8(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).sum() > 200))
         self.assertEqual(result, {Group[2]})
 
@@ -102,6 +131,10 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).min() == 0))
         self.assertEqual(result, {Group[1]})
 
+    def test_min_4(self):
+        result = select(s.scholarship for s in Student).min()
+        self.assertEqual(0, result)
+
     def test_max_1(self):
         result = set(select(g for g in Group if max(s.scholarship for s in Student if s.group == g) > 100))
         self.assertEqual(result, {Group[2]})
@@ -114,6 +147,10 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).max() == 100))
         self.assertEqual(result, {Group[1]})
 
+    def test_max_4(self):
+        result = select(s.scholarship for s in Student).max()
+        self.assertEqual(result, 500)
+
     def test_avg_1(self):
         result = select(g for g in Group if avg(s.scholarship for s in Student if s.group == g) == 50)[:]
         self.assertEqual(result, [Group[1]])
@@ -121,6 +158,14 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_avg_2(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).avg() == 50))
         self.assertEqual(result, {Group[1]})
+
+    def test_avg_3(self):
+        result = select(c.semester for c in Course).avg()
+        self.assertAlmostEqual(1.33, result, places=2)
+
+    def test_avg_4(self):
+        result = select(c.semester for c in Course).avg(distinct=True)
+        self.assertAlmostEqual(1.5, result)
 
     def test_exists(self):
         result = set(select(g for g in Group if exists(s for s in g.students if s.name == 'S1')))

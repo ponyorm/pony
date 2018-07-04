@@ -5327,20 +5327,21 @@ class Query(object):
         return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
-    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None):
+    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None, aggr_func_distinct=None):
         translator = query._translator
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta) and query._attrs_to_prefetch_dict:
             attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
-        sql_key = (query._key, range, query._distinct, aggr_func_name, query._for_update, query._nowait,
-                   options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
+        sql_key = (query._key, range, query._distinct, aggr_func_name, aggr_func_distinct,
+                   query._for_update, query._nowait, options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
-                range, query._distinct, aggr_func_name, query._for_update, query._nowait, attrs_to_prefetch)
+                range, query._distinct, aggr_func_name, aggr_func_distinct,
+                query._for_update, query._nowait, attrs_to_prefetch)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -5730,9 +5731,10 @@ class Query(object):
         start = (pagenum - 1) * pagesize
         stop = pagenum * pagesize
         return query[start:stop]
-    def _aggregate(query, aggr_func_name):
+    def _aggregate(query, aggr_func_name, distinct=None):
         translator = query._translator
-        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(aggr_func_name=aggr_func_name)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(
+            aggr_func_name=aggr_func_name, aggr_func_distinct=distinct)
         cache = query._database._get_cache()
         try: result = cache.query_results[query_key]
         except KeyError:
@@ -5751,11 +5753,11 @@ class Query(object):
             if query_key is not None: cache.query_results[query_key] = result
         return result
     @cut_traceback
-    def sum(query):
-        return query._aggregate('SUM')
+    def sum(query, distinct=None):
+        return query._aggregate('SUM', distinct)
     @cut_traceback
-    def avg(query):
-        return query._aggregate('AVG')
+    def avg(query, distinct=None):
+        return query._aggregate('AVG', distinct)
     @cut_traceback
     def min(query):
         return query._aggregate('MIN')
@@ -5763,8 +5765,8 @@ class Query(object):
     def max(query):
         return query._aggregate('MAX')
     @cut_traceback
-    def count(query):
-        return query._aggregate('COUNT')
+    def count(query, distinct=None):
+        return query._aggregate('COUNT', distinct)
     @cut_traceback
     def for_update(query, nowait=False):
         provider = query._database.provider
