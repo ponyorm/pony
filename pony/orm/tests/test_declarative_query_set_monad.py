@@ -241,5 +241,41 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(g for g in Group if JOIN(g in select(s.group for s in g.students))))
         self.assertEqual(result, {Group[1], Group[2]})
 
+    def test_group_concat_1(self):
+        result = select(s.name for s in Student).group_concat()
+        self.assertEqual(result, 'S1,S2,S3')
+
+    def test_group_concat_2(self):
+        result = select(s.name for s in Student).group_concat('-')
+        self.assertEqual(result, 'S1-S2-S3')
+
+    def test_group_concat_3(self):
+        result = select(s for s in Student if s.name in group_concat(s.name for s in Student))[:]
+        self.assertEqual(set(result), {Student[1], Student[2], Student[3]})
+
+    def test_group_concat_4(self):
+        result = Student.select().group_concat()
+        self.assertEqual(result, '1,2,3')
+
+    def test_group_concat_5(self):
+        result = Student.select().group_concat('.')
+        self.assertEqual(result, '1.2.3')
+
+    @raises_exception(TypeError, '`group_concat` cannot be used with entity with composite primary key')
+    def test_group_concat_6(self):
+        select(group_concat(s.courses, '-') for s in Student)
+
+    def test_group_concat_7(self):
+        result = select(group_concat(c.semester) for c in Course)[:]
+        self.assertEqual(result[0], '1,1,2')
+
+    def test_group_concat_8(self):
+        result = select(group_concat(c.semester, '-') for c in Course)[:]
+        self.assertEqual(result[0], '1-1-2')
+
+    def test_group_concat_9(self):
+        result = select(group_concat(c.semester, distinct=True) for c in Course)[:]
+        self.assertEqual(result[0], '1,2')
+
 if __name__ == "__main__":
     unittest.main()

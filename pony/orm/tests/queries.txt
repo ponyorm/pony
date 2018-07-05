@@ -914,3 +914,33 @@ Oracle:
 SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
 FROM "STUDENT" "s"
 WHERE MOD("s"."ID", 2) = 0
+
+# Test group_concat:
+
+>>> select((g, group_concat(s.name, '+')) for g in Group for s in g.students)
+
+SELECT "g"."number", GROUP_CONCAT("s"."name", '+')
+FROM "Group" "g", "Student" "s"
+WHERE "g"."number" = "s"."group"
+GROUP BY "g"."number"
+
+PostgreSQL:
+
+SELECT "g"."number", string_agg("s"."name"::text, '+')
+FROM "group" "g", "student" "s"
+WHERE "g"."number" = "s"."group"
+GROUP BY "g"."number"
+
+MySQL:
+
+SELECT `g`.`number`, GROUP_CONCAT(`s`.`name`, '+')
+FROM `group` `g`, `student` `s`
+WHERE `g`.`number` = `s`.`group`
+GROUP BY `g`.`number`
+
+Oracle:
+
+SELECT "g"."NUMBER", LISTAGG("s"."NAME", '+') WITHIN GROUP(ORDER BY 1)
+FROM "GROUP" "g", "STUDENT" "s"
+WHERE "g"."NUMBER" = "s"."GROUP"
+GROUP BY "g"."NUMBER"
