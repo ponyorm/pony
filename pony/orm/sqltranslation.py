@@ -2179,6 +2179,15 @@ class FuncAvgMonad(FuncMonad):
     def call(monad, x, distinct=None):
         return x.aggregate('AVG', distinct)
 
+class FuncGroupConcatMonad(FuncMonad):
+    func = utils.group_concat, core.group_concat
+    def call(monad, x, sep=None, distinct=None):
+        if sep is not None:
+            if not(isinstance(sep, StringConstMonad) and isinstance(sep.value, basestring)):
+                throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % ast2src(sep.node))
+            sep = sep.value
+        return x.aggregate('GROUP_CONCAT', distinct=distinct, sep=sep)
+
 class FuncCoalesceMonad(FuncMonad):
     func = coalesce
     def call(monad, *args):
@@ -2783,7 +2792,7 @@ class QuerySetMonad(SetMixin, Monad):
         if sql_ast is None: sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
         return translator.ExprMonad.new(translator, int, sql_ast)
     len = count
-    def aggregate(monad, func_name, distinct=None):
+    def aggregate(monad, func_name, distinct=None, sep=None):
         distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
         sub = monad.subtranslator
@@ -2799,12 +2808,22 @@ class QuerySetMonad(SetMixin, Monad):
             if expr_type not in comparable_types: throw(TypeError,
                 "Function %s() cannot be applied to type %r in {EXPR}"
                 % (func_name.lower(), type2str(expr_type)))
+        elif func_name == 'GROUP_CONCAT':
+            pass
         else: assert False  # pragma: no cover
         assert len(sub.expr_columns) == 1
         aggr_ast = [ func_name, distinct, sub.expr_columns[0] ]
+        if func_name == 'GROUP_CONCAT':
+            if sep is not None:
+                aggr_ast.append(['VALUE', sep])
         select_ast = [ 'AGGREGATES', aggr_ast ]
         sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
-        result_type = float if func_name == 'AVG' else expr_type
+        if func_name == 'AVG':
+            result_type = float
+        elif func_name == 'GROUP_CONCAT':
+            result_type = basestring
+        else:
+            result_type = expr_type
         return translator.ExprMonad.new(translator, result_type, sql_ast)
     def call_count(monad, distinct=None):
         return monad.count(distinct=distinct)
@@ -2816,6 +2835,11 @@ class QuerySetMonad(SetMixin, Monad):
         return monad.aggregate('MAX')
     def call_avg(monad, distinct=None):
         return monad.aggregate('AVG', distinct)
+    def call_group_concat(monad, sep=None, distinct=None):
+        if sep is not None:
+            if not isinstance(sep, basestring):
+                throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
+        return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
 
 def find_or_create_having_ast(subquery_ast):
     groupby_offset = None
