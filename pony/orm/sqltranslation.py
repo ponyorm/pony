@@ -1067,7 +1067,7 @@ class Monad(with_metaclass(MonadMeta)):
         else: assert False  # pragma: no cover
         expr = monad.getsql()
         if len(expr) == 1: expr = expr[0]
-        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        elif translator.row_value_syntax: expr = ['ROW'] + expr
         else: throw(NotImplementedError,
                     '%s database provider does not support entities '
                     'with composite primary keys inside aggregate functions. Got: {EXPR} '
