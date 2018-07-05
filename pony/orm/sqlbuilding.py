@@ -444,6 +444,7 @@ class SQLBuilder(object):
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' NOT IN (', join(', ', expr_list), ')'
     def COUNT(builder, distinct, *expr_list):
+        assert distinct in (None, True, False)
         if not distinct:
             if not expr_list: return ['COUNT(*)']
             return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
@@ -458,8 +459,10 @@ class SQLBuilder(object):
         # Oracle and SQLite queries translated to completely different subquery syntax
         else: throw(NotImplementedError)  # This line must not be executed
     def SUM(builder, distinct, expr):
+        assert distinct in (None, True, False)
         return distinct and 'coalesce(SUM(DISTINCT ' or 'coalesce(SUM(', builder(expr), '), 0)'
     def AVG(builder, distinct, expr):
+        assert distinct in (None, True, False)
         return distinct and 'AVG(DISTINCT ' or 'AVG(', builder(expr), ')'
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')

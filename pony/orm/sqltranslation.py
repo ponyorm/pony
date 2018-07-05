@@ -1026,11 +1026,12 @@ class Monad(with_metaclass(MonadMeta)):
             return translator.MethodMonad(monad, attrname)
         return property_method()
     def len(monad): throw(TypeError)
-    def count(monad):
+    def count(monad, distinct=None):
+        distinct = distinct_from_monad(distinct, default=True)
         translator = monad.translator
         if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr = monad.getsql()
-        distinct = True
+
         if monad.type is bool:
             expr = [ 'CASE', None, [ [ expr[0], [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
             distinct = None
@@ -1053,7 +1054,8 @@ class Monad(with_metaclass(MonadMeta)):
         result = translator.ExprMonad.new(translator, int, [ 'COUNT', distinct, expr ])
         result.aggregated = True
         return result
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None):
+        distinct = distinct_from_monad(distinct)
         translator = monad.translator
         if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr_type = monad.type
@@ -1078,7 +1080,8 @@ class Monad(with_metaclass(MonadMeta)):
                     % translator.dialect)
         if func_name == 'AVG': result_type = float
         else: result_type = expr_type
-        distinct = getattr(monad, 'forced_distinct', False) and func_name in ('SUM', 'AVG')
+        if distinct is None:
+            distinct = getattr(monad, 'forced_distinct', False) and func_name in ('SUM', 'AVG')
         aggr_ast = [ func_name, distinct, expr ]
         result = translator.ExprMonad.new(translator, result_type, aggr_ast)
         result.aggregated = True
@@ -1101,6 +1104,13 @@ class Monad(with_metaclass(MonadMeta)):
         return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ])
     def to_real(monad):
         return NumericExprMonad(monad.translator, float, [ 'TO_REAL', monad.getsql()[0] ])
+
+def distinct_from_monad(distinct, default=None):
+    if distinct is None:
+        return default
+    if isinstance(distinct, NumericConstMonad) and isinstance(distinct.value, bool):
+        return distinct.value
+    throw(TypeError, '`distinct` value should be True or False. Got: %s' % ast2src(distinct.node))
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -1188,7 +1198,7 @@ class MethodMonad(Monad):
     def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
     def nonzero(monad): raise_forgot_parentheses(monad)
     def negate(monad): raise_forgot_parentheses(monad)
-    def aggregate(monad, func_name): raise_forgot_parentheses(monad)
+    def aggregate(monad, func_name, distinct=None): raise_forgot_parentheses(monad)
     def __getitem__(monad, key): raise_forgot_parentheses(monad)
 
     def __add__(monad, monad2): raise_forgot_parentheses(monad)
@@ -2138,10 +2148,10 @@ class GetattrMonad(FuncMonad):
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count
-    def call(monad, x=None):
+    def call(monad, x=None, distinct=None):
         translator = monad.translator
         if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
-        if x is not None: return x.count()
+        if x is not None: return x.count(distinct)
         result = translator.ExprMonad.new(translator, int, [ 'COUNT', None ])
         result.aggregated = True
         return result
@@ -2153,13 +2163,13 @@ class FuncAbsMonad(FuncMonad):
 
 class FuncSumMonad(FuncMonad):
     func = sum, core.sum
-    def call(monad, x):
-        return x.aggregate('SUM')
+    def call(monad, x, distinct=None):
+        return x.aggregate('SUM', distinct)
 
 class FuncAvgMonad(FuncMonad):
     func = utils.avg, core.avg
-    def call(monad, x):
-        return x.aggregate('AVG')
+    def call(monad, x, distinct=None):
+        return x.aggregate('AVG', distinct)
 
 class FuncCoalesceMonad(FuncMonad):
     func = coalesce
@@ -2356,8 +2366,9 @@ class AttrSetMonad(SetMixin, Monad):
             if not for_count and not translator.hint_join: return True
             if isinstance(monad.parent, monad.translator.AttrSetMonad): return True
         return False
-    def count(monad):
+    def count(monad, distinct=None):
         translator = monad.translator
+        distinct = distinct_from_monad(distinct, monad.requires_distinct(joined=translator.hint_join, for_count=True))
 
         subquery = monad._subselect()
         expr_list = subquery.expr_list
@@ -2365,7 +2376,6 @@ class AttrSetMonad(SetMixin, Monad):
         inner_conditions = subquery.conditions
         outer_conditions = subquery.outer_conditions
 
-        distinct = monad.requires_distinct(joined=translator.hint_join, for_count=True)
         sql_ast = make_aggr = None
         extra_grouping = False
         if not distinct and monad.tableref.name_path != translator.optimize:
@@ -2413,7 +2423,8 @@ class AttrSetMonad(SetMixin, Monad):
         else: result.nogroup = True
         return result
     len = count
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None):
+        distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
         item_type = monad.type.item_type
 
@@ -2427,7 +2438,6 @@ class AttrSetMonad(SetMixin, Monad):
                 % (func_name.lower(), type2str(item_type)))
         else: assert False  # pragma: no cover
 
-        distinct = monad.forced_distinct and func_name in ('SUM', 'AVG')
         make_aggr = lambda expr_list: [ func_name, distinct ] + expr_list
 
         if translator.hint_join:
@@ -2595,7 +2605,8 @@ class NumericSetExprMonad(SetMixin, Monad):
         monad.sqlop = sqlop
         monad.left = left
         monad.right = right
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None):
+        distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
         subquery = Subquery(translator.subquery)
         expr = monad.getsql(subquery)[0]
@@ -2604,7 +2615,6 @@ class NumericSetExprMonad(SetMixin, Monad):
         if outer_cond[0] == 'AND': subquery.outer_conditions = outer_cond[1:]
         else: subquery.outer_conditions = [ outer_cond ]
         result_type = float if func_name == 'AVG' else monad.type.item_type
-        distinct = monad.forced_distinct and func_name in ('SUM', 'AVG')
         aggr_ast = [ func_name, distinct, expr ]
         if translator.optimize != monad.tableref.name_path:
             sql_ast = [ 'SELECT', [ 'AGGREGATES', aggr_ast ],
@@ -2723,13 +2733,10 @@ class QuerySetMonad(SetMixin, Monad):
         translator = monad.translator
         return translator.BoolExprMonad(translator, [ 'NOT_EXISTS' ] + sql[1:])
     def count(monad, distinct=None):
+        distinct = distinct_from_monad(distinct)
         translator = monad.translator
         sub = monad.subtranslator
-        if distinct is not None:
-            if isinstance(distinct, NumericConstMonad) and isinstance(distinct.value, bool):
-                distinct = distinct.value
-            else:
-                throw(TypeError, '`distinct` value should be True or False, got: %s' % ast2src(distinct.node))
+
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
         subquery_ast = sub.shallow_copy_of_subquery_ast()
         from_ast, where_ast = subquery_ast[2:4]
@@ -2769,6 +2776,7 @@ class QuerySetMonad(SetMixin, Monad):
         return translator.ExprMonad.new(translator, int, sql_ast)
     len = count
     def aggregate(monad, func_name, distinct=None):
+        distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
         sub = monad.subtranslator
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
@@ -2785,8 +2793,6 @@ class QuerySetMonad(SetMixin, Monad):
                 % (func_name.lower(), type2str(expr_type)))
         else: assert False  # pragma: no cover
         assert len(sub.expr_columns) == 1
-        if distinct is None:
-            distinct = monad.forced_distinct and func_name in ('SUM', 'AVG')
         aggr_ast = [ func_name, distinct, sub.expr_columns[0] ]
         select_ast = [ 'AGGREGATES', aggr_ast ]
         sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]

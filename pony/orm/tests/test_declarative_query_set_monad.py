@@ -97,6 +97,18 @@ class TestQuerySetMonad(unittest.TestCase):
         self.assertEqual(result, 3)
         self.assertTrue('DISTINCT' in db.last_sql)
 
+    def test_count_8(self):
+        select(count(c.semester, distinct=False) for c in Course)[:]
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
+    @raises_exception(TypeError, "`distinct` value should be True or False. Got: s.name.startswith('P')")
+    def test_count_9(self):
+        select(count(s, distinct=s.name.startswith('P')) for s in Student)
+
+    def test_count_10(self):
+        select(count('*', distinct=True) for s in Student)[:]
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
     @raises_exception(TypeError)
     def test_sum_1(self):
         result = set(select(g for g in Group if sum(s for s in Student if s.group == g) > 1))
@@ -134,6 +146,10 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).sum(distinct=True) > 200))
         self.assertEqual(result, {Group[2]})
         self.assertTrue('DISTINCT' in db.last_sql)
+
+    def test_sum_10(self):
+        select(sum(s.scholarship, distinct=True) for s in Student)[:]
+        self.assertTrue('SUM(DISTINCT' in db.last_sql)
 
     def test_min_1(self):
         result = set(select(g for g in Group if min(s.name for s in Student if s.group == g) == 'S1'))
@@ -186,6 +202,10 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_avg_5(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).avg(distinct=True) == 50))
         self.assertEqual(result, {Group[1]})
+        self.assertTrue('AVG(DISTINCT' in db.last_sql)
+
+    def test_avg_6(self):
+        select(avg(s.scholarship, distinct=True) for s in Student)[:]
         self.assertTrue('AVG(DISTINCT' in db.last_sql)
 
     def test_exists(self):
