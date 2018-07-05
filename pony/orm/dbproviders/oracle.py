@@ -212,6 +212,8 @@ class OraBuilder(SQLBuilder):
         assert False  # pragma: no cover
     def TO_REAL(builder, expr):
         return 'CAST(', builder(expr), ' AS NUMBER)'
+    def TO_STR(builder, expr):
+        return 'TO_CHAR(', builder(expr), ')'
     def DATE(builder, expr):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):

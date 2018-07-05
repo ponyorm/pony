@@ -61,6 +61,8 @@ class PGSQLBuilder(SQLBuilder):
         return result
     def TO_INT(builder, expr):
         return '(', builder(expr), ')::int'
+    def TO_STR(builder, expr):
+        return '(', builder(expr), ')::text'
     def TO_REAL(builder, expr):
         return '(', builder(expr), ')::double precision'
     def DATE(builder, expr):
