@@ -2722,9 +2722,14 @@ class QuerySetMonad(SetMixin, Monad):
         assert sql[0] == 'EXISTS'
         translator = monad.translator
         return translator.BoolExprMonad(translator, [ 'NOT_EXISTS' ] + sql[1:])
-    def count(monad):
+    def count(monad, distinct=None):
         translator = monad.translator
         sub = monad.subtranslator
+        if distinct is not None:
+            if isinstance(distinct, NumericConstMonad) and isinstance(distinct.value, bool):
+                distinct = distinct.value
+            else:
+                throw(TypeError, '`distinct` value should be True or False, got: %s' % ast2src(distinct.node))
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
         subquery_ast = sub.shallow_copy_of_subquery_ast()
         from_ast, where_ast = subquery_ast[2:4]
@@ -2732,15 +2737,15 @@ class QuerySetMonad(SetMixin, Monad):
 
         expr_type = sub.expr_type
         if isinstance(expr_type, (tuple, EntityMeta)):
-            if not sub.distinct:
+            if not sub.distinct and not distinct:
                 select_ast = [ 'AGGREGATES', [ 'COUNT', None ] ]
             elif len(sub.expr_columns) == 1:
-                select_ast = [ 'AGGREGATES', [ 'COUNT', True ] + sub.expr_columns ]
+                select_ast = [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct ] + sub.expr_columns ]
             elif translator.dialect == 'Oracle':
                 sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', None, [ 'COUNT', None ] ] ],
                             from_ast, where_ast, [ 'GROUP_BY' ] + sub.expr_columns ]
             elif translator.row_value_syntax:
-                select_ast = [ 'AGGREGATES', [ 'COUNT', True ] + sub.expr_columns ]
+                select_ast = [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct ] + sub.expr_columns ]
             elif translator.dialect == 'SQLite':
                 if translator.sqlite_version < (3, 6, 21):
                     if sub.aggregated: throw(TranslationError)
@@ -2748,22 +2753,22 @@ class QuerySetMonad(SetMixin, Monad):
                     subquery_ast = sub.shallow_copy_of_subquery_ast()
                     from_ast, where_ast = subquery_ast[2:4]
                     sql_ast = [ 'SELECT',
-                        [ 'AGGREGATES', [ 'COUNT', True, [ 'COLUMN', alias, 'ROWID' ] ] ],
+                        [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct, [ 'COLUMN', alias, 'ROWID' ] ] ],
                         from_ast, where_ast ]
                 else:
                     alias = translator.subquery.make_alias('t')
                     sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', None ] ],
-                                [ 'FROM', [ alias, 'SELECT', [
-                                  [ 'DISTINCT' ] + sub.expr_columns, from_ast, where_ast ] ] ] ]
+                                [ 'FROM', [ alias, 'SELECT', [ [ 'DISTINCT' if distinct is not False else 'ALL' ]
+                                                               + sub.expr_columns, from_ast, where_ast ] ] ] ]
             else: assert False  # pragma: no cover
         elif len(sub.expr_columns) == 1:
-            select_ast = [ 'AGGREGATES', [ 'COUNT', True, sub.expr_columns[0] ] ]
+            select_ast = [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct, sub.expr_columns[0] ] ]
         else: throw(NotImplementedError)  # pragma: no cover
 
         if sql_ast is None: sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
         return translator.ExprMonad.new(translator, int, sql_ast)
     len = count
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None):
         translator = monad.translator
         sub = monad.subtranslator
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
@@ -2780,22 +2785,23 @@ class QuerySetMonad(SetMixin, Monad):
                 % (func_name.lower(), type2str(expr_type)))
         else: assert False  # pragma: no cover
         assert len(sub.expr_columns) == 1
-        distinct = monad.forced_distinct and func_name in ('SUM', 'AVG')
+        if distinct is None:
+            distinct = monad.forced_distinct and func_name in ('SUM', 'AVG')
         aggr_ast = [ func_name, distinct, sub.expr_columns[0] ]
         select_ast = [ 'AGGREGATES', aggr_ast ]
         sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
         result_type = float if func_name == 'AVG' else expr_type
         return translator.ExprMonad.new(translator, result_type, sql_ast)
-    def call_count(monad):
-        return monad.count()
-    def call_sum(monad):
-        return monad.aggregate('SUM')
+    def call_count(monad, distinct=None):
+        return monad.count(distinct=distinct)
+    def call_sum(monad, distinct=None):
+        return monad.aggregate('SUM', distinct)
     def call_min(monad):
         return monad.aggregate('MIN')
     def call_max(monad):
         return monad.aggregate('MAX')
-    def call_avg(monad):
-        return monad.aggregate('AVG')
+    def call_avg(monad, distinct=None):
+        return monad.aggregate('AVG', distinct)
 
 def find_or_create_having_ast(subquery_ast):
     groupby_offset = None

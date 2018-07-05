@@ -69,6 +69,16 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(s for s in Student if count(c for c in s.courses) > 1))
         self.assertEqual(result, {Student[2], Student[3]})
 
+    def test_count_3a(self):
+        result = set(select(s for s in Student if select(c for c in s.courses).count() > 1))
+        self.assertEqual(result, {Student[2], Student[3]})
+        self.assertTrue('DISTINCT' in db.last_sql)
+
+    def test_count_3b(self):
+        result = set(select(s for s in Student if select(c for c in s.courses).count(distinct=False) > 1))
+        self.assertEqual(result, {Student[2], Student[3]})
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
     def test_count_4(self):
         result = set(select(c for c in Course if count(s for s in c.students) > 1))
         self.assertEqual(result, {Course['C1', 1], Course['C2', 1]})
@@ -118,6 +128,12 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_sum_8(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).sum() > 200))
         self.assertEqual(result, {Group[2]})
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
+    def test_sum_9(self):
+        result = set(select(g for g in Group if select(s.scholarship for s in g.students).sum(distinct=True) > 200))
+        self.assertEqual(result, {Group[2]})
+        self.assertTrue('DISTINCT' in db.last_sql)
 
     def test_min_1(self):
         result = set(select(g for g in Group if min(s.name for s in Student if s.group == g) == 'S1'))
@@ -166,6 +182,11 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_avg_4(self):
         result = select(c.semester for c in Course).avg(distinct=True)
         self.assertAlmostEqual(1.5, result)
+
+    def test_avg_5(self):
+        result = set(select(g for g in Group if select(s.scholarship for s in g.students).avg(distinct=True) == 50))
+        self.assertEqual(result, {Group[1]})
+        self.assertTrue('AVG(DISTINCT' in db.last_sql)
 
     def test_exists(self):
         result = set(select(g for g in Group if exists(s for s in g.students if s.name == 'S1')))
