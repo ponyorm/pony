@@ -392,7 +392,7 @@ class SQLTranslator(ASTTranslator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         return next(iter(translator.aggregated_subquery_paths))
-    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, aggr_func_distinct=None,
+    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, aggr_func_distinct=None, sep=None,
                           for_update=False, nowait=False, attrs_to_prefetch=(), is_not_null_checks=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
@@ -432,10 +432,14 @@ class SQLTranslator(ASTTranslator):
                     expr_ast = translator.expr_columns[0]
                     if expr_ast[0] == 'COLUMN':
                         outer_alias, column_name = expr_ast[1:]
-                        outer_aggr_ast = [ aggr_func_name, aggr_func_distinct, [ 'COLUMN', outer_alias, column_name ] ]
+                        outer_aggr_ast = [aggr_func_name, aggr_func_distinct, ['COLUMN', outer_alias, column_name]]
+                        if aggr_func_name == 'GROUP_CONCAT' and sep is not None:
+                            outer_aggr_ast.append(['VALUE', sep])
                     else:
                         select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + [ [ 'AS', expr_ast, 'expr' ] ]
                         outer_aggr_ast = [ aggr_func_name, aggr_func_distinct, [ 'COLUMN', 't', 'expr' ] ]
+                        if aggr_func_name == 'GROUP_CONCAT' and sep is not None:
+                            outer_aggr_ast.append(['VALUE', sep])
                 def ast_transformer(ast):
                     return [ 'SELECT', [ 'AGGREGATES', outer_aggr_ast ],
                                        [ 'FROM', [ outer_alias, 'SELECT', ast[1:] ] ] ]
@@ -446,7 +450,11 @@ class SQLTranslator(ASTTranslator):
                     else:
                         aggr_ast = [ 'COUNT', True if aggr_func_distinct is None else aggr_func_distinct,
                                      translator.expr_columns[0] ]
-                else: aggr_ast = [ aggr_func_name, aggr_func_distinct, translator.expr_columns[0] ]
+                else:
+                    aggr_ast = [ aggr_func_name, aggr_func_distinct, translator.expr_columns[0] ]
+                    if aggr_func_name == 'GROUP_CONCAT' and sep is not None:
+                        aggr_ast.append(['VALUE', sep])
+
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:

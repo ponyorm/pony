@@ -57,7 +57,7 @@ __all__ = [
 
     'select', 'left_join', 'get', 'exists', 'delete',
 
-    'count', 'sum', 'min', 'max', 'avg', 'distinct',
+    'count', 'sum', 'min', 'max', 'avg', 'group_concat', 'distinct',
 
     'JOIN', 'desc', 'between', 'concat', 'coalesce', 'raw_sql',
 
@@ -5219,6 +5219,7 @@ sum = make_aggrfunc(builtins.sum)
 min = make_aggrfunc(builtins.min)
 max = make_aggrfunc(builtins.max)
 avg = make_aggrfunc(utils.avg)
+group_concat = make_aggrfunc(utils.group_concat)
 
 distinct = make_aggrfunc(utils.distinct)
 
@@ -5327,20 +5328,20 @@ class Query(object):
         return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
-    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None, aggr_func_distinct=None):
+    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None, aggr_func_distinct=None, sep=None):
         translator = query._translator
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta) and query._attrs_to_prefetch_dict:
             attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
-        sql_key = (query._key, range, query._distinct, aggr_func_name, aggr_func_distinct,
+        sql_key = (query._key, range, query._distinct, (aggr_func_name, aggr_func_distinct, sep),
                    query._for_update, query._nowait, options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
-                range, query._distinct, aggr_func_name, aggr_func_distinct,
+                range, query._distinct, aggr_func_name, aggr_func_distinct, sep,
                 query._for_update, query._nowait, attrs_to_prefetch)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
@@ -5731,10 +5732,10 @@ class Query(object):
         start = (pagenum - 1) * pagesize
         stop = pagenum * pagesize
         return query[start:stop]
-    def _aggregate(query, aggr_func_name, distinct=None):
+    def _aggregate(query, aggr_func_name, distinct=None, sep=None):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(
-            aggr_func_name=aggr_func_name, aggr_func_distinct=distinct)
+            aggr_func_name=aggr_func_name, aggr_func_distinct=distinct, sep=sep)
         cache = query._database._get_cache()
         try: result = cache.query_results[query_key]
         except KeyError:
@@ -5746,7 +5747,12 @@ class Query(object):
             if result is None: pass
             elif aggr_func_name == 'COUNT': pass
             else:
-                expr_type = float if aggr_func_name == 'AVG' else translator.expr_type
+                if aggr_func_name == 'AVG':
+                    expr_type = float
+                elif aggr_func_name == 'GROUP_CONCAT':
+                    expr_type = basestring
+                else:
+                    expr_type = translator.expr_type
                 provider = query._database.provider
                 converter = provider.get_converter_by_py_type(expr_type)
                 result = converter.sql2py(result)
@@ -5758,6 +5764,12 @@ class Query(object):
     @cut_traceback
     def avg(query, distinct=None):
         return query._aggregate('AVG', distinct)
+    @cut_traceback
+    def group_concat(query, sep=None, distinct=None):
+        if sep is not None:
+            if not isinstance(sep, basestring):
+                throw(TypeError, '`sep` option for `group_concat` should be of type str. Got: %s' % type(sep).__name__)
+        return query._aggregate('GROUP_CONCAT', distinct, sep)
     @cut_traceback
     def min(query):
         return query._aggregate('MIN')

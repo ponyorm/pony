@@ -464,6 +464,12 @@ class SQLBuilder(object):
     def AVG(builder, distinct, expr):
         assert distinct in (None, True, False)
         return distinct and 'AVG(DISTINCT ' or 'AVG(', builder(expr), ')'
+    def GROUP_CONCAT(builder, distinct, expr, sep=None):
+        assert distinct in (None, True, False)
+        result = distinct and 'GROUP_CONCAT(DISTINCT ' or 'GROUP_CONCAT(', builder(expr)
+        if sep is not None:
+            result = result, ', ', builder(sep)
+        return result, ')'
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
     LENGTH = make_unary_func('length')
