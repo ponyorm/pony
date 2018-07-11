@@ -392,8 +392,8 @@ class SQLTranslator(ASTTranslator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         return next(iter(translator.aggregated_subquery_paths))
-    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, for_update=False, nowait=False,
-                          attrs_to_prefetch=(), is_not_null_checks=False):
+    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, aggr_func_distinct=None, sep=None,
+                          for_update=False, nowait=False, attrs_to_prefetch=(), is_not_null_checks=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
@@ -411,10 +411,13 @@ class SQLTranslator(ASTTranslator):
         if aggr_func_name:
             expr_type = translator.expr_type
             if isinstance(expr_type, EntityMeta):
-                if aggr_func_name is not 'COUNT': throw(TypeError,
+                if aggr_func_name == 'GROUP_CONCAT':
+                    if expr_type._pk_is_composite_:
+                        throw(TypeError, "`group_concat` cannot be used with entity with composite primary key")
+                elif aggr_func_name != 'COUNT': throw(TypeError,
                     'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
             elif isinstance(expr_type, tuple):
-                if aggr_func_name is not 'COUNT': throw(TypeError,
+                if aggr_func_name != 'COUNT': throw(TypeError,
                     'Single attribute should be specified for %r aggregate function' % aggr_func_name.lower())
             else:
                 if aggr_func_name in ('SUM', 'AVG') and expr_type not in numeric_types:
@@ -422,28 +425,39 @@ class SQLTranslator(ASTTranslator):
                 assert len(translator.expr_columns) == 1
             aggr_ast = None
             if groupby_monads or (aggr_func_name == 'COUNT' and distinct
-                                             and isinstance(translator.expr_type, EntityMeta)
-                                             and len(translator.expr_columns) > 1):
+                                  and isinstance(translator.expr_type, EntityMeta)
+                                  and len(translator.expr_columns) > 1):
                 outer_alias = 't'
-                if aggr_func_name == 'COUNT':
-                    outer_aggr_ast = [ 'COUNT', 'ALL' ]
+                if aggr_func_name == 'COUNT' and not aggr_func_distinct:
+                    outer_aggr_ast = [ 'COUNT', None ]
                 else:
                     assert len(translator.expr_columns) == 1
                     expr_ast = translator.expr_columns[0]
                     if expr_ast[0] == 'COLUMN':
                         outer_alias, column_name = expr_ast[1:]
-                        outer_aggr_ast = [ aggr_func_name, [ 'COLUMN', outer_alias, column_name ] ]
+                        outer_aggr_ast = [aggr_func_name, aggr_func_distinct, ['COLUMN', outer_alias, column_name]]
+                        if aggr_func_name == 'GROUP_CONCAT' and sep is not None:
+                            outer_aggr_ast.append(['VALUE', sep])
                     else:
                         select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + [ [ 'AS', expr_ast, 'expr' ] ]
-                        outer_aggr_ast = [ aggr_func_name, [ 'COLUMN', 't', 'expr' ] ]
+                        outer_aggr_ast = [ aggr_func_name, aggr_func_distinct, [ 'COLUMN', 't', 'expr' ] ]
+                        if aggr_func_name == 'GROUP_CONCAT' and sep is not None:
+                            outer_aggr_ast.append(['VALUE', sep])
                 def ast_transformer(ast):
                     return [ 'SELECT', [ 'AGGREGATES', outer_aggr_ast ],
                                        [ 'FROM', [ outer_alias, 'SELECT', ast[1:] ] ] ]
             else:
                 if aggr_func_name == 'COUNT':
-                    if isinstance(expr_type, (tuple, EntityMeta)) and not distinct: aggr_ast = [ 'COUNT', 'ALL' ]
-                    else: aggr_ast = [ 'COUNT', 'DISTINCT', translator.expr_columns[0] ]
-                else: aggr_ast = [ aggr_func_name, translator.expr_columns[0] ]
+                    if isinstance(expr_type, (tuple, EntityMeta)) and not distinct and not aggr_func_distinct:
+                        aggr_ast = [ 'COUNT', aggr_func_distinct ]
+                    else:
+                        aggr_ast = [ 'COUNT', True if aggr_func_distinct is None else aggr_func_distinct,
+                                     translator.expr_columns[0] ]
+                else:
+                    aggr_ast = [ aggr_func_name, aggr_func_distinct, translator.expr_columns[0] ]
+                    if aggr_func_name == 'GROUP_CONCAT' and sep is not None:
+                        aggr_ast.append(['VALUE', sep])
+
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:
@@ -1023,14 +1037,15 @@ class Monad(with_metaclass(MonadMeta)):
             return translator.MethodMonad(monad, attrname)
         return property_method()
     def len(monad): throw(TypeError)
-    def count(monad):
+    def count(monad, distinct=None):
+        distinct = distinct_from_monad(distinct, default=True)
         translator = monad.translator
         if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr = monad.getsql()
-        count_kind = 'DISTINCT'
+
         if monad.type is bool:
             expr = [ 'CASE', None, [ [ expr[0], [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
-            count_kind = 'ALL'
+            distinct = None
         elif len(expr) == 1: expr = expr[0]
         elif translator.dialect == 'PostgreSQL':
             row = [ 'ROW' ] + expr
@@ -1047,10 +1062,11 @@ class Monad(with_metaclass(MonadMeta)):
                     '%s database provider does not support entities '
                     'with composite primary keys inside aggregate functions. Got: {EXPR}'
                     % translator.dialect)
-        result = translator.ExprMonad.new(translator, int, [ 'COUNT', count_kind, expr ])
+        result = translator.ExprMonad.new(translator, int, [ 'COUNT', distinct, expr ])
         result.aggregated = True
         return result
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None, sep=None):
+        distinct = distinct_from_monad(distinct)
         translator = monad.translator
         if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr_type = monad.type
@@ -1064,20 +1080,30 @@ class Monad(with_metaclass(MonadMeta)):
             if expr_type not in comparable_types:
                 throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
                                  % (func_name, type2str(expr_type)))
+        elif func_name == 'GROUP_CONCAT':
+            if isinstance(expr_type, EntityMeta) and expr_type._pk_is_composite_:
+                throw(TypeError, "`group_concat` cannot be used with entity with composite primary key")
         else: assert False  # pragma: no cover
         expr = monad.getsql()
         if len(expr) == 1: expr = expr[0]
-        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        elif translator.row_value_syntax: expr = ['ROW'] + expr
         else: throw(NotImplementedError,
                     '%s database provider does not support entities '
                     'with composite primary keys inside aggregate functions. Got: {EXPR} '
                     '(you can suggest us how to write SQL for this query)'
                     % translator.dialect)
-        if func_name == 'AVG': result_type = float
-        else: result_type = expr_type
-        aggr_ast = [ func_name, expr ]
-        if getattr(monad, 'forced_distinct', False) and func_name in ('SUM', 'AVG'):
-            aggr_ast.append(True)
+        if func_name == 'AVG':
+            result_type = float
+        elif func_name == 'GROUP_CONCAT':
+            result_type = unicode
+        else:
+            result_type = expr_type
+        if distinct is None:
+            distinct = getattr(monad, 'forced_distinct', False) and func_name in ('SUM', 'AVG')
+        aggr_ast = [ func_name, distinct, expr ]
+        if func_name == 'GROUP_CONCAT':
+            if sep is not None:
+                aggr_ast.append(['VALUE', sep])
         result = translator.ExprMonad.new(translator, result_type, aggr_ast)
         result.aggregated = True
         return result
@@ -1099,6 +1125,13 @@ class Monad(with_metaclass(MonadMeta)):
         return NumericExprMonad(monad.translator, int, [ 'TO_INT', monad.getsql()[0] ])
     def to_real(monad):
         return NumericExprMonad(monad.translator, float, [ 'TO_REAL', monad.getsql()[0] ])
+
+def distinct_from_monad(distinct, default=None):
+    if distinct is None:
+        return default
+    if isinstance(distinct, NumericConstMonad) and isinstance(distinct.value, bool):
+        return distinct.value
+    throw(TypeError, '`distinct` value should be True or False. Got: %s' % ast2src(distinct.node))
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -1186,7 +1219,7 @@ class MethodMonad(Monad):
     def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
     def nonzero(monad): raise_forgot_parentheses(monad)
     def negate(monad): raise_forgot_parentheses(monad)
-    def aggregate(monad, func_name): raise_forgot_parentheses(monad)
+    def aggregate(monad, func_name, distinct=None, sep=None): raise_forgot_parentheses(monad)
     def __getitem__(monad, key): raise_forgot_parentheses(monad)
 
     def __add__(monad, monad2): raise_forgot_parentheses(monad)
@@ -2136,11 +2169,11 @@ class GetattrMonad(FuncMonad):
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count
-    def call(monad, x=None):
+    def call(monad, x=None, distinct=None):
         translator = monad.translator
         if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
-        if x is not None: return x.count()
-        result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'ALL' ])
+        if x is not None: return x.count(distinct)
+        result = translator.ExprMonad.new(translator, int, [ 'COUNT', None ])
         result.aggregated = True
         return result
 
@@ -2151,13 +2184,22 @@ class FuncAbsMonad(FuncMonad):
 
 class FuncSumMonad(FuncMonad):
     func = sum, core.sum
-    def call(monad, x):
-        return x.aggregate('SUM')
+    def call(monad, x, distinct=None):
+        return x.aggregate('SUM', distinct)
 
 class FuncAvgMonad(FuncMonad):
     func = utils.avg, core.avg
-    def call(monad, x):
-        return x.aggregate('AVG')
+    def call(monad, x, distinct=None):
+        return x.aggregate('AVG', distinct)
+
+class FuncGroupConcatMonad(FuncMonad):
+    func = utils.group_concat, core.group_concat
+    def call(monad, x, sep=None, distinct=None):
+        if sep is not None:
+            if not(isinstance(sep, StringConstMonad) and isinstance(sep.value, basestring)):
+                throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % ast2src(sep.node))
+            sep = sep.value
+        return x.aggregate('GROUP_CONCAT', distinct=distinct, sep=sep)
 
 class FuncCoalesceMonad(FuncMonad):
     func = coalesce
@@ -2218,7 +2260,7 @@ def minmax(monad, sqlop, *args):
         for i, arg in enumerate(args):
             if arg.type is bool:
                 args[i] = NumericExprMonad(translator, int, [ 'TO_INT', arg.getsql() ])
-    sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
+    sql = [ sqlop, None ] + [ arg.getsql()[0] for arg in args ]
     return translator.ExprMonad.new(translator, t, sql)
 
 class FuncSelectMonad(FuncMonad):
@@ -2354,8 +2396,9 @@ class AttrSetMonad(SetMixin, Monad):
             if not for_count and not translator.hint_join: return True
             if isinstance(monad.parent, monad.translator.AttrSetMonad): return True
         return False
-    def count(monad):
+    def count(monad, distinct=None):
         translator = monad.translator
+        distinct = distinct_from_monad(distinct, monad.requires_distinct(joined=translator.hint_join, for_count=True))
 
         subquery = monad._subselect()
         expr_list = subquery.expr_list
@@ -2363,39 +2406,38 @@ class AttrSetMonad(SetMixin, Monad):
         inner_conditions = subquery.conditions
         outer_conditions = subquery.outer_conditions
 
-        distinct = monad.requires_distinct(joined=translator.hint_join, for_count=True)
         sql_ast = make_aggr = None
         extra_grouping = False
         if not distinct and monad.tableref.name_path != translator.optimize:
-            make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
+            make_aggr = lambda expr_list: [ 'COUNT', None ]
         elif len(expr_list) == 1:
-            make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
+            make_aggr = lambda expr_list: [ 'COUNT', True ] + expr_list
         elif translator.dialect == 'Oracle':
             if monad.tableref.name_path == translator.optimize:
                 alias, pk_columns = monad.tableref.make_join(pk_only=True)
-                make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' if distinct else 'ALL', [ 'COLUMN', alias, 'ROWID' ] ]
+                make_aggr = lambda expr_list: [ 'COUNT', distinct, [ 'COLUMN', alias, 'ROWID' ] ]
             else:
                 extra_grouping = True
-                if translator.hint_join: make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
-                else: make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ]
+                if translator.hint_join: make_aggr = lambda expr_list: [ 'COUNT', None ]
+                else: make_aggr = lambda expr_list: [ 'COUNT', None, [ 'COUNT', None ] ]
         elif translator.dialect == 'PostgreSQL':
             row = [ 'ROW' ] + expr_list
             expr = [ 'CASE', None, [ [ [ 'IS_NULL', row ], [ 'VALUE', None ] ] ], row ]
-            make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT', expr ]
+            make_aggr = lambda expr_list: [ 'COUNT', True, expr ]
         elif translator.row_value_syntax:
-            make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
+            make_aggr = lambda expr_list: [ 'COUNT', True ] + expr_list
         elif translator.dialect == 'SQLite':
             if not distinct:
                 alias, pk_columns = monad.tableref.make_join(pk_only=True)
-                make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COLUMN', alias, 'ROWID' ] ]
+                make_aggr = lambda expr_list: [ 'COUNT', None, [ 'COLUMN', alias, 'ROWID' ] ]
             elif translator.hint_join:  # Same join as in Oracle
                 extra_grouping = True
-                make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
+                make_aggr = lambda expr_list: [ 'COUNT', None ]
             elif translator.sqlite_version < (3, 6, 21):
                 alias, pk_columns = monad.tableref.make_join(pk_only=False)
-                make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ]
+                make_aggr = lambda expr_list: [ 'COUNT', True, [ 'COLUMN', alias, 'ROWID' ] ]
             else:
-                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
+                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', None ] ],
                           [ 'FROM', [ 't', 'SELECT', [
                               [ 'DISTINCT' ] + expr_list, from_ast,
                               [ 'WHERE' ] + outer_conditions + inner_conditions ] ] ] ]
@@ -2411,7 +2453,8 @@ class AttrSetMonad(SetMixin, Monad):
         else: result.nogroup = True
         return result
     len = count
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None, sep=None):
+        distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
         item_type = monad.type.item_type
 
@@ -2423,19 +2466,31 @@ class AttrSetMonad(SetMixin, Monad):
             if item_type not in comparable_types: throw(TypeError,
                 "Function %s() expects query or items of comparable type, got %r in {EXPR}"
                 % (func_name.lower(), type2str(item_type)))
+        elif func_name == 'GROUP_CONCAT':
+            if isinstance(item_type, EntityMeta) and item_type._pk_is_composite_:
+                throw(TypeError, "`group_concat` cannot be used with entity with composite primary key")
         else: assert False  # pragma: no cover
 
-        if monad.forced_distinct and func_name in ('SUM', 'AVG'):
-            make_aggr = lambda expr_list: [ func_name ] + expr_list + [ True ]
-        else:
-            make_aggr = lambda expr_list: [ func_name ] + expr_list
+        def make_aggr(expr_list):
+            result = [ func_name, distinct ] + expr_list
+            if sep is not None:
+                assert func_name == 'GROUP_CONCAT'
+                result.append(['VALUE', sep])
+            return result
+
+        # make_aggr = lambda expr_list: [ func_name, distinct ] + expr_list
 
         if translator.hint_join:
             sql_ast, optimized = monad._joined_subselect(make_aggr, coalesce_to_zero=(func_name=='SUM'))
         else:
             sql_ast, optimized = monad._aggregated_scalar_subselect(make_aggr)
 
-        result_type = float if func_name == 'AVG' else item_type
+        if func_name == 'AVG':
+            result_type = float
+        elif func_name == 'GROUP_CONCAT':
+            result_type = unicode
+        else:
+            result_type = item_type
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         result = translator.ExprMonad.new(monad.translator, result_type, sql_ast)
         if optimized: result.aggregated = True
@@ -2595,7 +2650,8 @@ class NumericSetExprMonad(SetMixin, Monad):
         monad.sqlop = sqlop
         monad.left = left
         monad.right = right
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None, sep=None):
+        distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
         subquery = Subquery(translator.subquery)
         expr = monad.getsql(subquery)[0]
@@ -2603,9 +2659,16 @@ class NumericSetExprMonad(SetMixin, Monad):
         outer_cond = subquery.from_ast[1].pop()
         if outer_cond[0] == 'AND': subquery.outer_conditions = outer_cond[1:]
         else: subquery.outer_conditions = [ outer_cond ]
-        result_type = float if func_name == 'AVG' else monad.type.item_type
-        aggr_ast = [ func_name, expr ]
-        if monad.forced_distinct and func_name in ('SUM', 'AVG'): aggr_ast.append(True)
+        if func_name == 'AVG':
+            result_type = float
+        elif func_name == 'GROUP_CONCAT':
+            result_type = unicode
+        else:
+            result_type = monad.type.item_type
+        aggr_ast = [ func_name, distinct, expr ]
+        if func_name == 'GROUP_CONCAT':
+            if sep is not None:
+                aggr_ast.append(['VALUE', sep])
         if translator.optimize != monad.tableref.name_path:
             sql_ast = [ 'SELECT', [ 'AGGREGATES', aggr_ast ],
                         subquery.from_ast,
@@ -2722,9 +2785,11 @@ class QuerySetMonad(SetMixin, Monad):
         assert sql[0] == 'EXISTS'
         translator = monad.translator
         return translator.BoolExprMonad(translator, [ 'NOT_EXISTS' ] + sql[1:])
-    def count(monad):
+    def count(monad, distinct=None):
+        distinct = distinct_from_monad(distinct)
         translator = monad.translator
         sub = monad.subtranslator
+
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
         subquery_ast = sub.shallow_copy_of_subquery_ast()
         from_ast, where_ast = subquery_ast[2:4]
@@ -2732,15 +2797,15 @@ class QuerySetMonad(SetMixin, Monad):
 
         expr_type = sub.expr_type
         if isinstance(expr_type, (tuple, EntityMeta)):
-            if not sub.distinct:
-                select_ast = [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ]
+            if not sub.distinct and not distinct:
+                select_ast = [ 'AGGREGATES', [ 'COUNT', None ] ]
             elif len(sub.expr_columns) == 1:
-                select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + sub.expr_columns ]
+                select_ast = [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct ] + sub.expr_columns ]
             elif translator.dialect == 'Oracle':
-                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ] ],
+                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', None, [ 'COUNT', None ] ] ],
                             from_ast, where_ast, [ 'GROUP_BY' ] + sub.expr_columns ]
             elif translator.row_value_syntax:
-                select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + sub.expr_columns ]
+                select_ast = [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct ] + sub.expr_columns ]
             elif translator.dialect == 'SQLite':
                 if translator.sqlite_version < (3, 6, 21):
                     if sub.aggregated: throw(TranslationError)
@@ -2748,22 +2813,23 @@ class QuerySetMonad(SetMixin, Monad):
                     subquery_ast = sub.shallow_copy_of_subquery_ast()
                     from_ast, where_ast = subquery_ast[2:4]
                     sql_ast = [ 'SELECT',
-                        [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ] ],
+                        [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct, [ 'COLUMN', alias, 'ROWID' ] ] ],
                         from_ast, where_ast ]
                 else:
                     alias = translator.subquery.make_alias('t')
-                    sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
-                                [ 'FROM', [ alias, 'SELECT', [
-                                  [ 'DISTINCT' ] + sub.expr_columns, from_ast, where_ast ] ] ] ]
+                    sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', None ] ],
+                                [ 'FROM', [ alias, 'SELECT', [ [ 'DISTINCT' if distinct is not False else 'ALL' ]
+                                                               + sub.expr_columns, from_ast, where_ast ] ] ] ]
             else: assert False  # pragma: no cover
         elif len(sub.expr_columns) == 1:
-            select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', sub.expr_columns[0] ] ]
+            select_ast = [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct, sub.expr_columns[0] ] ]
         else: throw(NotImplementedError)  # pragma: no cover
 
         if sql_ast is None: sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
         return translator.ExprMonad.new(translator, int, sql_ast)
     len = count
-    def aggregate(monad, func_name):
+    def aggregate(monad, func_name, distinct=None, sep=None):
+        distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
         sub = monad.subtranslator
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
@@ -2778,24 +2844,39 @@ class QuerySetMonad(SetMixin, Monad):
             if expr_type not in comparable_types: throw(TypeError,
                 "Function %s() cannot be applied to type %r in {EXPR}"
                 % (func_name.lower(), type2str(expr_type)))
+        elif func_name == 'GROUP_CONCAT':
+            if isinstance(expr_type, EntityMeta) and expr_type._pk_is_composite_:
+                throw(TypeError, "`group_concat` cannot be used with entity with composite primary key")
         else: assert False  # pragma: no cover
         assert len(sub.expr_columns) == 1
-        aggr_ast = [ func_name, sub.expr_columns[0] ]
-        if monad.forced_distinct and func_name in ('SUM', 'AVG'): aggr_ast.append(True)
+        aggr_ast = [ func_name, distinct, sub.expr_columns[0] ]
+        if func_name == 'GROUP_CONCAT':
+            if sep is not None:
+                aggr_ast.append(['VALUE', sep])
         select_ast = [ 'AGGREGATES', aggr_ast ]
         sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
-        result_type = float if func_name == 'AVG' else expr_type
+        if func_name == 'AVG':
+            result_type = float
+        elif func_name == 'GROUP_CONCAT':
+            result_type = unicode
+        else:
+            result_type = expr_type
         return translator.ExprMonad.new(translator, result_type, sql_ast)
-    def call_count(monad):
-        return monad.count()
-    def call_sum(monad):
-        return monad.aggregate('SUM')
+    def call_count(monad, distinct=None):
+        return monad.count(distinct=distinct)
+    def call_sum(monad, distinct=None):
+        return monad.aggregate('SUM', distinct)
     def call_min(monad):
         return monad.aggregate('MIN')
     def call_max(monad):
         return monad.aggregate('MAX')
-    def call_avg(monad):
-        return monad.aggregate('AVG')
+    def call_avg(monad, distinct=None):
+        return monad.aggregate('AVG', distinct)
+    def call_group_concat(monad, sep=None, distinct=None):
+        if sep is not None:
+            if not isinstance(sep, basestring):
+                throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
+        return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
 
 def find_or_create_having_ast(subquery_ast):
     groupby_offset = None

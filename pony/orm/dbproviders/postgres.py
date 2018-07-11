@@ -61,6 +61,8 @@ class PGSQLBuilder(SQLBuilder):
         return result
     def TO_INT(builder, expr):
         return '(', builder(expr), ')::int'
+    def TO_STR(builder, expr):
+        return '(', builder(expr), ')::text'
     def TO_REAL(builder, expr):
         return '(', builder(expr), ')::double precision'
     def DATE(builder, expr):
@@ -111,6 +113,15 @@ class PGSQLBuilder(SQLBuilder):
         return (builder.JSON_QUERY(expr, path) if path else builder(expr)), ' ? ', builder(key)
     def JSON_ARRAY_LENGTH(builder, value):
         return 'jsonb_array_length(', builder(value), ')'
+    def GROUP_CONCAT(builder, distinct, expr, sep=None):
+        assert distinct in (None, True, False)
+        result = distinct and 'string_agg(distinct ' or 'string_agg(', builder(expr), '::text'
+        if sep is not None:
+            result = result, ', ', builder(sep)
+        else:
+            result = result, ", ','"
+        return result, ')'
+
 
 class PGStrConverter(dbapiprovider.StrConverter):
     if PY2:

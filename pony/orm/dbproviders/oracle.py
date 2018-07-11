@@ -212,6 +212,8 @@ class OraBuilder(SQLBuilder):
         assert False  # pragma: no cover
     def TO_REAL(builder, expr):
         return 'CAST(', builder(expr), ' AS NUMBER)'
+    def TO_STR(builder, expr):
+        return 'TO_CHAR(', builder(expr), ')'
     def DATE(builder, expr):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):
@@ -275,6 +277,14 @@ class OraBuilder(SQLBuilder):
         return result
     def JSON_ARRAY_LENGTH(builder, value):
         throw(TranslationError, 'Oracle does not provide `length` function for JSON arrays')
+    def GROUP_CONCAT(builder, distinct, expr, sep=None):
+        assert distinct in (None, True, False)
+        result = 'LISTAGG(', builder(expr)
+        if sep is not None:
+            result = result, ', ', builder(sep)
+        else:
+            result = result, ", ','"
+        return result, ') WITHIN GROUP(ORDER BY 1)'
 
 json_item_re = re.compile('[\w\s]*')
 
