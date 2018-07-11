@@ -277,5 +277,14 @@ class TestQuerySetMonad(unittest.TestCase):
         result = select(group_concat(c.semester, distinct=True) for c in Course)[:]
         self.assertEqual(result[0], '1,2')
 
+    def test_group_concat_10(self):
+        result = group_concat((s.name for s in Student if int(s.name[1]) > 1), sep='-')
+        self.assertEqual(result, 'S2-S3')
+
+    def test_group_concat_11(self):
+        result = group_concat((c.semester for c in Course), distinct=True)
+        self.assertEqual(result, '1,2')
+
+
 if __name__ == "__main__":
     unittest.main()

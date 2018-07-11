@@ -5202,15 +5202,15 @@ def delete(*args):
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
-        if kwargs: return std_func(*args, **kwargs)
-        if len(args) != 1: return std_func(*args)
+        if not args:
+            return std_func(**kwargs)
         arg = args[0]
         if type(arg) is types.GeneratorType:
             try: iterator = arg.gi_frame.f_locals['.0']
-            except: return std_func(*args)
+            except: return std_func(*args, **kwargs)
             if isinstance(iterator, EntityIter):
-                return getattr(select(arg), std_func.__name__)()
-        return std_func(*args)
+                return getattr(select(arg), std_func.__name__)(*args[1:], **kwargs)
+        return std_func(*args, **kwargs)
     aggrfunc.__name__ = std_func.__name__
     return aggrfunc
 
