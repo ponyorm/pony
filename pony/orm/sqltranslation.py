@@ -16,7 +16,7 @@ from pony.utils import is_ident, throw, reraise, copy_ast, between, concat, coal
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
-    get_normalized_type_of, normalize_type, coerce_types, are_comparable_types, \
+    normalize, normalize_type, coerce_types, are_comparable_types, \
     Json
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
@@ -1832,7 +1832,7 @@ class JsonItemMonad(JsonMixin, Monad):
 class ConstMonad(Monad):
     @staticmethod
     def new(translator, value):
-        value_type = get_normalized_type_of(value)
+        value_type, value = normalize(value)
         if value_type in numeric_types: cls = translator.NumericConstMonad
         elif value_type is unicode: cls = translator.StringConstMonad
         elif value_type is date: cls = translator.DateConstMonad
@@ -1851,7 +1851,7 @@ class ConstMonad(Monad):
         if cls is ConstMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
     def __init__(monad, translator, value):
-        value_type = get_normalized_type_of(value)
+        value_type, value = normalize(value)
         Monad.__init__(monad, translator, value_type)
         monad.value = value
     def getsql(monad, subquery=None):

@@ -134,23 +134,23 @@ class DBAPIProvider(object):
         return provider.normalize_name(name)
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
-        normalize = provider.normalize_name
+        normalize_name = provider.normalize_name
         if reverse_pk_columns is None:
-            return [ normalize(attr.name) ]
+            return [ normalize_name(attr.name) ]
         elif len(reverse_pk_columns) == 1:
-            return [ normalize(attr.name) ]
+            return [ normalize_name(attr.name) ]
         else:
             prefix = attr.name + '_'
-            return [ normalize(prefix + column) for column in reverse_pk_columns ]
+            return [ normalize_name(prefix + column) for column in reverse_pk_columns ]
 
     def get_default_m2m_column_names(provider, entity):
-        normalize = provider.normalize_name
+        normalize_name = provider.normalize_name
         columns = entity._get_pk_columns_()
         if len(columns) == 1:
-            return [ normalize(entity.__name__.lower()) ]
+            return [ normalize_name(entity.__name__.lower()) ]
         else:
             prefix = entity.__name__.lower() + '_'
-            return [ normalize(prefix + column) for column in columns ]
+            return [ normalize_name(prefix + column) for column in columns ]
 
     def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
         if is_pk: index_name = 'pk_%s' % provider.base_name(table_name)
