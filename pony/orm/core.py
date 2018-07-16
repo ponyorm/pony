@@ -19,7 +19,7 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of, Json, TrackedValue
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -5258,7 +5258,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
             if src == 'None' and value is not None: throw(TranslationError)
             if src == 'True' and value is not True: throw(TranslationError)
             if src == 'False' and value is not False: throw(TranslationError)
-        try: vartypes[key] = get_normalized_type_of(value)
+        try: vartypes[key], value = normalize(value)
         except TypeError:
             if not isinstance(value, dict):
                 unsupported = False
@@ -5269,7 +5269,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
                 typename = type(value).__name__
                 if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
                 throw(TypeError, 'Expression `%s` has unsupported type %r' % (src, typename))
-            vartypes[key] = get_normalized_type_of(value)
+            vartypes[key], value = normalize(value)
         vars[key] = value
     return vars, vartypes
 
