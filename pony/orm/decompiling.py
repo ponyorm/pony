@@ -238,6 +238,15 @@ class Decompiler(object):
         star = decompiler.stack.pop()
         return decompiler._call_function([], star, star2)
 
+    def CALL_METHOD(decompiler, argc):
+        pop = decompiler.stack.pop
+        args = []
+        for i in range(argc):
+            args.append(pop())
+        args.reverse()
+        method = pop()
+        return ast.CallFunc(method, args)
+
     def COMPARE_OP(decompiler, op):
         oper2 = decompiler.stack.pop()
         oper1 = decompiler.stack.pop()
@@ -338,6 +347,11 @@ class Decompiler(object):
     def LOAD_GLOBAL(decompiler, varname):
         decompiler.names.add(varname)
         return ast.Name(varname)
+
+    def LOAD_METHOD(decompiler, methname):
+        return decompiler.LOAD_ATTR(methname)
+
+    LOOKUP_METHOD = LOAD_METHOD  # For PyPy
 
     def LOAD_NAME(decompiler, varname):
         decompiler.names.add(varname)

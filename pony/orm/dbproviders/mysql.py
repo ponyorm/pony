@@ -118,6 +118,8 @@ class MySQLBuilder(SQLBuilder):
         return 'CAST(', builder(expr), ' AS SIGNED)'
     def TO_REAL(builder, expr):
         return 'CAST(', builder(expr), ' AS DOUBLE)'
+    def TO_STR(builder, expr):
+        return 'CAST(', builder(expr), ' AS CHAR)'
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
     def MONTH(builder, expr):

@@ -162,6 +162,8 @@ class SQLBuilder(object):
     composite_param_class = CompositeParam
     value_class = Value
     indent_spaces = " " * 4
+    least_func_name = 'least'
+    greatest_func_name = 'greatest'
     def __init__(builder, provider, ast):
         builder.provider = provider
         builder.quote_name = provider.quote_name
@@ -443,24 +445,33 @@ class SQLBuilder(object):
             return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' NOT IN (', join(', ', expr_list), ')'
-    def COUNT(builder, kind, *expr_list):
-        if kind == 'ALL':
+    def COUNT(builder, distinct, *expr_list):
+        assert distinct in (None, True, False)
+        if not distinct:
             if not expr_list: return ['COUNT(*)']
             return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
-        elif kind == 'DISTINCT':
-            if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
-            if len(expr_list) == 1: return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
-            if builder.provider.dialect == 'PostgreSQL':
-                return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
-            elif builder.provider.dialect == 'MySQL':
-                return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
-            # Oracle and SQLite queries translated to completely different subquery syntax
-            else: throw(NotImplementedError)  # This line must not be executed
-        throw(AstError, 'Invalid COUNT kind (must be ALL or DISTINCT)')
-    def SUM(builder, expr, distinct=False):
+        if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
+        if len(expr_list) == 1:
+            return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
+
+        if builder.provider.dialect == 'PostgreSQL':
+            return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
+        elif builder.provider.dialect == 'MySQL':
+            return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
+        # Oracle and SQLite queries translated to completely different subquery syntax
+        else: throw(NotImplementedError)  # This line must not be executed
+    def SUM(builder, distinct, expr):
+        assert distinct in (None, True, False)
         return distinct and 'coalesce(SUM(DISTINCT ' or 'coalesce(SUM(', builder(expr), '), 0)'
-    def AVG(builder, expr, distinct=False):
+    def AVG(builder, distinct, expr):
+        assert distinct in (None, True, False)
         return distinct and 'AVG(DISTINCT ' or 'AVG(', builder(expr), ')'
+    def GROUP_CONCAT(builder, distinct, expr, sep=None):
+        assert distinct in (None, True, False)
+        result = distinct and 'GROUP_CONCAT(DISTINCT ' or 'GROUP_CONCAT(', builder(expr)
+        if sep is not None:
+            result = result, ', ', builder(sep)
+        return result, ')'
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
     LENGTH = make_unary_func('length')
@@ -468,15 +479,17 @@ class SQLBuilder(object):
     def COALESCE(builder, *args):
         if len(args) < 2: assert False  # pragma: no cover
         return 'coalesce(', join(', ', imap(builder, args)), ')'
-    def MIN(builder, *args):
+    def MIN(builder, distinct, *args):
+        assert not distinct, distinct
         if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MIN'
-        else: fname = 'least'
+        else: fname = builder.least_func_name
         return fname, '(',  join(', ', imap(builder, args)), ')'
-    def MAX(builder, *args):
+    def MAX(builder, distinct, *args):
+        assert not distinct, distinct
         if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MAX'
-        else: fname = 'greatest'
+        else: fname = builder.greatest_func_name
         return fname, '(',  join(', ', imap(builder, args)), ')'
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
@@ -508,6 +521,8 @@ class SQLBuilder(object):
         return 'replace(', builder(str), ', ', builder(from_), ', ', builder(to), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS integer)'
+    def TO_STR(builder, expr):
+        return 'CAST(', builder(expr), ' AS text)'
     def TO_REAL(builder, expr):
         return 'CAST(', builder(expr), ' AS real)'
     def TODAY(builder):

@@ -233,6 +233,12 @@ class TestAttribute(unittest.TestCase):
             d = Optional('Entity1', reverse='a')
         db.generate_mapping()
 
+    @raises_exception(TypeError, '`auto=True` option can be specified for `int` attributes only, not for `str`')
+    def test_attribute24(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(str, auto=True)
+
     @raises_exception(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
     def test_columns1(self):
         db = Database('sqlite', ':memory:')
@@ -525,17 +531,21 @@ class TestAttribute(unittest.TestCase):
             a = Set('Entity1', py_check=lambda val: True)
         db.generate_mapping(create_tables=True)
 
-    @raises_exception(ValueError, "Check for attribute Entity1.a failed. Value: " + (
-        "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345..." if PY2
-        else "'123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456..."
-    ))
     def test_py_check_truncate(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             a = Required(str, py_check=lambda val: False)
         db.generate_mapping(create_tables=True)
         with db_session:
-            obj = Entity1(a='1234567890' * 1000)
+            try:
+                obj = Entity1(a='1234567890' * 1000)
+            except ValueError as e:
+                error_message = "Check for attribute Entity1.a failed. Value: " + (
+                    "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345..." if PY2
+                    else "'123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456...")
+                self.assertEqual(str(e), error_message)
+            else:
+                self.assert_(False)
 
     @raises_exception(ValueError, 'Value for attribute Entity1.a is too long. Max length is 10, value length is 10000')
     def test_str_max_len(self):

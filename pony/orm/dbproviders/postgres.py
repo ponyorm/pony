@@ -45,7 +45,7 @@ class PGColumn(dbschema.Column):
         prefix = '%s %s' % (table.schema.ALTER_COLUMN, quote_name(column.name))
         ops = []
         if column.sql_type != column.prev.sql_type:
-            sql = '%s TYPE %s' % (prefix, column.sql_type)
+            sql = '%s TYPE %s USING %s::%s' % (prefix, column.sql_type, quote_name(column.name), column.sql_type)
             ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
 
         if column.is_not_null and not column.prev.is_not_null:
@@ -122,6 +122,8 @@ class PGSQLBuilder(SQLBuilder):
         return result
     def TO_INT(builder, expr):
         return '(', builder(expr), ')::int'
+    def TO_STR(builder, expr):
+        return '(', builder(expr), ')::text'
     def TO_REAL(builder, expr):
         return '(', builder(expr), ')::double precision'
     def DATE(builder, expr):
@@ -172,6 +174,15 @@ class PGSQLBuilder(SQLBuilder):
         return (builder.JSON_QUERY(expr, path) if path else builder(expr)), ' ? ', builder(key)
     def JSON_ARRAY_LENGTH(builder, value):
         return 'jsonb_array_length(', builder(value), ')'
+    def GROUP_CONCAT(builder, distinct, expr, sep=None):
+        assert distinct in (None, True, False)
+        result = distinct and 'string_agg(distinct ' or 'string_agg(', builder(expr), '::text'
+        if sep is not None:
+            result = result, ', ', builder(sep)
+        else:
+            result = result, ", ','"
+        return result, ')'
+
 
 class PGStrConverter(dbapiprovider.StrConverter):
     if PY2:
