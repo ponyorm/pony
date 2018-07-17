@@ -9,18 +9,25 @@ from pony.utils import HashableDict, throw, copy_ast
 
 class TranslationError(Exception): pass
 
+pre_method_caches = {}
+post_method_caches = {}
+
 class ASTTranslator(object):
     def __init__(translator, tree):
         translator.tree = tree
-        translator.pre_methods = {}
-        translator.post_methods = {}
+        translator_cls = translator.__class__
+        pre_method_caches.setdefault(translator_cls, {})
+        post_method_caches.setdefault(translator_cls, {})
     def dispatch(translator, node):
-        cls = node.__class__
+        translator_cls = translator.__class__
+        pre_methods = pre_method_caches[translator_cls]
+        post_methods = post_method_caches[translator_cls]
+        node_cls = node.__class__
 
-        try: pre_method = translator.pre_methods[cls]
+        try: pre_method = pre_methods[node_cls]
         except KeyError:
-            pre_method = getattr(translator, 'pre' + cls.__name__, translator.default_pre)
-            translator.pre_methods[cls] = pre_method
+            pre_method = getattr(translator_cls, 'pre' + node_cls.__name__, translator_cls.default_pre)
+            pre_methods[node_cls] = pre_method
         stop = translator.call(pre_method, node)
 
         if stop: return
@@ -28,13 +35,13 @@ class ASTTranslator(object):
         for child in node.getChildNodes():
             translator.dispatch(child)
 
-        try: post_method = translator.post_methods[cls]
+        try: post_method = post_methods[node_cls]
         except KeyError:
-            post_method = getattr(translator, 'post' + cls.__name__, translator.default_post)
-            translator.post_methods[cls] = post_method
+            post_method = getattr(translator_cls, 'post' + node_cls.__name__, translator_cls.default_post)
+            post_methods[node_cls] = post_method
         translator.call(post_method, node)
     def call(translator, method, node):
-        return method(node)
+        return method(translator, node)
     def default_pre(translator, node):
         pass
     def default_post(translator, node):
@@ -62,7 +69,7 @@ class PythonTranslator(ASTTranslator):
         ASTTranslator.__init__(translator, tree)
         translator.dispatch(tree)
     def call(translator, method, node):
-        node.src = method(node)
+        node.src = method(translator, node)
     def default_post(translator, node):
         throw(NotImplementedError, node)
     def postGenExpr(translator, node):

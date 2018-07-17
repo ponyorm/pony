@@ -82,7 +82,7 @@ class SQLTranslator(ASTTranslator):
         if hasattr(node, 'monad'): return  # monad already assigned somehow
         if not getattr(node, 'external', False) or getattr(node, 'constant', False):
             return ASTTranslator.dispatch(translator, node)  # default route
-        translator.call(translator.dispatch_external, node)
+        translator.call(translator.__class__.dispatch_external, node)
 
     def dispatch_external(translator, node):
         varkey = translator.filter_num, node.src
@@ -127,7 +127,7 @@ class SQLTranslator(ASTTranslator):
         monad.aggregated = monad.nogroup = False
 
     def call(translator, method, node):
-        try: monad = method(node)
+        try: monad = method(translator, node)
         except Exception:
             exc_class, exc, tb = sys.exc_info()
             try:
