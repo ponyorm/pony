@@ -31,6 +31,7 @@ from pony.py23compat import PY2, unicode
 from .ast import *
 import parser
 import symbol
+import sys
 import token
 
 # Python 2.6 compatibility fix
@@ -1225,9 +1226,17 @@ class Transformer:
         # comp_for: 'for' exprlist 'in' test [comp_iter]
         # comp_if: 'if' test [comp_iter]
 
-        lineno = node[1][2]
+        PY37 = sys.version_info >= (3, 7)
+
         fors = []
         while node:
+            if PY37 and node[0] == symbol.comp_for:
+                node = node[1]
+                assert node[0] == symbol.sync_comp_for
+
+            lineno = node[1][2]
+            assert lineno is None or isinstance(lineno, int)
+
             t = node[1][1]
             if t == 'for':
                 assignNode = self.com_assign(node[2], OP_ASSIGN)
@@ -1250,7 +1259,7 @@ class Transformer:
             else:
                 raise SyntaxError("unexpected generator expression element: %s %d" % (node, lineno))
         fors[0].is_outmost = True
-        return GenExpr(GenExprInner(expr, fors), lineno=lineno)
+        return GenExpr(GenExprInner(expr, fors), lineno=expr.lineno)
 
     def com_dictorsetmaker(self, nodelist):
         # dictorsetmaker: ( (test ':' test (comp_for | (',' test ':' test)* [','])) |

@@ -518,6 +518,11 @@ def avg(iter):
     if not count: return None
     return sum / count
 
+def group_concat(items, sep=','):
+    if items is None:
+        return None
+    return str(sep).join(str(item) for item in items)
+
 def coalesce(*args):
     for arg in args:
         if arg is not None:

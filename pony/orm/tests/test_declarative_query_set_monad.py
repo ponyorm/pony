@@ -69,26 +69,87 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(s for s in Student if count(c for c in s.courses) > 1))
         self.assertEqual(result, {Student[2], Student[3]})
 
+    def test_count_3a(self):
+        result = set(select(s for s in Student if select(c for c in s.courses).count() > 1))
+        self.assertEqual(result, {Student[2], Student[3]})
+        self.assertTrue('DISTINCT' in db.last_sql)
+
+    def test_count_3b(self):
+        result = set(select(s for s in Student if select(c for c in s.courses).count(distinct=False) > 1))
+        self.assertEqual(result, {Student[2], Student[3]})
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
     def test_count_4(self):
         result = set(select(c for c in Course if count(s for s in c.students) > 1))
         self.assertEqual(result, {Course['C1', 1], Course['C2', 1]})
 
+    def test_count_5(self):
+        result = select(c.semester for c in Course).count(distinct=True)
+        self.assertEqual(result, 2)
+
+    def test_count_6(self):
+        result = select(c for c in Course).count()
+        self.assertEqual(result, 3)
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
+    def test_count_7(self):
+        result = select(c for c in Course).count(distinct=True)
+        self.assertEqual(result, 3)
+        self.assertTrue('DISTINCT' in db.last_sql)
+
+    def test_count_8(self):
+        select(count(c.semester, distinct=False) for c in Course)[:]
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
+    @raises_exception(TypeError, "`distinct` value should be True or False. Got: s.name.startswith('P')")
+    def test_count_9(self):
+        select(count(s, distinct=s.name.startswith('P')) for s in Student)
+
+    def test_count_10(self):
+        select(count('*', distinct=True) for s in Student)[:]
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
     @raises_exception(TypeError)
     def test_sum_1(self):
         result = set(select(g for g in Group if sum(s for s in Student if s.group == g) > 1))
-        self.assertEqual(result, set())
 
     @raises_exception(TypeError)
     def test_sum_2(self):
         select(g for g in Group if sum(s.name for s in Student if s.group == g) > 1)
 
     def test_sum_3(self):
+        result = sum(s.scholarship for s in Student)
+        self.assertEqual(result, 600)
+
+    def test_sum_4(self):
+        result = sum(s.scholarship for s in Student if s.name == 'Unnamed')
+        self.assertEqual(result, 0)
+
+    def test_sum_5(self):
+        result = select(c.semester for c in Course).sum()
+        self.assertEqual(result, 4)
+
+    def test_sum_6(self):
+        result = select(c.semester for c in Course).sum(distinct=True)
+        self.assertEqual(result, 3)
+
+    def test_sum_7(self):
         result = set(select(g for g in Group if sum(s.scholarship for s in Student if s.group == g) > 500))
         self.assertEqual(result, set())
 
-    def test_sum_4(self):
+    def test_sum_8(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).sum() > 200))
         self.assertEqual(result, {Group[2]})
+        self.assertTrue('DISTINCT' not in db.last_sql)
+
+    def test_sum_9(self):
+        result = set(select(g for g in Group if select(s.scholarship for s in g.students).sum(distinct=True) > 200))
+        self.assertEqual(result, {Group[2]})
+        self.assertTrue('DISTINCT' in db.last_sql)
+
+    def test_sum_10(self):
+        select(sum(s.scholarship, distinct=True) for s in Student)[:]
+        self.assertTrue('SUM(DISTINCT' in db.last_sql)
 
     def test_min_1(self):
         result = set(select(g for g in Group if min(s.name for s in Student if s.group == g) == 'S1'))
@@ -102,6 +163,10 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).min() == 0))
         self.assertEqual(result, {Group[1]})
 
+    def test_min_4(self):
+        result = select(s.scholarship for s in Student).min()
+        self.assertEqual(0, result)
+
     def test_max_1(self):
         result = set(select(g for g in Group if max(s.scholarship for s in Student if s.group == g) > 100))
         self.assertEqual(result, {Group[2]})
@@ -114,6 +179,10 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).max() == 100))
         self.assertEqual(result, {Group[1]})
 
+    def test_max_4(self):
+        result = select(s.scholarship for s in Student).max()
+        self.assertEqual(result, 500)
+
     def test_avg_1(self):
         result = select(g for g in Group if avg(s.scholarship for s in Student if s.group == g) == 50)[:]
         self.assertEqual(result, [Group[1]])
@@ -121,6 +190,23 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_avg_2(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).avg() == 50))
         self.assertEqual(result, {Group[1]})
+
+    def test_avg_3(self):
+        result = select(c.semester for c in Course).avg()
+        self.assertAlmostEqual(1.33, result, places=2)
+
+    def test_avg_4(self):
+        result = select(c.semester for c in Course).avg(distinct=True)
+        self.assertAlmostEqual(1.5, result)
+
+    def test_avg_5(self):
+        result = set(select(g for g in Group if select(s.scholarship for s in g.students).avg(distinct=True) == 50))
+        self.assertEqual(result, {Group[1]})
+        self.assertTrue('AVG(DISTINCT' in db.last_sql)
+
+    def test_avg_6(self):
+        select(avg(s.scholarship, distinct=True) for s in Student)[:]
+        self.assertTrue('AVG(DISTINCT' in db.last_sql)
 
     def test_exists(self):
         result = set(select(g for g in Group if exists(s for s in g.students if s.name == 'S1')))
@@ -154,6 +240,51 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_hint_join_4(self):
         result = set(select(g for g in Group if JOIN(g in select(s.group for s in g.students))))
         self.assertEqual(result, {Group[1], Group[2]})
+
+    def test_group_concat_1(self):
+        result = select(s.name for s in Student).group_concat()
+        self.assertEqual(result, 'S1,S2,S3')
+
+    def test_group_concat_2(self):
+        result = select(s.name for s in Student).group_concat('-')
+        self.assertEqual(result, 'S1-S2-S3')
+
+    def test_group_concat_3(self):
+        result = select(s for s in Student if s.name in group_concat(s.name for s in Student))[:]
+        self.assertEqual(set(result), {Student[1], Student[2], Student[3]})
+
+    def test_group_concat_4(self):
+        result = Student.select().group_concat()
+        self.assertEqual(result, '1,2,3')
+
+    def test_group_concat_5(self):
+        result = Student.select().group_concat('.')
+        self.assertEqual(result, '1.2.3')
+
+    @raises_exception(TypeError, '`group_concat` cannot be used with entity with composite primary key')
+    def test_group_concat_6(self):
+        select(group_concat(s.courses, '-') for s in Student)
+
+    def test_group_concat_7(self):
+        result = select(group_concat(c.semester) for c in Course)[:]
+        self.assertEqual(result[0], '1,1,2')
+
+    def test_group_concat_8(self):
+        result = select(group_concat(c.semester, '-') for c in Course)[:]
+        self.assertEqual(result[0], '1-1-2')
+
+    def test_group_concat_9(self):
+        result = select(group_concat(c.semester, distinct=True) for c in Course)[:]
+        self.assertEqual(result[0], '1,2')
+
+    def test_group_concat_10(self):
+        result = group_concat((s.name for s in Student if int(s.name[1]) > 1), sep='-')
+        self.assertEqual(result, 'S2-S3')
+
+    def test_group_concat_11(self):
+        result = group_concat((c.semester for c in Course), distinct=True)
+        self.assertEqual(result, '1,2')
+
 
 if __name__ == "__main__":
     unittest.main()

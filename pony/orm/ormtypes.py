@@ -103,8 +103,7 @@ class RawSQL(object):
     def __init__(self, sql, globals=None, locals=None, result_type=None):
         self.sql = sql
         self.items, self.codes = parse_raw_sql(sql)
-        self.values = tuple(eval(code, globals, locals) for code in self.codes)
-        self.types = tuple(get_normalized_type_of(value) for value in self.values)
+        self.types, self.values = normalize(tuple(eval(code, globals, locals) for code in self.codes))
         self.result_type = result_type
     def _get_type_(self):
         return RawSQLType(self.sql, self.items, self.types, self.result_type)
@@ -130,22 +129,46 @@ primitive_types = comparable_types | {buffer}
 function_types = {type, types.FunctionType, types.BuiltinFunctionType}
 type_normalization_dict = { long : int } if PY2 else {}
 
-def get_normalized_type_of(value):
+def normalize(value):
     t = type(value)
-    if t is tuple: return tuple(get_normalized_type_of(item) for item in value)
-    if t.__name__ == 'EntityMeta': return SetType(value)
-    if t.__name__ == 'EntityIter': return SetType(value.entity)
+    if t.__name__ == 'LocalProxy' and '_get_current_object' in t.__dict__:
+        value = value._get_current_object()
+        t = type(value)
+
+    if t is tuple:
+        item_types, item_values = [], []
+        for item in value:
+            item_type, item_value = normalize(item)
+            item_values.append(item_value)
+            item_types.append(item_type)
+        return tuple(item_types), tuple(item_values)
+
+    if t.__name__ == 'EntityMeta':
+        return SetType(value), value
+
+    if t.__name__ == 'EntityIter':
+        return SetType(value.entity), value
+
     if PY2 and isinstance(value, str):
-        try: value.decode('ascii')
-        except UnicodeDecodeError: throw(TypeError,
-            'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % value)
-        else: return unicode
-    elif isinstance(value, unicode): return unicode
-    if t in function_types: return FuncType(value)
-    if t is types.MethodType: return MethodType(value)
+        try:
+            value.decode('ascii')
+        except UnicodeDecodeError:
+            throw(TypeError, 'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % value)
+        else:
+            return unicode, value
+    elif isinstance(value, unicode):
+        return unicode, value
+
+    if t in function_types:
+        return FuncType(value), value
+
+    if t is types.MethodType:
+        return MethodType(value), value
+
     if hasattr(value, '_get_type_'):
-        return value._get_type_()
-    return normalize_type(t)
+        return value._get_type_(), value
+
+    return normalize_type(t), value
 
 def normalize_type(t):
     tt = type(t)

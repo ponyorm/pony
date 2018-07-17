@@ -18,7 +18,7 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of, Json, TrackedValue
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -59,7 +59,7 @@ __all__ = [
 
     'select', 'left_join', 'get', 'exists', 'delete',
 
-    'count', 'sum', 'min', 'max', 'avg', 'distinct',
+    'count', 'sum', 'min', 'max', 'avg', 'group_concat', 'distinct',
 
     'JOIN', 'desc', 'between', 'concat', 'coalesce', 'raw_sql',
 
@@ -1877,6 +1877,8 @@ class Attribute(object):
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = kwargs.pop('auto', False)
+        if attr.auto and (attr.py_type not in int_types): throw(TypeError,
+            '`auto=True` option can be specified for `int` attributes only, not for `%s`' % (attr.py_type.__name__))
         attr.cascade_delete = kwargs.pop('cascade_delete', None)
 
         attr.reverse = kwargs.pop('reverse', None)
@@ -3344,7 +3346,7 @@ class SetInstance(object):
                 where_list.append([ converter.EQ, [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection: table_name = reverse.entity._table_
             else: table_name = attr.table
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
+            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', None ] ],
                                   [ 'FROM', [ None, 'TABLE', table_name ] ], where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_count_sql = sql, adapter
@@ -4074,7 +4076,7 @@ class EntityMeta(type):
         if max_id is None:
             max_id_sql = entity._cached_max_id_sql_
             if max_id_sql is None:
-                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'MAX', [ 'COLUMN', None, pk.column ] ] ],
+                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'MAX', None, [ 'COLUMN', None, pk.column ] ] ],
                                       [ 'FROM', [ None, 'TABLE', entity._table_ ] ] ]
                 max_id_sql, adapter = database._ast2sql(sql_ast)
                 entity._cached_max_id_sql_ = max_id_sql
@@ -5524,15 +5526,15 @@ def delete(*args):
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
-        if kwargs: return std_func(*args, **kwargs)
-        if len(args) != 1: return std_func(*args)
+        if not args:
+            return std_func(**kwargs)
         arg = args[0]
         if type(arg) is types.GeneratorType:
             try: iterator = arg.gi_frame.f_locals['.0']
-            except: return std_func(*args)
+            except: return std_func(*args, **kwargs)
             if isinstance(iterator, EntityIter):
-                return getattr(select(arg), std_func.__name__)()
-        return std_func(*args)
+                return getattr(select(arg), std_func.__name__)(*args[1:], **kwargs)
+        return std_func(*args, **kwargs)
     aggrfunc.__name__ = std_func.__name__
     return aggrfunc
 
@@ -5541,6 +5543,7 @@ sum = make_aggrfunc(builtins.sum)
 min = make_aggrfunc(builtins.min)
 max = make_aggrfunc(builtins.max)
 avg = make_aggrfunc(utils.avg)
+group_concat = make_aggrfunc(utils.group_concat)
 
 distinct = make_aggrfunc(utils.distinct)
 
@@ -5579,7 +5582,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
             if src == 'None' and value is not None: throw(TranslationError)
             if src == 'True' and value is not True: throw(TranslationError)
             if src == 'False' and value is not False: throw(TranslationError)
-        try: vartypes[key] = get_normalized_type_of(value)
+        try: vartypes[key], value = normalize(value)
         except TypeError:
             if not isinstance(value, dict):
                 unsupported = False
@@ -5590,7 +5593,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
                 typename = type(value).__name__
                 if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
                 throw(TypeError, 'Expression `%s` has unsupported type %r' % (src, typename))
-            vartypes[key] = get_normalized_type_of(value)
+            vartypes[key], value = normalize(value)
         vars[key] = value
     return vars, vartypes
 
@@ -5649,20 +5652,21 @@ class Query(object):
         return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
-    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None):
+    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None, aggr_func_distinct=None, sep=None):
         translator = query._translator
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta) and query._attrs_to_prefetch_dict:
             attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
-        sql_key = (query._key, range, query._distinct, aggr_func_name, query._for_update, query._nowait,
-                   options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
+        sql_key = (query._key, range, query._distinct, (aggr_func_name, aggr_func_distinct, sep),
+                   query._for_update, query._nowait, options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
-                range, query._distinct, aggr_func_name, query._for_update, query._nowait, attrs_to_prefetch)
+                range, query._distinct, aggr_func_name, aggr_func_distinct, sep,
+                query._for_update, query._nowait, attrs_to_prefetch)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -6052,9 +6056,10 @@ class Query(object):
         start = (pagenum - 1) * pagesize
         stop = pagenum * pagesize
         return query[start:stop]
-    def _aggregate(query, aggr_func_name):
+    def _aggregate(query, aggr_func_name, distinct=None, sep=None):
         translator = query._translator
-        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(aggr_func_name=aggr_func_name)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(
+            aggr_func_name=aggr_func_name, aggr_func_distinct=distinct, sep=sep)
         cache = query._database._get_cache()
         try: result = cache.query_results[query_key]
         except KeyError:
@@ -6066,18 +6071,29 @@ class Query(object):
             if result is None: pass
             elif aggr_func_name == 'COUNT': pass
             else:
-                expr_type = float if aggr_func_name == 'AVG' else translator.expr_type
+                if aggr_func_name == 'AVG':
+                    expr_type = float
+                elif aggr_func_name == 'GROUP_CONCAT':
+                    expr_type = basestring
+                else:
+                    expr_type = translator.expr_type
                 provider = query._database.provider
                 converter = provider.get_converter_by_py_type(expr_type)
                 result = converter.sql2py(result)
             if query_key is not None: cache.query_results[query_key] = result
         return result
     @cut_traceback
-    def sum(query):
-        return query._aggregate('SUM')
+    def sum(query, distinct=None):
+        return query._aggregate('SUM', distinct)
     @cut_traceback
-    def avg(query):
-        return query._aggregate('AVG')
+    def avg(query, distinct=None):
+        return query._aggregate('AVG', distinct)
+    @cut_traceback
+    def group_concat(query, sep=None, distinct=None):
+        if sep is not None:
+            if not isinstance(sep, basestring):
+                throw(TypeError, '`sep` option for `group_concat` should be of type str. Got: %s' % type(sep).__name__)
+        return query._aggregate('GROUP_CONCAT', distinct, sep)
     @cut_traceback
     def min(query):
         return query._aggregate('MIN')
@@ -6085,8 +6101,8 @@ class Query(object):
     def max(query):
         return query._aggregate('MAX')
     @cut_traceback
-    def count(query):
-        return query._aggregate('COUNT')
+    def count(query, distinct=None):
+        return query._aggregate('COUNT', distinct)
     @cut_traceback
     def for_update(query, nowait=False):
         provider = query._database.provider
