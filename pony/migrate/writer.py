@@ -221,6 +221,8 @@ class MigrationWriter(object):
                 prev_attr = None
                 if prev_entity:
                     prev_attr = prev_entity._adict_.get(attr.reverse.name)
+                    if prev_attr is None: # attribute was added from other entity
+                        continue
                     if prev_attr.entity is not prev_entity: assert False, 'Not implemented'
                     if prev_attr and not prev_attr.reverse:
                         prev_attr = None
