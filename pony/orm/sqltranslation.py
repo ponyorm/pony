@@ -397,16 +397,27 @@ class SQLTranslator(ASTTranslator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         return next(iter(translator.aggregated_subquery_paths))
-    def construct_subquery_ast(translator, move_outer_conditions=True, is_not_null_checks=False):
-        subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=is_not_null_checks)
+    def construct_subquery_ast(translator, aliases=None, star=None, distinct=None, is_not_null_checks=False):
+        subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=distinct, is_not_null_checks=is_not_null_checks)
         assert attr_offsets is None
         assert len(subquery_ast) >= 3 and subquery_ast[0] == 'SELECT'
 
         select_ast = subquery_ast[1][:]
-        assert select_ast[0] == 'ALL'
+        assert select_ast[0] in ('ALL', 'DISTINCT', 'AGGREGATES'), select_ast
+        if aliases:
+            assert not star and len(aliases) == len(select_ast) - 1
+            for i, alias in enumerate(aliases):
+                expr = select_ast[i+1]
+                if expr[0] == 'AS': expr = expr[1]
+                select_ast[i+1] = [ 'AS', expr, alias ]
+        elif star is not None:
+            assert isinstance(star, basestring)
+            for section in subquery_ast:
+                assert section[0] not in ('GROUP_BY', 'HAVING'), subquery_ast
+            select_ast[1:] = [ [ 'STAR', star ] ]
 
         from_ast = subquery_ast[2][:]
-        assert from_ast[0] == 'FROM'
+        assert from_ast[0] in ('FROM', 'LEFT_JOIN')
 
         if len(subquery_ast) == 3:
             where_ast = [ 'WHERE' ]
@@ -418,7 +429,7 @@ class SQLTranslator(ASTTranslator):
             where_ast = subquery_ast[3][:]
             other_ast = subquery_ast[4:]
 
-        if move_outer_conditions and len(from_ast[1]) == 4:
+        if len(from_ast[1]) == 4:
             outer_conditions = from_ast[1][-1]
             from_ast[1] = from_ast[1][:-1]
             if outer_conditions[0] == 'AND': where_ast[1:1] = outer_conditions[1:]
@@ -2866,7 +2877,7 @@ class QuerySetMonad(SetMixin, Monad):
 
         sub = monad.subtranslator
         if translator.hint_join and len(sub.sqlquery.from_ast[1]) == 3:
-            subquery_ast = sub.construct_subquery_ast()
+            subquery_ast = sub.construct_subquery_ast(distinct=False)
             select_ast, from_ast, where_ast = subquery_ast[1:4]
             sqlquery = translator.sqlquery
             if not not_in:
@@ -2902,13 +2913,13 @@ class QuerySetMonad(SetMixin, Monad):
             else: sql_ast = [ 'EQ', [ 'VALUE', 1 ], [ 'VALUE', 1 ] ]
         else:
             if len(item_columns) == 1:
-                subquery_ast = sub.construct_subquery_ast(is_not_null_checks=not_in)
+                subquery_ast = sub.construct_subquery_ast(distinct=False, is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', item_columns[0], subquery_ast ]
             elif translator.row_value_syntax:
-                subquery_ast = sub.construct_subquery_ast(is_not_null_checks=not_in)
+                subquery_ast = sub.construct_subquery_ast(distinct=False, is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
             else:
-                subquery_ast = sub.construct_subquery_ast()
+                subquery_ast = sub.construct_subquery_ast(distinct=False)
                 select_ast, from_ast, where_ast = subquery_ast[1:4]
                 in_conditions = [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
                 if not sub.aggregated: where_ast += in_conditions
@@ -2918,7 +2929,7 @@ class QuerySetMonad(SetMixin, Monad):
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS' ] + subquery_ast[2:]
         return BoolExprMonad(translator, sql_ast, nullable=False)
     def nonzero(monad):
-        subquery_ast = monad.subtranslator.construct_subquery_ast()
+        subquery_ast = monad.subtranslator.construct_subquery_ast(distinct=False)
         subquery_ast = [ 'EXISTS' ] + subquery_ast[2:]
         translator = monad.translator
         return BoolExprMonad(translator, subquery_ast, nullable=False)
@@ -2933,7 +2944,7 @@ class QuerySetMonad(SetMixin, Monad):
         sub = monad.subtranslator
 
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
-        subquery_ast = sub.construct_subquery_ast()
+        subquery_ast = sub.construct_subquery_ast(distinct=False)
         from_ast, where_ast = subquery_ast[2:4]
         sql_ast = None
 
@@ -2952,7 +2963,7 @@ class QuerySetMonad(SetMixin, Monad):
                 if translator.sqlite_version < (3, 6, 21):
                     if sub.aggregated: throw(TranslationError)
                     alias, pk_columns = sub.tableref.make_join(pk_only=False)
-                    subquery_ast = sub.construct_subquery_ast()
+                    subquery_ast = sub.construct_subquery_ast(distinct=False)
                     from_ast, where_ast = subquery_ast[2:4]
                     sql_ast = [ 'SELECT',
                         [ 'AGGREGATES', [ 'COUNT', True if distinct is None else distinct, [ 'COLUMN', alias, 'ROWID' ] ] ],
@@ -2975,7 +2986,7 @@ class QuerySetMonad(SetMixin, Monad):
         translator = monad.translator
         sub = monad.subtranslator
         if sub.aggregated: throw(TranslationError, 'Too complex aggregation in {EXPR}')
-        subquery_ast = sub.construct_subquery_ast()
+        subquery_ast = sub.construct_subquery_ast(distinct=False)
         from_ast, where_ast = subquery_ast[2:4]
         expr_type = sub.expr_type
         if func_name in ('SUM', 'AVG'):

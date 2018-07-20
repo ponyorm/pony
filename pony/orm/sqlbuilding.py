@@ -375,6 +375,8 @@ class SQLBuilder(object):
         return param
     def make_composite_param(builder, paramkey, items, func):
         return builder.make_param(builder.composite_param_class, paramkey, items, func)
+    def STAR(builder, table_alias):
+        return builder.quote_name(table_alias), '.*'
     def ROW(builder, *items):
         return '(', join(', ', imap(builder, items)), ')'
     def VALUE(builder, value):
