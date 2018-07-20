@@ -2508,6 +2508,7 @@ class AttrSetMonad(SetMixin, Monad):
                     [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
+    call_is_empty = negate
     def make_tableref(monad, subquery):
         parent = monad.parent
         attr = monad.attr

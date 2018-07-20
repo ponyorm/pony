@@ -165,6 +165,9 @@ class TestAttrSetMonad(unittest.TestCase):
     @raises_exception(AttributeError, 'g.students.name.foo')
     def test27(self):
         select(g for g in Group if g.students.name.foo == 1)
+    def test28(self):
+        groups = set(select(g for g in Group if not g.students.is_empty()))
+        self.assertEqual(groups, {Group[41], Group[42], Group[44]})
 
 if __name__ == "__main__":
     unittest.main()
