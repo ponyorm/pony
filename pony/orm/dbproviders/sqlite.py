@@ -45,7 +45,7 @@ class SQLiteTable(dbschema.Table):
         batch = OperationBatch(type='rename')
         index_ops = []
 
-        original_table_name = table.name
+        table._name = table.name # Preserve the original table name for foreign key references to the same table
         tmp_name = table.name + '__new'
 
         table.name = tmp_name
@@ -55,7 +55,8 @@ class SQLiteTable(dbschema.Table):
                 continue
             sql = index.get_create_command()
             index_ops.append(Op(sql, obj=index, type='create'))
-        table.name = original_table_name
+        table.name = table._name
+        table._name = None
 
         quote_name = table.schema.provider.quote_name
 
