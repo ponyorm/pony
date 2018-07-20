@@ -537,6 +537,8 @@ class SQLitePool(Pool):
 
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
+
+        con.execute('PRAGMA case_sensitive_like = true')
     def disconnect(pool):
         if pool.filename != ':memory:':
             Pool.disconnect(pool)
