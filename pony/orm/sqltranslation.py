@@ -396,7 +396,11 @@ class SQLTranslator(ASTTranslator):
     def can_be_optimized(translator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
-        return next(iter(translator.aggregated_subquery_paths))
+        aggr_path = next(iter(translator.aggregated_subquery_paths))
+        for name in translator.sqlquery.tablerefs:
+            if not aggr_path.startswith(name):
+                return False
+        return aggr_path
     def construct_subquery_ast(translator, aliases=None, star=None, distinct=None, is_not_null_checks=False):
         subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=distinct, is_not_null_checks=is_not_null_checks)
         assert attr_offsets is None
