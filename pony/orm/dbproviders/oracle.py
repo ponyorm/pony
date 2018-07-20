@@ -124,11 +124,6 @@ class OraTranslator(sqltranslation.SQLTranslator):
     NoneMonad = OraNoneMonad
     ConstMonad = OraConstMonad
 
-    @classmethod
-    def get_normalized_type_of(translator, value):
-        if value == '': return NoneType
-        return sqltranslation.SQLTranslator.get_normalized_type_of(value)
-
 class OraBuilder(SQLBuilder):
     dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
@@ -442,10 +437,10 @@ class OraProvider(DBAPIProvider):
         return name[:provider.max_name_len].upper()
 
     def normalize_vars(provider, vars, vartypes):
-        for name, value in iteritems(vars):
+        for key, value in iteritems(vars):
             if value == '':
-                vars[name] = None
-                vartypes[name] = NoneType
+                vars[key] = None
+                vartypes[key] = NoneType
 
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):

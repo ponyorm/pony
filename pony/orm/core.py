@@ -269,8 +269,6 @@ def adapt_sql(sql, paramstyle):
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
 
-num_counter = itertools.count()
-
 class Local(localbase):
     def __init__(local):
         local.debug = False
@@ -1593,6 +1591,8 @@ class QueryStat(object):
     def avg_time(stat):
         if not stat.db_count: return None
         return stat.sum_time / stat.db_count
+
+num_counter = itertools.count()
 
 class SessionCache(object):
     def __init__(cache, database):
@@ -5246,18 +5246,19 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
-            locals[name] = cell.cell_contents
+            try:
+                locals[name] = cell.cell_contents
+            except ValueError:
+                throw(NameError, 'Free variable `%s` referenced before assignment in enclosing scope' % name)
     vars = {}
     vartypes = HashableDict()
-    for src, code in iteritems(extractors):
+    for src, extractor in iteritems(extractors):
         key = filter_num, src
-        if src == '.0': value = locals['.0']
-        else:
-            try: value = eval(code, globals, locals)
-            except Exception as cause: raise ExprEvalError(src, cause)
-            if src == 'None' and value is not None: throw(TranslationError)
-            if src == 'True' and value is not True: throw(TranslationError)
-            if src == 'False' and value is not False: throw(TranslationError)
+        try: value = extractor(globals, locals)
+        except Exception as cause: raise ExprEvalError(src, cause)
+        if src == 'None' and value is not None: throw(TranslationError)
+        if src == 'True' and value is not True: throw(TranslationError)
+        if src == 'False' and value is not False: throw(TranslationError)
         try: vartypes[key], value = normalize(value)
         except TypeError:
             if not isinstance(value, dict):
@@ -5276,12 +5277,14 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
 def unpickle_query(query_result):
     return query_result
 
+filter_num_counter = itertools.count()
+
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         extractors, tree, extractors_key = create_extractors(
             code_key, tree, globals, locals, special_functions, const_functions)
-        filter_num = 0
+        filter_num = next(filter_num_counter)
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
@@ -5305,11 +5308,12 @@ class Query(object):
             pickled_tree = pickle_ast(tree)
             tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree_copy, extractors, vartypes, left_join=left_join)
+            translator = translator_cls(tree_copy, filter_num, extractors, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
                 tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
-                try: translator = translator_cls(tree_copy, extractors, vartypes, left_join=True, optimize=name_path)
+                try: translator = translator_cls(tree_copy, filter_num, extractors, vartypes,
+                                                 left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
             database._translator_cache[query._key] = translator
@@ -5606,16 +5610,16 @@ class Query(object):
                     throw(TypeError, 'Incorrect number of lambda arguments. '
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
-        filter_num = len(query._filters) + 1
+        filter_num = next(filter_num_counter)
         extractors, func_ast, extractors_key = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
-            new_query_vars = query._vars.copy()
-            new_query_vars.update(vars)
-        else: new_query_vars, vartypes = query._vars, HashableDict()
+            new_vars = query._vars.copy()
+            new_vars.update(vars)
+        else: new_vars, vartypes = query._vars, HashableDict()
         tup = (('order_by' if order_by else 'where' if original_names else 'filter', extractors_key, vartypes),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes),)
@@ -5627,15 +5631,14 @@ class Query(object):
                 name_path = new_translator.can_be_optimized()
                 if name_path:
                     tree_copy = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
-                    prev_extractors = prev_translator.extractors
-                    prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__
-                    new_translator = translator_cls(tree_copy, prev_extractors, prev_vartypes,
-                                                    left_join=True, optimize=name_path)
+                    new_translator = translator_cls(
+                            tree_copy, prev_translator.original_filter_num, prev_translator.extractors, prev_translator.vartypes,
+                            left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
+        return query._clone(_vars=new_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
             method_name, args = tup[0], tup[1:]
@@ -5699,27 +5702,27 @@ class Query(object):
         tup = (('apply_kwfilters', filterattrs, original_names),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
         new_filters = query._filters + tup
+        new_vars = query._vars.copy()
+        new_vars.update(value_dict)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             new_translator = translator.apply_kwfilters(filterattrs, original_names)
             query._database._translator_cache[new_key] = new_translator
-        new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
-                                 _next_kwarg_id=next_id, _vars=query._vars.copy())
-        new_query._vars.update(value_dict)
-        return new_query
+        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
+                            _next_kwarg_id=next_id, _vars=new_vars)
     @cut_traceback
     def __getitem__(query, key):
-        if isinstance(key, slice):
-            step = key.step
-            if step is not None and step != 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
-            start = key.start
-            if start is None: start = 0
-            elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
-            stop = key.stop
-            if stop is None:
-                if not start: return query._fetch()
-                else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
-        else: throw(TypeError, 'If you want apply index to query, convert it to list first')
+        if not isinstance(key, slice):
+            throw(TypeError, 'If you want apply index to a query, convert it to list first')
+        step = key.step
+        if step is not None and step != 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
+        start = key.start
+        if start is None: start = 0
+        elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
+        stop = key.stop
+        if stop is None:
+            if not start: return query._fetch()
+            else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
         if start >= stop: return []
         return query._fetch(range=(start, stop))
     @cut_traceback

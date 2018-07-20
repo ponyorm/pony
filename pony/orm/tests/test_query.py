@@ -146,6 +146,14 @@ class TestQuery(unittest.TestCase):
         q = select(s for s in Student)
         q = q.filter(fn)
         self.assertEqual(list(q), [ Student[2], Student[3] ])
+    @raises_exception(NameError, 'Free variable `gpa` referenced before assignment in enclosing scope')
+    def test_closures_3(self):
+        def find_by_gpa():
+            if False:
+                gpa = Decimal('3.1')
+            return lambda s: s.gpa > gpa
+        fn = find_by_gpa()
+        students = list(Student.select(fn))
 
 if __name__ == '__main__':
     unittest.main()

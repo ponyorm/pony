@@ -163,12 +163,12 @@ class SQLTranslator(ASTTranslator):
                     else: throw(TranslationError, 'Too complex aggregation, expressions cannot be combined: %s' % ast2src(node))
             return monad
 
-    def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
+    def __init__(translator, tree, filter_num, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
         translator.lambda_argnames = None
-        translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
+        translator.filter_num = translator.original_filter_num = filter_num
         translator.extractors = extractors
         translator.vartypes = vartypes.copy()
         translator.parent = parent_translator
@@ -648,7 +648,8 @@ class SQLTranslator(ASTTranslator):
         return translator
     def preGenExpr(translator, node):
         inner_tree = node.code
-        subtranslator = translator.__class__(inner_tree, translator.extractors, translator.vartypes, translator)
+        translator_cls = translator.__class__
+        subtranslator = translator_cls(inner_tree, translator.filter_num, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
@@ -771,7 +772,8 @@ class SQLTranslator(ASTTranslator):
         name_ast.monad = entity_monad
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), name_ast, [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
-        subtranslator = translator.__class__(inner_expr, translator.extractors, translator.vartypes, translator)
+        translator_cls = translator.__class__
+        subtranslator = translator_cls(inner_expr, translator.filter_num, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
@@ -1880,16 +1882,14 @@ class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
 
 class BoolMonad(Monad):
     def __init__(monad, translator):
-        monad.translator = translator
-        monad.type = bool
+        Monad.__init__(monad, translator, bool)
 
 sql_negation = { 'IN' : 'NOT_IN', 'EXISTS' : 'NOT_EXISTS', 'LIKE' : 'NOT_LIKE', 'BETWEEN' : 'NOT_BETWEEN', 'IS_NULL' : 'IS_NOT_NULL' }
 sql_negation.update((value, key) for key, value in items_list(sql_negation))
 
 class BoolExprMonad(BoolMonad):
     def __init__(monad, translator, sql):
-        monad.translator = translator
-        monad.type = bool
+        BoolMonad.__init__(monad, translator)
         monad.sql = sql
     def getsql(monad, subquery=None):
         return [ monad.sql ]

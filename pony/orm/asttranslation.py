@@ -79,6 +79,18 @@ class PythonTranslator(ASTTranslator):
         return 'if %s' % node.test.src
     def postIfExp(translator, node):
         return '%s if %s else %s' % (node.then.src, node.test.src, node.else_.src)
+    def postLambda(translator, node):
+        argnames = list(node.argnames)
+        kwargs_name = argnames.pop() if node.kwargs else None
+        varargs_name = argnames.pop() if node.varargs else None
+        def_argnames = argnames[-len(node.defaults):] if node.defaults else []
+        nodef_argnames = argnames[:-len(node.defaults)] if node.defaults else argnames
+        args = ', '.join(nodef_argnames)
+        d_args = ', '.join('%s=%s' % (argname, default.src) for argname, default in zip(def_argnames, node.defaults))
+        v_arg = '*%s' % varargs_name if varargs_name else None
+        kw_arg = '**%s' % kwargs_name if kwargs_name else None
+        args = ', '.join(x for x in [args, d_args, v_arg, kw_arg] if x)
+        return 'lambda %s: %s' % (args, node.code.src)
     @priority(14)
     def postOr(translator, node):
         return ' or '.join(expr.src for expr in node.nodes)
@@ -209,7 +221,7 @@ nonexternalizable_types = (ast.Keyword, ast.Sliceobj, ast.List, ast.Tuple)
 
 class PreTranslator(ASTTranslator):
     def __init__(translator, tree, globals, locals,
-                 special_functions, const_functions, additional_internal_names=()):
+                 special_functions, const_functions, outer_names=()):
         ASTTranslator.__init__(translator, tree)
         translator.getattr_nodes = set()
         translator.globals = globals
@@ -217,8 +229,8 @@ class PreTranslator(ASTTranslator):
         translator.special_functions = special_functions
         translator.const_functions = const_functions
         translator.contexts = []
-        if additional_internal_names:
-            translator.contexts.append(additional_internal_names)
+        if outer_names:
+            translator.contexts.append(outer_names)
         translator.externals = externals = set()
         translator.dispatch(tree)
         for node in externals.copy():
@@ -303,12 +315,12 @@ class PreTranslator(ASTTranslator):
 getattr_cache = {}
 extractors_cache = {}
 
-def create_extractors(code_key, tree, globals, locals, special_functions, const_functions, additional_internal_names=()):
+def create_extractors(code_key, tree, globals, locals, special_functions, const_functions, outer_names=()):
     result = None
     getattr_extractors = getattr_cache.get(code_key)
     if getattr_extractors:
-        getattr_attrnames = HashableDict({src: eval(code, globals, locals)
-                                          for src, code in iteritems(getattr_extractors)})
+        getattr_attrnames = HashableDict({src: extractor(globals, locals)
+                                          for src, extractor in iteritems(getattr_extractors)})
         extractors_key = HashableDict(code_key=code_key, getattr_attrnames=getattr_attrnames)
         try:
             result = extractors_cache.get(extractors_key)
@@ -318,24 +330,27 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
             tree = copy_ast(tree)
 
     if not result:
-        pretranslator = PreTranslator(
-            tree, globals, locals, special_functions, const_functions, additional_internal_names)
-
+        pretranslator = PreTranslator(tree, globals, locals, special_functions, const_functions, outer_names)
         extractors = {}
         for node in pretranslator.externals:
             src = node.src = ast2src(node)
-            if src == '.0': code = None
-            else: code = compile(src, src, 'eval')
-            extractors[src] = code
+            if src == '.0':
+                def extractor(globals, locals):
+                    return locals['.0']
+            else:
+                code = compile(src, src, 'eval')
+                def extractor(globals, locals, code=code):
+                    return eval(code, globals, locals)
+            extractors[src] = extractor
 
         getattr_extractors = {}
         getattr_attrnames = HashableDict()
         for node in pretranslator.getattr_nodes:
             if node in pretranslator.externals:
                 src = node.src
-                code = extractors[src]
-                getattr_extractors[src] = code
-                attrname_value = eval(code, globals, locals)
+                extractor = extractors[src]
+                getattr_extractors[src] = extractor
+                attrname_value = extractor(globals, locals)
                 getattr_attrnames[src] = attrname_value
             elif isinstance(node, ast.Const):
                 attrname_value = node.value
