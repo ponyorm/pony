@@ -143,7 +143,7 @@ class Serializer(object):
         lines = [ 'class %s(%s):' % (name, ', '.join(_bases)) ]
 
         for name, value in cls_dict.items():
-            if name in ('__slots__', '__qualname__', '__module__', '_indexes_'): continue
+            if name in ('__slots__', '__qualname__', '__module__', '_indexes_', '__classcell__'): continue
             if isinstance(value, (core.Attribute, types.MethodType, types.FunctionType,
                                   staticmethod, classmethod, property)): continue
             lines.append('%s = %s' % (name, self.serialize(value)))
@@ -236,7 +236,7 @@ class Serializer(object):
         if isinstance(value, decimal.Decimal):
             return self.serialize_basic(value, 'from decimal import Decimal')
         if isinstance(value, functools.partial):
-             return self.serialize_partial(value)
+            return self.serialize_partial(value)
         if isinstance(value, (types.FunctionType, types.BuiltinFunctionType)):
             return self.serialize_function(value)
         if isinstance(value, collections.Iterable):
