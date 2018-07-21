@@ -437,6 +437,7 @@ class OraProvider(DBAPIProvider):
         return name[:provider.max_name_len].upper()
 
     def normalize_vars(provider, vars, vartypes):
+        DBAPIProvider.normalize_vars(provider, vars, vartypes)
         for key, value in iteritems(vars):
             if value == '':
                 vars[key] = None

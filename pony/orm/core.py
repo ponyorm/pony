@@ -19,7 +19,7 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue, QueryType
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -205,8 +205,16 @@ class ExprEvalError(TranslationError):
         TranslationError.__init__(exc, msg)
         exc.cause = cause
 
-class OptimizationFailed(Exception):
+class PonyInternalException(Exception):
+    pass
+
+class OptimizationFailed(PonyInternalException):
     pass  # Internal exception, cannot be encountered in user code
+
+class UseAnotherTranslator(PonyInternalException):
+    def __init__(self, translator):
+        Exception.__init__(self, 'This exception should be catched internally by PonyORM')
+        self.translator = translator
 
 class DatabaseContainsIncorrectValue(RuntimeWarning):
     pass
@@ -5156,18 +5164,19 @@ def get_globals_and_locals(args, kwargs, frame_depth, from_generator=False):
                                 % (len(args) > 4 and 's' or '', ', '.join(imap(repr, args[3:]))))
     else:
         locals = {}
-        locals.update(sys._getframe(frame_depth+1).f_locals)
+        if frame_depth is not None:
+            locals.update(sys._getframe(frame_depth+1).f_locals)
         if type(func) is types.GeneratorType:
             globals = func.gi_frame.f_globals
             locals.update(func.gi_frame.f_locals)
-        else:
+        elif frame_depth is not None:
             globals = sys._getframe(frame_depth+1).f_globals
     if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
     return func, globals, locals
 
 def make_query(args, frame_depth, left_join=False):
     gen, globals, locals = get_globals_and_locals(
-        args, kwargs=None, frame_depth=frame_depth+1, from_generator=True)
+        args, kwargs=None, frame_depth=frame_depth+1 if frame_depth is not None else None, from_generator=True)
     if isinstance(gen, types.GeneratorType):
         tree, external_names, cells = decompile(gen)
         code_key = id(gen.gi_frame.f_code)
@@ -5256,6 +5265,22 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
         key = filter_num, src
         try: value = extractor(globals, locals)
         except Exception as cause: raise ExprEvalError(src, cause)
+
+        if isinstance(value, types.GeneratorType):
+            value = make_query((value,), frame_depth=None)
+
+        if isinstance(value, QueryResultIterator):
+            query_result = value._query_result
+            if query_result._items:
+                value = tuple(query_result._items[value._position:])
+            else:
+                value = value._query_result._query
+
+        if isinstance(value, Query):
+            query = value
+            vars.update(query._vars)
+            vartypes.update(query._translator.vartypes)
+
         if src == 'None' and value is not None: throw(TranslationError)
         if src == 'True' and value is not True: throw(TranslationError)
         if src == 'False' and value is not False: throw(TranslationError)
@@ -5268,7 +5293,8 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
             else: unsupported = True
             if unsupported:
                 typename = type(value).__name__
-                if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
+                if src == '.0':
+                    throw(TypeError, 'Query cannot iterate over anything but entity class or another query')
                 throw(TypeError, 'Expression `%s` has unsupported type %r' % (src, typename))
             vartypes[key], value = normalize(value)
         vars[key] = value
@@ -5288,14 +5314,23 @@ class Query(object):
 
         node = tree.quals[0].iter
         origin = vars[filter_num, node.src]
-        if isinstance(origin, EntityIter): origin = origin.entity
-        elif not isinstance(origin, EntityMeta):
-            if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
-            throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
-        query._origin = origin
-        database = origin._database_
-        if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
-        if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
+        if isinstance(origin, Query):
+            database = origin._translator.database
+        elif isinstance(origin, QueryResult):
+            database = origin._query._translator.database
+        elif isinstance(origin, QueryResultIterator):
+            database = origin._query_result._query._translator.database
+        else:
+            if isinstance(origin, EntityIter):
+                origin = origin.entity
+            elif not isinstance(origin, EntityMeta):
+                if node.src == '.0': throw(TypeError,
+                    'Query can only iterate over entity or another query (not a list of objects)')
+                throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
+            database = origin._database_
+            if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
+            if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
+
         database.provider.normalize_vars(vars, vartypes)
 
         query._key = HashableDict(code_key=code_key, vartypes=vartypes, left_join=left_join, filters=())
@@ -5308,13 +5343,20 @@ class Query(object):
             pickled_tree = pickle_ast(tree)
             tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(), left_join=left_join)
+            try:
+                translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(), left_join=left_join)
+            except UseAnotherTranslator as e:
+                translator = e.translator
             name_path = translator.can_be_optimized()
             if name_path:
                 tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
-                try: translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(),
-                                                 left_join=True, optimize=name_path)
-                except OptimizationFailed: translator.optimization_failed = True
+                try:
+                    translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(),
+                                                left_join=True, optimize=name_path)
+                except UseAnotherTranslator as e:
+                    translator = e.translator
+                except OptimizationFailed:
+                    translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
             if translator.can_be_cached:
                 database._translator_cache[query._key] = translator
@@ -5327,6 +5369,10 @@ class Query(object):
         query._prefetch = False
         query._entities_to_prefetch = set()
         query._attrs_to_prefetch_dict = defaultdict(set)
+    def _get_type_(query):
+        return QueryType(query)
+    def _normalize_var(query, query_type):
+        return query_type, query
     def _clone(query, **kwargs):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
@@ -5398,38 +5444,37 @@ class Query(object):
     def get_sql(query):
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments()
         return sql
-    def _fetch(query, limit=None, offset=None):
+    def _actual_fetch(query, limit=None, offset=None):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(limit, offset)
         database = query._database
         cache = database._get_cache()
         if query._for_update: cache.immediate = True
         cache.prepare_connection_for_query_execution()  # may clear cache.query_results
-        try: result = cache.query_results[query_key]
+        try: items = cache.query_results[query_key]
         except KeyError:
             cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, attr_offsets, for_update=query._for_update,
+                items = entity._fetch_objects(cursor, attr_offsets, for_update=query._for_update,
                                                used_attrs=translator.get_used_attrs())
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
-                result = list(starmap(func, cursor.fetchall()))
+                items = list(starmap(func, cursor.fetchall()))
             else:
-                result = [ tuple(func(sql_row[slice_or_offset])
+                items = [ tuple(func(sql_row[slice_or_offset])
                                  for func, slice_or_offset, src in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
-                    if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in result)
-            if query_key is not None: cache.query_results[query_key] = result
+                    if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in items)
+            if query_key is not None: cache.query_results[query_key] = items
         else:
             stats = database._dblocal.stats
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
-
-        if query._prefetch: query._do_prefetch(result)
-        return QueryResult(result, query, translator.expr_type, translator.col_names)
+        if query._prefetch: query._do_prefetch(items)
+        return items
     @cut_traceback
     def prefetch(query, *args):
         query = query._clone(_entities_to_prefetch=query._entities_to_prefetch.copy(),
@@ -5547,7 +5592,7 @@ class Query(object):
             if not isinstance(query._translator.expr_type, EntityMeta): throw(TypeError,
                 'Delete query should be applied to a single entity. Got: %s'
                 % ast2src(query._translator.tree.expr))
-            objects = query._fetch()
+            objects = query._actual_fetch()
             for obj in objects: obj._delete_()
             return len(objects)
         translator = query._translator
@@ -5567,10 +5612,10 @@ class Query(object):
         return cursor.rowcount
     @cut_traceback
     def __len__(query):
-        return len(query._fetch())
+        return len(query._actual_fetch())
     @cut_traceback
     def __iter__(query):
-        return iter(query._fetch())
+        return iter(query._fetch(lazy=True))
     @cut_traceback
     def order_by(query, *args):
         return query._order_by('order_by', *args)
@@ -5638,18 +5683,20 @@ class Query(object):
         if argnames:
             if original_names:
                 for name in argnames:
-                    if name not in prev_translator.sqlquery.tablerefs: throw(TypeError,
-                        'Lambda argument %s does not correspond to any loop variable in original query' % name)
+                    if name not in prev_translator.namespace: throw(TypeError,
+                        'Lambda argument `%s` does not correspond to any variable in original query' % name)
             else:
                 expr_type = prev_translator.expr_type
                 expr_count = len(expr_type) if type(expr_type) is tuple else 1
                 if len(argnames) != expr_count:
                     throw(TypeError, 'Incorrect number of lambda arguments. '
                                      'Expected: %d, got: %d' % (expr_count, len(argnames)))
+        else:
+            original_names = True
 
         filter_num = next(filter_num_counter)
         func_ast, extractors = create_extractors(
-            func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.sqlquery)
+            func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.namespace)
         if extractors:
             vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
@@ -5669,10 +5716,13 @@ class Query(object):
                 if name_path:
                     tree_copy = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     translator_cls = prev_translator.__class__
-                    new_translator = translator_cls(
+                    try:
+                        new_translator = translator_cls(
                             tree_copy, None, prev_translator.original_filter_num,
                             prev_translator.extractors, None, prev_translator.vartypes.copy(),
                             left_join=True, optimize=name_path)
+                    except UseAnotherTranslator:
+                        assert False
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             query._database._translator_cache[new_key] = new_translator
@@ -5762,19 +5812,19 @@ class Query(object):
             if not start: return query._fetch()
             else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
         if start >= stop: return []
-        limit = stop - start
-        offset = start
+        return query._fetch(limit=stop-start, offset=start)
+    def _fetch(query, limit=None, offset=None, lazy=False):
+        return QueryResult(query, limit, offset, lazy=lazy)
+    @cut_traceback
+    def fetch(query, limit=None, offset=None):
         return query._fetch(limit, offset)
     @cut_traceback
     def limit(query, limit, offset=None):
-        start = offset or 0
-        stop = start + limit
-        return query[start:stop]
+        return query._fetch(limit, offset, lazy=True)
     @cut_traceback
     def page(query, pagenum, pagesize=10):
-        start = (pagenum - 1) * pagesize
-        stop = pagenum * pagesize
-        return query[start:stop]
+        offset = (pagenum - 1) * pagesize
+        return query._fetch(pagesize, offset, lazy=True)
     def _aggregate(query, aggr_func_name, distinct=None, sep=None):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(
@@ -5839,25 +5889,108 @@ def strcut(s, width):
     else:
         return s[:width-3] + '...'
 
-class QueryResult(list):
-    __slots__ = '_query', '_expr_type', '_col_names'
-    def __init__(result, list, query, expr_type, col_names):
-        result[:] = list
-        result._query = query
-        result._expr_type = expr_type
-        result._col_names = col_names
-    def __getstate__(result):
-        return list(result), result._expr_type, result._col_names
-    def __setstate__(result, state):
-        result[:] = state[0]
-        result._expr_type = state[1]
-        result._col_names = state[2]
+
+class QueryResultIterator(object):
+    __slots__ = '_query_result', '_position'
+    def __init__(self, query_result):
+        self._query_result = query_result
+        self._position = 0
+    def _get_type_(self):
+        if self._position != 0:
+            throw(NotImplementedError, 'Cannot use partially exhausted iterator, please convert to list')
+        return self._query_result._get_type_()
+    def _normalize_var(self, query_type):
+        if self._position != 0: throw(NotImplementedError)
+        return self._query_result._normalize_var(query_type)
+    def next(self):
+        qr = self._query_result
+        if qr._items is None:
+            qr._items = qr._query._actual_fetch(qr._limit, qr._offset)
+        if self._position >= len(qr._items):
+            raise StopIteration
+        item = qr._items[self._position]
+        self._position += 1
+        return item
+    __next__ = next
+    def __length_hint__(self):
+        return len(self._query_result) - self._position
+
+
+class QueryResult(object):
+    __slots__ = '_query', '_limit', '_offset', '_items', '_expr_type', '_col_names'
+    def __init__(self, query, limit, offset, lazy):
+        translator = query._translator
+        self._query = query
+        self._limit = limit
+        self._offset = offset
+        self._items = None if lazy else self._query._actual_fetch(limit, offset)
+        self._expr_type = translator.expr_type
+        self._col_names = translator.col_names
+    def _get_type_(self):
+        if self._items is None:
+            return QueryType(self._query)
+        item_type = self._query._translator.expr_type
+        return tuple(item_type for item in self._items)
+    def _normalize_var(self, query_type):
+        if self._items is None:
+            return query_type, self._query
+        items = tuple(normalize(item) for item in self._items)
+        item_type = self._query._translator.expr_type
+        return tuple(item_type for item in items), items
+    def _get_items(self):
+        if self._items is None:
+            self._items = self._query._actual_fetch(self._limit, self._offset)
+        return self._items
+    def __getstate__(self):
+        return self._get_items(), self._limit, self._offset, self._expr_type, self._col_names
+    def __setstate__(self, state):
+        self._query = None
+        self._items, self._limit, self._offset, self._expr_type, self._col_names = state
+    def __repr__(self):
+        return repr(self._get_items())
+    def __iter__(self):
+        return QueryResultIterator(self)
+    def __len__(self):
+        if self._items is None:
+            self._items = self._query._actual_fetch(self._limit, self._offset)
+        return len(self._items)
+    def __getitem__(self, key):
+        if self._items is None:
+            self._items = self._query._actual_fetch(self._limit, self._offset)
+        return self._items[key]
+    def __contains__(self, item):
+        return item in self._get_items()
+    def index(self, item):
+        return self._get_items().index(item)
+    def _other_items(self, other):
+        return other._get_items() if isinstance(other, QueryResult) else other
+    def __eq__(self, other):
+        return self._get_items() == self._other_items(other)
+    def __ne__(self, other):
+        return self._get_items() != self._other_items(other)
+    def __lt__(self, other):
+        return self._get_items() < self._other_items(other)
+    def __le__(self, other):
+        return self._get_items() <= self._other_items(other)
+    def __gt__(self, other):
+        return self._get_items() > self._other_items(other)
+    def __ge__(self, other):
+        return self._get_items() >= self._other_items(other)
+    def __reversed__(self):
+        return reversed(self._get_items())
+    def reverse(self):
+        self._get_items().reverse()
+    def sort(self, *args, **kwargs):
+        self._get_items().sort(*args, **kwargs)
     @cut_traceback
-    def show(result, width=None):
+    def show(self, width=None):
+        if self._items is None:
+            self._items = self._query._actual_fetch(self._limit, self._offset)
+
         if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
-        expr_type = result._expr_type
-        col_names = result._col_names
+        expr_type = self._expr_type
+        col_names = self._col_names
 
         def to_str(x):
             return tostring(x).replace('\n', ' ')
@@ -5870,11 +6003,11 @@ class QueryResult(list):
                 col_name = col_names[0]
                 row_maker = lambda obj: (getattr(obj, col_name),)
             else: row_maker = attrgetter(*col_names)
-            rows = [ tuple(to_str(value) for value in row_maker(obj)) for obj in result  ]
+            rows = [tuple(to_str(value) for value in row_maker(obj)) for obj in self._items]
         elif len(col_names) == 1:
-            rows = [ (to_str(obj),) for obj in result ]
+            rows = [(to_str(obj),) for obj in self._items]
         else:
-            rows = [ tuple(to_str(value) for value in row) for row in result ]
+            rows = [tuple(to_str(value) for value in row) for row in self._items]
 
         remaining_columns = {}
         for col_num, colname in enumerate(col_names):
@@ -5902,8 +6035,8 @@ class QueryResult(list):
         print(strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names)))))
         for row in rows:
             print(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
-    def to_json(result, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
-        return result._query._database.to_json(result, include, exclude, converter, with_schema, schema_hash)
+    def to_json(self, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
+        return self._query._database.to_json(self, include, exclude, converter, with_schema, schema_hash)
 
 
 @cut_traceback

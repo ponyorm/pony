@@ -23,11 +23,12 @@ class Param(object):
     def eval(param, values):
         varkey, i, j = param.paramkey
         value = values[varkey]
-        t = type(value)
         if i is not None:
+            t = type(value)
             if t is tuple: value = value[i]
             elif t is RawSQL: value = value.values[i]
-            else: assert False
+            elif hasattr(value, '_get_items'): value = value._get_items()[i]
+            else: assert False, t
         if j is not None:
             assert type(type(value)).__name__ == 'EntityMeta'
             value = value._get_raw_pkval_()[j]

@@ -123,6 +123,17 @@ class RawSQLType(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+class QueryType(object):
+    def __init__(self, query):
+        self.query_key = query._key
+        self.translator = query._translator
+    def __hash__(self):
+        return hash(self.query_key)
+    def __eq__(self, other):
+        return type(other) is QueryType and self.query_key == other.query_key
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 numeric_types = {bool, int, float, Decimal}
 comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID}
 primitive_types = comparable_types | {buffer}

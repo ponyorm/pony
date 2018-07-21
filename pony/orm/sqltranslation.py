@@ -18,10 +18,10 @@ from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
-    Json
+    Json, QueryType
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper, \
-    special_functions, const_functions, extract_vars
+    special_functions, const_functions, extract_vars, Query, UseAnotherTranslator
 
 NoneType = type(None)
 
@@ -166,6 +166,7 @@ class SQLTranslator(ASTTranslator):
             return monad
 
     def __init__(translator, tree, parent_translator, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
+        this = translator
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.can_be_cached = True
@@ -185,8 +186,7 @@ class SQLTranslator(ASTTranslator):
         translator.extractors = extractors
         translator.vars = vars
         translator.vartypes = vartypes
-        translator.lambda_argnames = None
-        translator.method_argnames_mapping_stack = []
+        translator.namespace_stack = [{}] if not parent_translator else [ parent_translator.namespace.copy() ]
         translator.func_extractors_map = {}
         translator.getattr_values = {}
         translator.func_vartypes = {}
@@ -194,10 +194,8 @@ class SQLTranslator(ASTTranslator):
         translator.optimize = optimize
         translator.from_optimized = False
         translator.optimization_failed = False
-        sqlquery = translator.sqlquery
-        tablerefs = sqlquery.tablerefs
         translator.distinct = False
-        translator.conditions = sqlquery.conditions
+        translator.conditions = translator.sqlquery.conditions
         translator.having_conditions = []
         translator.order = []
         translator.inside_order_by = False
@@ -207,90 +205,131 @@ class SQLTranslator(ASTTranslator):
         translator.aggregated_subquery_paths = set()
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
-            if not isinstance(assign, ast.AssName): throw(NotImplementedError, ast2src(assign))
-            if assign.flags != 'OP_ASSIGN': throw(TypeError, ast2src(assign))
+            if isinstance(assign, ast.AssTuple):
+                ass_names = tuple(assign.nodes)
+            elif isinstance(assign, ast.AssName):
+                ass_names = (assign,)
+            else:
+                throw(NotImplemented, ast2src(assign))
 
-            name = assign.name
-            if name in tablerefs: throw(TranslationError, 'Duplicate name: %r' % name)
-            if name.startswith('__'): throw(TranslationError, 'Illegal name: %r' % name)
+            for ass_name in ass_names:
+                if not isinstance(ass_name, ast.AssName):
+                    throw(NotImplemented, ast2src(ass_name))
+                if ass_name.flags != 'OP_ASSIGN':
+                    throw(TypeError, ast2src(ass_name))
+
+            names = tuple(ass_name.name for ass_name in ass_names)
+            for name in names:
+                if name in translator.namespace and name in translator.sqlquery.tablerefs:
+                    throw(TranslationError, 'Duplicate name: %r' % name)
+                if name.startswith('__'): throw(TranslationError, 'Illegal name: %r' % name)
+
+            name = names[0] if len(names) == 1 else None
+
+            def check_name_is_single():
+                if len(names) > 1: throw(TypeError, 'Single variable name expected. Got: %s' % ast2src(assign))
+
+            database = entity = None
 
             node = qual.iter
             monad = getattr(node, 'monad', None)
-            src = getattr(node, 'src', None)
+
             if monad:  # Lambda was encountered inside generator
+                check_name_is_single()
                 assert parent_translator and i == 0
                 entity = monad.type.item_type
                 if isinstance(monad, EntityMonad):
-                    tablerefs[name] = TableRef(sqlquery, name, entity)
+                    tableref = TableRef(translator.sqlquery, name, entity)
+                    translator.sqlquery.tablerefs[name] = tableref
                 elif isinstance(monad, AttrSetMonad):
                     translator.sqlquery = monad._subselect(translator.sqlquery, extract_outer_conditions=False)
                     tableref = monad.tableref
-                    translator.method_argnames_mapping_stack.append({
-                        name: ObjectIterMonad(translator, tableref, entity)})
                 else: assert False  # pragma: no cover
-            elif src:
-                iterable = translator.root_translator.vartypes[translator.filter_num, src]
-                if not isinstance(iterable, SetType): throw(TranslationError,
-                    'Inside declarative query, iterator must be entity. '
-                    'Got: for %s in %s' % (name, ast2src(qual.iter)))
-                entity = iterable.item_type
-                if not isinstance(entity, EntityMeta):
-                    throw(TranslationError, 'for %s in %s' % (name, ast2src(qual.iter)))
-                if i > 0:
-                    if translator.left_join: throw(TranslationError,
-                        'Collection expected inside left join query. '
-                        'Got: for %s in %s' % (name, ast2src(qual.iter)))
-                    translator.distinct = True
-                tableref = TableRef(sqlquery, name, entity)
-                tablerefs[name] = tableref
-                tableref.make_join()
-                node.monad = ObjectIterMonad(translator, tableref, entity)
-            else:
-                attr_names = []
-                while isinstance(node, ast.Getattr):
-                    attr_names.append(node.attrname)
-                    node = node.expr
-                if not isinstance(node, ast.Name) or not attr_names:
-                    throw(TranslationError, 'for %s in %s' % (name, ast2src(qual.iter)))
-                node_name = node.name
-                attr_names.reverse()
-                name_path = node_name
-
-                monad = translator.resolve_name(node_name)
-                if monad is None:
-                    throw(TranslationError, "Name %r must be defined in query" % node_name)
-                if not isinstance(monad, ObjectIterMonad):
-                    throw(NotImplementedError)
-                parent_tableref = monad.tableref
-                parent_entity = parent_tableref.entity
-
-                last_index = len(attr_names) - 1
-                for j, attrname in enumerate(attr_names):
-                    attr = parent_entity._adict_.get(attrname)
-                    if attr is None: throw(AttributeError, attrname)
-                    entity = attr.py_type
+                new_namespace = translator.namespace.copy()
+                new_namespace[name] = ObjectIterMonad(translator, tableref, entity)
+                translator.namespace_stack.append(new_namespace)
+            elif node.external:
+                iterable = translator.root_translator.vartypes[translator.filter_num, node.src]
+                if isinstance(iterable, SetType):
+                    check_name_is_single()
+                    entity = iterable.item_type
                     if not isinstance(entity, EntityMeta):
-                        throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
-                    can_affect_distinct = None
-                    if attr.is_collection:
-                        if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
-                        reverse = attr.reverse
-                        if reverse.is_collection:
-                            if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(qual.iter))
-                            translator.distinct = True
-                        elif parent_tableref.alias != tree.quals[i-1].assign.name:
-                            translator.distinct = True
-                        else: can_affect_distinct = True
-                    if j == last_index: name_path = name
-                    else: name_path += '-' + attr.name
-                    tableref = JoinedTableRef(sqlquery, name_path, parent_tableref, attr)
-                    if can_affect_distinct is not None:
-                        tableref.can_affect_distinct = can_affect_distinct
-                    tablerefs[name_path] = tableref
-                    parent_tableref = tableref
-                    parent_entity = entity
+                        throw(TranslationError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                    if i > 0:
+                        if translator.left_join: throw(TranslationError,
+                                                       'Collection expected inside left join query. '
+                                                       'Got: for %s in %s' % (name, ast2src(qual.iter)))
+                        translator.distinct = True
+                    tableref = TableRef(translator.sqlquery, name, entity)
+                    translator.sqlquery.tablerefs[name] = tableref
+                    tableref.make_join()
+                    translator.namespace[name] = node.monad = ObjectIterMonad(translator, tableref, entity)
+                elif isinstance(iterable, QueryType):
+                    base_translator = deepcopy(iterable.translator)
+                    database = base_translator.database
+                    try:
+                        translator.process_query_qual(base_translator, names, try_extend_base_query=not i)
+                    except UseAnotherTranslator as e:
+                        translator = e.translator
+                else: throw(TranslationError, 'Inside declarative query, iterator must be entity. '
+                                              'Got: for %s in %s' % (name, ast2src(qual.iter)))
 
-            database = entity._database_
+            else:
+                translator.dispatch(node)
+                monad = node.monad
+
+                if isinstance(monad, QuerySetMonad):
+                    subtranslator = monad.subtranslator
+                    database = subtranslator.database
+                    try:
+                        translator.process_query_qual(subtranslator, names)
+                    except UseAnotherTranslator:
+                        assert False
+                else:
+                    check_name_is_single()
+                    attr_names = []
+                    while isinstance(monad, AttrSetMonad) and monad.parent is not None:
+                        attr_names.append(monad.attr.name)
+                        monad = monad.parent
+                    attr_names.reverse()
+
+                    if not isinstance(monad, ObjectIterMonad):
+                        throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                    name_path = monad.tableref.alias  # or name_path, it is the same
+
+                    parent_tableref = monad.tableref
+                    parent_entity = parent_tableref.entity
+
+                    last_index = len(attr_names) - 1
+                    for j, attrname in enumerate(attr_names):
+                        attr = parent_entity._adict_.get(attrname)
+                        if attr is None: throw(AttributeError, attrname)
+                        entity = attr.py_type
+                        if not isinstance(entity, EntityMeta):
+                            throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                        can_affect_distinct = None
+                        if attr.is_collection:
+                            if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
+                            reverse = attr.reverse
+                            if reverse.is_collection:
+                                if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(qual.iter))
+                                translator.distinct = True
+                            elif parent_tableref.alias != tree.quals[i-1].assign.name:
+                                translator.distinct = True
+                            else: can_affect_distinct = True
+                        if j == last_index: name_path = name
+                        else: name_path += '-' + attr.name
+                        tableref = translator.sqlquery.add_tableref(name_path, parent_tableref, attr)
+                        if j == last_index:
+                            translator.namespace[name] = ObjectIterMonad(translator, tableref, tableref.entity)
+                        if can_affect_distinct is not None:
+                            tableref.can_affect_distinct = can_affect_distinct
+                        parent_tableref = tableref
+                        parent_entity = entity
+
+            if database is None:
+                assert entity is not None
+                database = entity._database_
             assert database.schema is not None
             if translator.database is None: translator.database = database
             elif translator.database is not database: throw(TranslationError,
@@ -358,7 +397,8 @@ class SQLTranslator(ASTTranslator):
                         expr_set.add(m.tableref.name_path)
                     elif isinstance(m, AttrMonad) and isinstance(m.parent, ObjectIterMonad):
                         expr_set.add((m.parent.tableref.name_path, m.attr))
-                for tr in tablerefs.values():
+                for tr in translator.sqlquery.tablerefs.values():
+                    if tr.entity is None: continue
                     if not tr.can_affect_distinct: continue
                     if tr.name_path in expr_set: continue
                     if any((tr.name_path, attr) not in expr_set for attr in tr.entity._pk_attrs_):
@@ -393,6 +433,11 @@ class SQLTranslator(ASTTranslator):
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
         translator.vars = None
+        if translator is not this:
+            raise UseAnotherTranslator(translator)
+    @property
+    def namespace(translator):
+        return translator.namespace_stack[-1]
     def can_be_optimized(translator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
@@ -401,9 +446,94 @@ class SQLTranslator(ASTTranslator):
             if not aggr_path.startswith(name):
                 return False
         return aggr_path
+    def process_query_qual(translator, other_translator, names, try_extend_base_query=False):
+        sqlquery = translator.sqlquery
+        tablerefs = sqlquery.tablerefs
+        expr_types = other_translator.expr_type
+        if not isinstance(expr_types, tuple): expr_types = (expr_types,)
+        expr_count = len(expr_types)
+
+        if expr_count > 1 and len(names) == 1:
+            throw(NotImplementedError,
+                  'Please unpack a tuple of (%s) in for-loop to individual variables (like: "for x, y in ...")'
+                  % (', '.join(ast2src(m.node) for m in other_translator.expr_monads)))
+        elif expr_count > len(names):
+            throw(TranslationError,
+                  'Not enough values to unpack "for %s in select(%s for ...)" (expected %d, got %d)'
+                  % (', '.join(names),
+                     ', '.join(ast2src(m.node) for m in other_translator.expr_monads),
+                     len(names), expr_count))
+        elif expr_count < len(names):
+            throw(TranslationError,
+                  'Too many values to unpack "for %s in select(%s for ...)" (expected %d, got %d)'
+                  % (', '.join(names),
+                     ', '.join(ast2src(m.node) for m in other_translator.expr_monads),
+                     len(names), expr_count))
+
+        if try_extend_base_query:
+            if other_translator.aggregated: pass
+            elif other_translator.left_join: pass
+            else:
+                assert translator.parent is None
+                assert other_translator.vars is None
+                other_translator.filter_num = translator.filter_num
+                other_translator.extractors.update(translator.extractors)
+                other_translator.vars = translator.vars
+                other_translator.vartypes.update(translator.vartypes)
+                other_translator.left_join = translator.left_join
+                other_translator.optimize = translator.optimize
+                other_translator.namespace_stack = [
+                    {name: expr for name, expr in izip(names, other_translator.expr_monads)}
+                ]
+                raise UseAnotherTranslator(other_translator)
+
+        if len(names) == 1 and isinstance(other_translator.expr_type, EntityMeta) \
+                and not other_translator.aggregated and not other_translator.distinct:
+            name = names[0]
+            entity = other_translator.expr_type
+            [expr_monad] = other_translator.expr_monads
+            entity_alias = expr_monad.tableref.alias
+            subquery_ast = other_translator.construct_subquery_ast(star=entity_alias)
+            tableref = StarTableRef(sqlquery, name, entity, subquery_ast)
+            tablerefs[name] = tableref
+            tableref.make_join()
+            translator.namespace[name] = ObjectIterMonad(translator, tableref, entity)
+        else:
+            aliases = []
+            aliases_dict = {}
+            for name, base_expr_monad in izip(names, other_translator.expr_monads):
+                t = base_expr_monad.type
+                if isinstance(t, EntityMeta):
+                    t_aliases = []
+                    for suffix in t._pk_paths_:
+                        alias = '%s-%s' % (name, suffix)
+                        t_aliases.append(alias)
+                    aliases.extend(t_aliases)
+                    aliases_dict[base_expr_monad] = t_aliases
+                else:
+                    aliases.append(name)
+                    aliases_dict[base_expr_monad] = name
+
+            subquery_ast = other_translator.construct_subquery_ast(aliases=aliases)
+            tableref = ExprTableRef(sqlquery, 't', subquery_ast, names, aliases)
+            for name in names:
+                tablerefs[name] = tableref
+            tableref.make_join()
+
+            for name, base_expr_monad in izip(names, other_translator.expr_monads):
+                t = base_expr_monad.type
+                if isinstance(t, EntityMeta):
+                    columns = aliases_dict[base_expr_monad]
+                    expr_tableref = ExprJoinedTableRef(sqlquery, tableref, columns, name, t)
+                    expr_monad = ObjectIterMonad(translator, expr_tableref, t)
+                else:
+                    column = aliases_dict[base_expr_monad]
+                    expr_ast = ['COLUMN', tableref.alias, column]
+                    expr_monad = ExprMonad.new(translator, t, expr_ast, base_expr_monad.nullable)
+                assert name not in translator.namespace
+                translator.namespace[name] = expr_monad
     def construct_subquery_ast(translator, aliases=None, star=None, distinct=None, is_not_null_checks=False):
         subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=distinct, is_not_null_checks=is_not_null_checks)
-        assert attr_offsets is None
         assert len(subquery_ast) >= 3 and subquery_ast[0] == 'SELECT'
 
         select_ast = subquery_ast[1][:]
@@ -667,8 +797,13 @@ class SQLTranslator(ASTTranslator):
         translator.vars = vars.copy() if vars is not None else None
         translator.vartypes = translator.vartypes.copy()  # make HashableDict mutable again
         translator.vartypes.update(vartypes)
-        translator.lambda_argnames = list(argnames)
-        translator.original_names = original_names
+
+        if not original_names:
+            assert argnames
+            translator.namespace_stack.append({name: monad for name, monad in izip(argnames, translator.expr_monads)})
+        elif argnames:
+            translator.namespace_stack.append({name: translator.namespace[name] for name in argnames})
+
         translator.dispatch(func_ast)
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
         else: nodes = (func_ast,)
@@ -697,7 +832,10 @@ class SQLTranslator(ASTTranslator):
     def preGenExpr(translator, node):
         inner_tree = node.code
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_tree, translator)
+        try:
+            subtranslator = translator_cls(inner_tree, translator)
+        except UseAnotherTranslator:
+            assert False
         return QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
@@ -743,20 +881,9 @@ class SQLTranslator(ASTTranslator):
         assert monad is not None
         return monad
     def resolve_name(translator, name):
-        t = translator
-        while t is not None:
-            stack = t.method_argnames_mapping_stack
-            if stack and name in stack[-1]:
-                return stack[-1][name]
-            argnames = t.lambda_argnames
-            if argnames is not None and not t.original_names and name in argnames:
-                i = argnames.index(name)
-                return t.expr_monads[i]
-            t = t.parent
-        tableref = translator.sqlquery.get_tableref(name)
-        if tableref is not None:
-            return ObjectIterMonad(translator, tableref, tableref.entity)
-        return None
+        if name not in translator.namespace:
+            throw(TranslationError, 'Name %s is not found in %s' % (name, translator.namespace))
+        return translator.namespace[name]
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -828,7 +955,10 @@ class SQLTranslator(ASTTranslator):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), name_ast, [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         translator_cls = translator.__class__
-        subtranslator = translator_cls(inner_expr, translator)
+        try:
+            subtranslator = translator_cls(inner_expr, translator)
+        except UseAnotherTranslator:
+            assert False
         monad = QuerySetMonad(translator, subtranslator)
         if method_name == 'exists':
             monad = monad.nonzero()
@@ -935,7 +1065,6 @@ class SqlQuery(object):
         if sqlquery.parent_sqlquery:
             return sqlquery.parent_sqlquery.get_tableref(name_path, from_subquery=True)
         return None
-    __contains__ = get_tableref
     def add_tableref(sqlquery, name_path, parent_tableref, attr):
         tablerefs = sqlquery.tablerefs
         assert name_path not in tablerefs
@@ -980,6 +1109,65 @@ class TableRef(object):
             tableref.joined = True
         return tableref.alias, entity._pk_columns_
 
+class ExprTableRef(TableRef):
+    def __init__(tableref, sqlquery, name, subquery_ast, expr_names, expr_aliases):
+        TableRef.__init__(tableref, sqlquery, name, None)
+        tableref.subquery_ast = subquery_ast
+        tableref.expr_names = expr_names
+        tableref.expr_aliases = expr_aliases
+    def make_join(tableref, pk_only=False):
+        assert tableref.subquery_ast[0] == 'SELECT'
+        if not tableref.joined:
+            sqlquery = tableref.sqlquery
+            sqlquery.from_ast.append([tableref.alias, 'SELECT', tableref.subquery_ast[1:]])
+            tableref.joined = True
+        return tableref.alias, None
+
+class StarTableRef(TableRef):
+    def __init__(tableref, sqlquery, name, entity, subquery_ast):
+        TableRef.__init__(tableref, sqlquery, name, entity)
+        tableref.subquery_ast = subquery_ast
+    def make_join(tableref, pk_only=False):
+        entity = tableref.entity
+        assert tableref.subquery_ast[0] == 'SELECT'
+        if not tableref.joined:
+            sqlquery = tableref.sqlquery
+            sqlquery.from_ast.append([ tableref.alias, 'SELECT', tableref.subquery_ast[1:] ])
+            if entity._discriminator_attr_:  # ???
+                discr_criteria = entity._construct_discriminator_criteria_(tableref.alias)
+                assert discr_criteria is not None
+                sqlquery.conditions.append(discr_criteria)
+            tableref.joined = True
+        return tableref.alias, entity._pk_columns_
+
+class ExprJoinedTableRef(object):
+    def __init__(tableref, sqlquery, parent_tableref, parent_columns, name, entity):
+        tableref.sqlquery = sqlquery
+        tableref.parent_tableref = parent_tableref
+        tableref.parent_columns = parent_columns
+        tableref.name = tableref.name_path = name
+        tableref.entity = entity
+        tableref.alias = None
+        tableref.joined = False
+        tableref.can_affect_distinct = False
+        tableref.used_attrs = set()
+    def make_join(tableref, pk_only=False):
+        entity = tableref.entity
+        if tableref.joined:
+            return tableref.alias, tableref.pk_columns
+        sqlquery = tableref.sqlquery
+        parent_alias, left_pk_columns = tableref.parent_tableref.make_join()
+        if pk_only:
+            tableref.alias = parent_alias
+            tableref.pk_columns = tableref.parent_columns
+            return tableref.alias, tableref.pk_columns
+        tableref.alias = sqlquery.make_alias(tableref.name)
+        tableref.pk_columns = entity._pk_columns_
+        join_cond = join_tables(parent_alias, tableref.alias, tableref.parent_columns, tableref.pk_columns)
+        sqlquery.join_table(parent_alias, tableref.alias, entity._table_, join_cond)
+        tableref.joined = True
+        return tableref.alias, tableref.pk_columns
+
 class JoinedTableRef(object):
     def __init__(tableref, sqlquery, name_path, parent_tableref, attr):
         tableref.sqlquery = sqlquery
@@ -1007,6 +1195,7 @@ class JoinedTableRef(object):
         pk_columns = entity._pk_columns_
         if not attr.is_collection:
             if not attr.columns:
+                # one-to-one relationship with foreign key column on the right side
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
                 rentity = reverse.entity
@@ -1014,6 +1203,7 @@ class JoinedTableRef(object):
                 alias = sqlquery.make_alias(tableref.var_name or rentity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_pk_columns, reverse.columns)
             else:
+                # one-to-one or many-to-one relationship with foreign key column on the left side
                 if attr.pk_offset is not None:
                     offset = attr.pk_columns_offset
                     left_columns = left_pk_columns[offset:offset+len(attr.columns)]
@@ -1027,9 +1217,11 @@ class JoinedTableRef(object):
                 alias = sqlquery.make_alias(tableref.var_name or entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
         elif not attr.reverse.is_collection:
+            # many-to-one relationship
             alias = sqlquery.make_alias(tableref.var_name or entity.__name__)
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
         else:
+            # many-to-many relationship
             right_m2m_columns = attr.reverse_columns if attr.symmetric else attr.columns
             if not tableref.joined:
                 m2m_table = attr.table
@@ -1327,7 +1519,7 @@ class HybridMethodMonad(MethodMonad):
                 root_translator.vartypes.update(func_vartypes)
                 root_translator.vars.update(func_vars)
 
-        stack = translator.method_argnames_mapping_stack
+        stack = translator.namespace_stack
         stack.append(name_mapping)
         prev_filter_num = translator.filter_num
         translator.filter_num = func_filter_num
@@ -3035,7 +3227,10 @@ class QuerySetMonad(SetMixin, Monad):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
         return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
     def getsql(monad):
-        throw(NotImplementedError)
+        translator = monad.translator
+        sub = monad.subtranslator
+        subquery_ast = sub.construct_subquery_ast()
+        return subquery_ast
 
 def find_or_create_having_ast(sections):
     groupby_offset = None

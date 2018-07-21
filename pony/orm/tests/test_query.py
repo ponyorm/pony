@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PYPY2
+from pony.py23compat import PYPY2, pickle
 
 import unittest
 from datetime import date
@@ -36,14 +36,14 @@ class TestQuery(unittest.TestCase):
     def tearDown(self):
         rollback()
         db_session.__exit__()
-    @raises_exception(TypeError, 'Cannot iterate over non-entity object')
+    @raises_exception(TypeError, "Query can only iterate over entity or another query (not a list of objects)")
     def test1(self):
         select(s for s in [])
-    @raises_exception(TypeError, 'Cannot iterate over non-entity object X')
+    @raises_exception(TypeError, "Cannot iterate over non-entity object X")
     def test2(self):
         X = [1, 2, 3]
         select('x for x in X')
-    @raises_exception(TypeError, "Cannot iterate over non-entity object")
+    @raises_exception(TypeError, "Query can only iterate over entity or another query (not a list of objects)")
     def test3(self):
         g = Group[1]
         select(s for s in g.students)
@@ -154,6 +154,13 @@ class TestQuery(unittest.TestCase):
             return lambda s: s.gpa > gpa
         fn = find_by_gpa()
         students = list(Student.select(fn))
+    def test_pickle(self):
+        objects = select(s for s in Student if s.scholarship > 0).order_by(desc(Student.id))
+        data = pickle.dumps(objects)
+        rollback()
+        objects = pickle.loads(data)
+        self.assertEqual([obj.id for obj in objects], [3, 2])
+
 
 if __name__ == '__main__':
     unittest.main()
