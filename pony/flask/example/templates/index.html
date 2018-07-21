@@ -1,0 +1,36 @@
+<html>
+  <head>
+    <title>Hello!</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  </head>
+  <body>
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-success" role="alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% if not current_user.is_authenticated %}
+            <h3>Hi, please <a href="login">log in</a> or <a href="reg">register</a></h3><br>
+        {% else %}
+            <h3>Hi, {{ current_user.login }}. Your last login: {{ current_user.last_login.strftime('%Y-%m-%d') }}</h3>
+            <a href="logout" class="btn btn-default" role="button" aria-pressed="true">Logout</a>
+            <h4>List of users</h4>
+            <ul>
+            {% for user in users %}
+                <li>
+                {% if user == current_user %}
+                    <b> {{ user.login }} </b>
+                {% else %}
+                    {{ user.login }}
+                {% endif %}
+                </li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+  </body>
+</html>
