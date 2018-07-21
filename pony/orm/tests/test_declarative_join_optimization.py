@@ -61,14 +61,14 @@ class TestM2MOptimization(unittest.TestCase):
         self.assertEqual(Group._table_ not in flatten(q._translator.conditions), True)
     def test5(self):
         q = select(s for s in Student if s.group.number == 1 or s.group.major == '1')
-        self.assertEqual(Group._table_ in flatten(q._translator.subquery.from_ast), True)
+        self.assertEqual(Group._table_ in flatten(q._translator.sqlquery.from_ast), True)
     # def test6(self): ###  Broken with ExprEvalError: Group[101] raises ObjectNotFound: Group[101]
     #    q = select(s for s in Student if s.group == Group[101])
-    #    self.assertEqual(Group._table_ not in flatten(q._translator.subquery.from_ast), True)
+    #    self.assertEqual(Group._table_ not in flatten(q._translator.sqlquery.from_ast), True)
     def test7(self):
         q = select(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
         objects = q[:]
-        self.assertEqual(str(q._translator.subquery.from_ast),
+        self.assertEqual(str(q._translator.sqlquery.from_ast),
             "['FROM', ['s', 'TABLE', 'Student'], ['group', 'TABLE', 'Group', ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group', 'number']]]]")
 
 

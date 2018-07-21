@@ -72,18 +72,18 @@ class Test(unittest.TestCase):
         val = select(getattr(x.name, 'startswith')('S') for x in self.db.Artist).first()
         self.assertTrue(val)
     
+    @raises_exception(TranslationError, 'Expression `getattr(x, x.name)` cannot be translated into SQL '
+                                        'because x.name will be different for each row')
     @db_session
-    @raises_exception(TypeError, '`x.name` should be either external expression or constant.')
     def test_not_external(self):
         select(getattr(x, x.name) for x in self.db.Artist)
 
-    @raises_exception(TypeError, 'getattr(x, 1): attribute name must be string. Got: 1')
+    @raises_exception(TypeError, 'In `getattr(x, 1)` second argument should be a string. Got: 1')
     @db_session
     def test_not_string(self):
         select(getattr(x, 1) for x in self.db.Artist)
 
-
-    @raises_exception(TypeError, 'getattr(x, name): attribute name must be string. Got: 1')
+    @raises_exception(TypeError, 'In `getattr(x, name)` second argument should be a string. Got: 1')
     @db_session
     def test_not_string(self):
         name = 1

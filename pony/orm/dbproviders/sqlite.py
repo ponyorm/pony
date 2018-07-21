@@ -12,9 +12,10 @@ from uuid import UUID
 from binascii import hexlify
 from functools import wraps
 
-from pony.orm import core, dbschema, sqltranslation, dbapiprovider
+from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json
+from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, \
@@ -39,12 +40,12 @@ def make_overriden_string_func(sqlop):
         sql = monad.getsql()
         assert len(sql) == 1
         translator = monad.translator
-        return translator.StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
+        return StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
     func.__name__ = sqlop
     return func
 
 
-class SQLiteTranslator(sqltranslation.SQLTranslator):
+class SQLiteTranslator(SQLTranslator):
     dialect = 'SQLite'
     sqlite_version = sqlite.sqlite_version_info
     row_value_syntax = False
