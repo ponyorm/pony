@@ -1,3 +1,10 @@
+# Pony ORM Release 0.7.5 (2018-07-24)
+
+## Bugfixes
+
+* `query.where` and `query.filter` method bug introduced in 0.7.4 was fixed
+
+
 # Pony ORM Release 0.7.4 (2018-07-23)
 
 ## Major features
