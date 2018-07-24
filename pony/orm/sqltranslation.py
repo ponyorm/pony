@@ -245,9 +245,7 @@ class SQLTranslator(ASTTranslator):
                     translator.sqlquery = monad._subselect(translator.sqlquery, extract_outer_conditions=False)
                     tableref = monad.tableref
                 else: assert False  # pragma: no cover
-                new_namespace = translator.namespace.copy()
-                new_namespace[name] = ObjectIterMonad(translator, tableref, entity)
-                translator.namespace_stack.append(new_namespace)
+                translator.namespace[name] = ObjectIterMonad(translator, tableref, entity)
             elif node.external:
                 iterable = translator.root_translator.vartypes[translator.filter_num, node.src]
                 if isinstance(iterable, SetType):
@@ -800,35 +798,44 @@ class SQLTranslator(ASTTranslator):
 
         if not original_names:
             assert argnames
-            translator.namespace_stack.append({name: monad for name, monad in izip(argnames, translator.expr_monads)})
+            namespace = {name: monad for name, monad in izip(argnames, translator.expr_monads)}
         elif argnames:
-            translator.namespace_stack.append({name: translator.namespace[name] for name in argnames})
-
-        translator.dispatch(func_ast)
-        if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
-        else: nodes = (func_ast,)
-        if order_by:
-            translator.inside_order_by = True
-            new_order = []
-            for node in nodes:
-                if isinstance(node.monad, SetMixin):
-                    t = node.monad.type.item_type
-                    if isinstance(type(t), type): t = t.__name__
-                    throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
-                                            % (t, ast2src(node)))
-                new_order.extend(node.monad.getsql())
-            translator.order[:0] = new_order
-            translator.inside_order_by = False
+            namespace = {name: translator.namespace[name] for name in argnames}
         else:
-            for node in nodes:
-                monad = node.monad
-                if isinstance(monad, AndMonad): cond_monads = monad.operands
-                else: cond_monads = [ monad ]
-                for m in cond_monads:
-                    if not m.aggregated: translator.conditions.extend(m.getsql())
-                    else: translator.having_conditions.extend(m.getsql())
-        translator.vars = None
-        return translator
+            namespace = None
+        if namespace is not None:
+            translator.namespace_stack.append(namespace)
+
+        try:
+            translator.dispatch(func_ast)
+            if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
+            else: nodes = (func_ast,)
+            if order_by:
+                translator.inside_order_by = True
+                new_order = []
+                for node in nodes:
+                    if isinstance(node.monad, SetMixin):
+                        t = node.monad.type.item_type
+                        if isinstance(type(t), type): t = t.__name__
+                        throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
+                                                % (t, ast2src(node)))
+                    new_order.extend(node.monad.getsql())
+                translator.order[:0] = new_order
+                translator.inside_order_by = False
+            else:
+                for node in nodes:
+                    monad = node.monad
+                    if isinstance(monad, AndMonad): cond_monads = monad.operands
+                    else: cond_monads = [ monad ]
+                    for m in cond_monads:
+                        if not m.aggregated: translator.conditions.extend(m.getsql())
+                        else: translator.having_conditions.extend(m.getsql())
+            translator.vars = None
+            return translator
+        finally:
+            if namespace is not None:
+                ns = translator.namespace_stack.pop()
+                assert ns is namespace
     def preGenExpr(translator, node):
         inner_tree = node.code
         translator_cls = translator.__class__

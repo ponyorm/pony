@@ -130,6 +130,11 @@ class TestHybridsAndProperties(unittest.TestCase):
 
     @db_session
     def test13(self):
+        persons = select(p.full_name for p in Person if count(p.cars_by_color1('white')) > 1)
+        self.assertEqual(set(persons), {'Alexander Tischenko'})
+
+    @db_session
+    def test14(self):
         # This test checks if accessing function-specific globals works correctly
         persons = select(p.incorrect_full_name for p in Person if p.has_car)[:]
         self.assertEqual(set(persons), {'Alexander ***', 'Alexei ***', 'Alexander ***'})
