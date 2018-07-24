@@ -220,6 +220,86 @@ class TestSelectFromSelect(unittest.TestCase):
         objects = select(s for s in Student if s.scholarship > 200)[:]  # not query, but query result
         q = select(s.first_name for s in objects)
 
+    @db_session
+    def test_23(self):
+        q = select(s for s in Student)
+        q2 = q.filter(lambda x: x.scholarship > 450)
+        q3 = q2.where(lambda s: s.scholarship < 520)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_24(self):
+        q = select(s for s in Student)
+        q2 = q.where(lambda s: s.scholarship > 450)
+        q3 = q2.filter(lambda x: x.scholarship < 520)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_25(self):
+        q = Student.select().filter(lambda x: x.scholarship > 450)
+        q2 = select(s for s in q)
+        q3 = q2.where(lambda s: s.scholarship < 520)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_26(self):
+        q = Student.select().filter(lambda x: x.scholarship > 450)
+        q2 = q.where(lambda s: s.scholarship < 520)
+        q3 = select(s for s in q2)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_27(self):
+        q = Student.select().where(lambda s: s.scholarship > 450)
+        q2 = select(s for s in q)
+        q3 = q2.filter(lambda x: x.scholarship < 520)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_28(self):
+        q = Student.select().where(lambda s: s.scholarship > 450)
+        q2 = q.filter(lambda x: x.scholarship < 520)
+        q3 = select(s for s in q2)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_29(self):
+        q = select(s for s in Student)
+        q2 = q.where(lambda s: s.scholarship > 450)
+        q3 = q2.where(lambda s: s.scholarship < 520)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_30(self):
+        q = select(s for s in Student)
+        q2 = q.filter(lambda x: x.scholarship > 450)
+        q3 = q2.filter(lambda z: z.scholarship < 520)
+        self.assertEqual(set(q3), {Student[3]})
+
+    @db_session
+    def test_31(self):
+        q = select(s for s in Student).order_by(lambda s: s.scholarship)
+        q2 = q.where(lambda s: s.scholarship > 450)
+        self.assertEqual(set(q2), {Student[3]})
+
+    @db_session
+    def test_32(self):
+        q = select(s for s in Student).order_by(lambda s: s.scholarship)
+        q2 = q.filter(lambda z: z.scholarship > 450)
+        self.assertEqual(set(q2), {Student[3]})
+
+    @db_session
+    def test_33(self):
+        q = select(s for s in Student).sort_by(lambda x: x.scholarship)
+        q2 = q.where(lambda s: s.scholarship > 450)
+        self.assertEqual(set(q2), {Student[3]})
+
+    @db_session
+    def test_34(self):
+        q = select(s for s in Student).sort_by(lambda x: x.scholarship)
+        q2 = q.filter(lambda s: s.scholarship > 450)
+        self.assertEqual(set(q2), {Student[3]})
+
 
 if __name__ == '__main__':
     unittest.main()
