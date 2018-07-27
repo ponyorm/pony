@@ -3329,7 +3329,7 @@ class SetInstance(object):
             query = query.filter(func, globals, locals)
         return query
     filter = select
-    def limit(wrapper, limit, offset=None):
+    def limit(wrapper, limit=None, offset=None):
         return wrapper.select().limit(limit, offset)
     def page(wrapper, pagenum, pagesize=10):
         return wrapper.select().page(pagenum, pagesize)
@@ -5809,9 +5809,12 @@ class Query(object):
         elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
         stop = key.stop
         if stop is None:
-            if not start: return query._fetch()
-            else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
-        if start >= stop: return []
+            if not start:
+                return query._fetch()
+            else:
+                return query._fetch(limit=None, offset=start)
+        if start >= stop:
+            return query._fetch(limit=0)
         return query._fetch(limit=stop-start, offset=start)
     def _fetch(query, limit=None, offset=None, lazy=False):
         return QueryResult(query, limit, offset, lazy=lazy)
@@ -5819,7 +5822,7 @@ class Query(object):
     def fetch(query, limit=None, offset=None):
         return query._fetch(limit, offset)
     @cut_traceback
-    def limit(query, limit, offset=None):
+    def limit(query, limit=None, offset=None):
         return query._fetch(limit, offset, lazy=True)
     @cut_traceback
     def page(query, pagenum, pagesize=10):

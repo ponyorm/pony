@@ -74,9 +74,9 @@ class TestOrderbyLimit(unittest.TestCase):
         students = set(select(s for s in Student).order_by(Student.id)[:4])
         self.assertEqual(students, {Student[1], Student[2], Student[3], Student[4]})
 
-    @raises_exception(TypeError, "Parameter 'stop' of slice object should be specified")
-    def test11(self):
-        students = select(s for s in Student).order_by(Student.id)[4:]
+    # @raises_exception(TypeError, "Parameter 'stop' of slice object should be specified")
+    # def test11(self):
+    #     students = select(s for s in Student).order_by(Student.id)[4:]
 
     @raises_exception(TypeError, "Parameter 'start' of slice object cannot be negative")
     def test12(self):
@@ -115,6 +115,33 @@ class TestOrderbyLimit(unittest.TestCase):
         self.assertEqual(students, [Student[3], Student[4]])
         students = q[:]
         self.assertEqual(students, [Student[1], Student[2], Student[3], Student[4], Student[5]])
+
+    def test20(self):
+        q = select(s for s in Student).limit(offset=2)
+        self.assertEqual(set(q), {Student[3], Student[4], Student[5]})
+        self.assertTrue('LIMIT -1 OFFSET 2' in db.last_sql)
+
+    def test21(self):
+        q = select(s for s in Student).limit(0, offset=2)
+        self.assertEqual(set(q), set())
+
+    def test22(self):
+        q = select(s for s in Student).order_by(Student.id).limit(offset=1)
+        self.assertEqual(set(q), {Student[2], Student[3], Student[4], Student[5]})
+
+    def test23(self):
+        q = select(s for s in Student)[2:2]
+        self.assertEqual(set(q), set())
+        self.assertTrue('LIMIT 0' in db.last_sql)
+
+    def test24(self):
+        q = select(s for s in Student)[2:]
+        self.assertEqual(set(q), {Student[3], Student[4], Student[5]})
+
+    def test25(self):
+        q = select(s for s in Student)[:2]
+        self.assertEqual(set(q), {Student[2], Student[1]})
+
 
 if __name__ == "__main__":
     unittest.main()

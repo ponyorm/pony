@@ -670,8 +670,14 @@ class SQLTranslator(ASTTranslator):
 
         if translator.order and not aggr_func_name: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
-        if limit is not None:
+        if limit is not None or offset is not None:
             assert not aggr_func_name
+            provider = translator.database.provider
+            if limit is None:
+                if provider.dialect == 'SQLite':
+                    limit = -1
+                elif provider.dialect == 'MySQL':
+                    limit = 18446744073709551615
             limit_section = [ 'LIMIT', [ 'VALUE', limit ]]
             if offset: limit_section.append([ 'VALUE', offset ])
             sql_ast = sql_ast + [ limit_section ]

@@ -944,3 +944,33 @@ SELECT "g"."NUMBER", LISTAGG("s"."NAME", '+') WITHIN GROUP(ORDER BY 1)
 FROM "GROUP" "g", "STUDENT" "s"
 WHERE "g"."NUMBER" = "s"."GROUP"
 GROUP BY "g"."NUMBER"
+
+# Test offset without limit
+
+>>> select(s for s in Student)[3:]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+LIMIT -1 OFFSET 3
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+LIMIT null OFFSET 3
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+LIMIT 18446744073709551615 OFFSET 3
+
+Oracle:
+
+SELECT t.* FROM (
+    SELECT t.*, ROWNUM "row-num" FROM (
+        SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+        FROM "STUDENT" "s"
+    ) t 
+) t WHERE "row-num" > 3
+
