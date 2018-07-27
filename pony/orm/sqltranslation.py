@@ -890,7 +890,11 @@ class SQLTranslator(ASTTranslator):
     def resolve_name(translator, name):
         if name not in translator.namespace:
             throw(TranslationError, 'Name %s is not found in %s' % (name, translator.namespace))
-        return translator.namespace[name]
+        monad = translator.namespace[name]
+        assert isinstance(monad, Monad)
+        if monad.translator is not translator:
+            monad.translator.sqlquery.used_from_subquery = True
+        return monad
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):

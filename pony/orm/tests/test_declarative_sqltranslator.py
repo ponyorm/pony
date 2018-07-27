@@ -372,7 +372,22 @@ class TestSQLTranslator(unittest.TestCase):
     def test_optimized_2(self):
         q = select((s, count(s.courses)) for s in Student if count(s.courses) > 1)
         self.assertEqual(set(q), {(Student[2], 2)})
-
+    def test_delete(self):
+        q = select(g for g in Grade if g.teacher.id == 101).delete()
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
+    def test_delete_2(self):
+        delete(g for g in Grade if g.teacher.id == 101)
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
+    def test_delete_3(self):
+        select(g for g in Grade if g.teacher.id == 101).delete(bulk=True)
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
+    def test_delete_4(self):
+        select(g for g in Grade if exists(g2 for g2 in Grade if g2.value > g.value)).delete(bulk=True)
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
 
 if __name__ == "__main__":
     unittest.main()
