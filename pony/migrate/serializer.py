@@ -95,6 +95,9 @@ class Serializer(object):
             return "%s.%s.%s" % (module, cls.__name__, func.__name__)
         # Further error checking
         if func.__name__ == '<lambda>':
+            result = func()
+            if isinstance(result, core.EntityMeta):
+                return '%r' % result.__name__
             func_ast, external_names, cells = decompile(func)
             # result, im = serializer_factory(result, ctx=self.ctx).serialize()
             return 'lambda: %s' % ast2src(func_ast)
