@@ -156,11 +156,6 @@ class OraTranslator(sqltranslation.SQLTranslator):
     NoneMonad = OraNoneMonad
     ConstMonad = OraConstMonad
 
-    @classmethod
-    def get_normalized_type_of(translator, value):
-        if value == '': return NoneType
-        return sqltranslation.SQLTranslator.get_normalized_type_of(value)
-
 class OraValue(Value):
     __slots__ = []
     def __unicode__(self):
@@ -213,7 +208,7 @@ class OraBuilder(SQLBuilder):
                 limit = last_section[1]
                 if len(last_section) > 2: offset = last_section[2]
                 sections = sections[:-1]
-            result = builder.subquery(*sections)
+            result = builder._subquery(*sections)
             indent = builder.indent_spaces * builder.indent
 
             if sections[0][0] == 'ROWID':
@@ -227,14 +222,14 @@ class OraBuilder(SQLBuilder):
             elif not offset:
                 result = [ indent0, 'SELECT * FROM (\n' ]
                 builder.indent += 1
-                result.extend(builder.subquery(*sections))
+                result.extend(builder._subquery(*sections))
                 builder.indent -= 1
                 result.extend((indent, ') WHERE ROWNUM <= ', builder(limit), '\n'))
             else:
                 indent2 = indent + builder.indent_spaces
                 result = [ indent0, 'SELECT %s FROM (\n' % x, indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
                 builder.indent += 2
-                result.extend(builder.subquery(*sections))
+                result.extend(builder._subquery(*sections))
                 builder.indent -= 2
                 result.extend((indent2, ') t '))
                 if limit[0] == 'VALUE' and offset[0] == 'VALUE' \
@@ -490,10 +485,11 @@ class OraProvider(DBAPIProvider):
         return name.upper()
 
     def normalize_vars(provider, vars, vartypes):
-        for name, value in iteritems(vars):
+        DBAPIProvider.normalize_vars(provider, vars, vartypes)
+        for key, value in iteritems(vars):
             if value == '':
-                vars[name] = None
-                vartypes[name] = NoneType
+                vars[key] = None
+                vartypes[key] = NoneType
 
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):

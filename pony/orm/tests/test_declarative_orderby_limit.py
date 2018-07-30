@@ -82,7 +82,7 @@ class TestOrderbyLimit(unittest.TestCase):
     def test12(self):
         students = select(s for s in Student).order_by(Student.id)[-3:2]
 
-    @raises_exception(TypeError, 'If you want apply index to query, convert it to list first')
+    @raises_exception(TypeError, 'If you want apply index to a query, convert it to list first')
     def test13(self):
         students = select(s for s in Student).order_by(Student.id)[3]
         self.assertEqual(students, Student[4])

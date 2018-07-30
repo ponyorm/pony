@@ -167,7 +167,7 @@ def get_lambda_args(func):
 
     if type(func) is types.FunctionType:
         if hasattr(inspect, 'signature'):
-            names, argsname, kwname, defaults = [], None, None, None
+            names, argsname, kwname, defaults = [], None, None, []
             for p in inspect.signature(func).parameters.values():
                 if p.default is not p.empty:
                     defaults.append(p.default)
@@ -581,7 +581,11 @@ class HashableDict(dict):
     def __hash__(self):
         result = getattr(self, '_hash', None)
         if result is None:
-            result = self._hash = hash(tuple(sorted(self.items())))
+            result = 0
+            for key, value in self.items():
+                result ^= hash(key)
+                result ^= hash(value)
+            self._hash = result
         return result
     def __deepcopy__(self, memo):
         if getattr(self, '_hash', None) is not None:

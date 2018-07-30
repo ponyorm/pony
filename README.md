@@ -50,4 +50,4 @@ Meet the PonyORM team, chat with the community members, and get your questions a
 Join our newsletter at [ponyorm.com](https://ponyorm.com).
 Reach us on [Twitter](https://twitter.com/ponyorm).
 
-Copyright (c) 2016 Pony ORM, LLC. All rights reserved. team (at) ponyorm.com
+Copyright (c) 2018 Pony ORM, LLC. All rights reserved. team (at) ponyorm.com

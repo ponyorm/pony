@@ -13,6 +13,7 @@ class Group(db.Entity):
 
 class Student(db.Entity):
     name = Required(unicode)
+    age = Required(int)
     group = Required('Group')
     scholarship = Required(int, default=0)
     courses = Set('Course')
@@ -28,9 +29,9 @@ db.generate_mapping(create_tables=True)
 with db_session:
     g1 = Group(id=1)
     g2 = Group(id=2)
-    s1 = Student(id=1, name='S1', group=g1, scholarship=0)
-    s2 = Student(id=2, name='S2', group=g1, scholarship=100)
-    s3 = Student(id=3, name='S3', group=g2, scholarship=500)
+    s1 = Student(id=1, name='S1', age=20, group=g1, scholarship=0)
+    s2 = Student(id=2, name='S2', age=23, group=g1, scholarship=100)
+    s3 = Student(id=3, name='S3', age=23, group=g2, scholarship=500)
     c1 = Course(name='C1', semester=1, students=[s1, s2])
     c2 = Course(name='C2', semester=1, students=[s2, s3])
     c3 = Course(name='C3', semester=2, students=[s3])
@@ -284,6 +285,64 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_group_concat_11(self):
         result = group_concat((c.semester for c in Course), distinct=True)
         self.assertEqual(result, '1,2')
+
+
+    @raises_exception(TypeError, 'Query can only iterate over entity or another query (not a list of objects)')
+    def test_select_from_select_1(self):
+        query = select(s for s in Student if s.scholarship > 0)[:]
+        result = set(select(x for x in query))
+        self.assertEqual(result, {})
+
+    def test_select_from_select_2(self):
+        p, q = 50, 400
+        query = select(s for s in Student if s.scholarship > p)
+        result = select(x.id for x in query if x.scholarship < q)[:]
+        self.assertEqual(set(result), {2})
+
+    def test_select_from_select_3(self):
+        p, q = 50, 400
+        g = (s for s in Student if s.scholarship > p)
+        result = select(x.id for x in g if x.scholarship < q)[:]
+        self.assertEqual(set(result), {2})
+
+    def test_select_from_select_4(self):
+        p, q = 50, 400
+        result = select(x.id for x in (s for s in Student if s.scholarship > p)
+                             if x.scholarship < q)[:]
+        self.assertEqual(set(result), {2})
+
+    def test_select_from_select_5(self):
+        p, q = 50, 400
+        result = select(x.id for x in select(s for s in Student if s.scholarship > 0)
+                             if x.scholarship < 400)[:]
+        self.assertEqual(set(result), {2})
+
+    def test_select_from_select_6(self):
+        query = select(s.name for s in Student if s.scholarship > 0)
+        result = select(x for x in query if not x.endswith('3'))
+        self.assertEqual(set(result), {'S2'})
+
+    @raises_exception(TranslationError, 'Too many values to unpack "for a, b in select(s for ...)" (expected 2, got 1)')
+    def test_select_from_select_7(self):
+        query = select(s for s in Student if s.scholarship > 0)
+        result = select(a for a, b in query)
+
+    @raises_exception(NotImplementedError, 'Please unpack a tuple of (s.name, s.group) in for-loop '
+                                           'to individual variables (like: "for x, y in ...")')
+    def test_select_from_select_8(self):
+        query = select((s.name, s.group) for s in Student if s.scholarship > 0)
+        result = select(x for x in query)
+
+    @raises_exception(TranslationError, 'Not enough values to unpack "for x, y in '
+                                        'select(s.name, s.group, s.scholarship for ...)" (expected 2, got 3)')
+    def test_select_from_select_9(self):
+        query = select((s.name, s.group, s.scholarship) for s in Student if s.scholarship > 0)
+        result = select(x for x, y in query)
+
+    def test_select_from_select_10(self):
+        query = select((s.name, s.age) for s in Student if s.scholarship > 0)
+        result = select(n for n, a in query if n.endswith('2') and a > 20)
+        self.assertEqual(set(x for x in result), {'S2'})
 
 
 if __name__ == "__main__":

@@ -1,3 +1,58 @@
+# Pony ORM Release 0.7.5 (2018-07-24)
+
+## Bugfixes
+
+* `query.where` and `query.filter` method bug introduced in 0.7.4 was fixed
+
+
+# Pony ORM Release 0.7.4 (2018-07-23)
+
+## Major features
+
+* Hybrid methods and properties added: https://docs.ponyorm.com/entities.html#hybrid-methods-and-properties
+* Allow to base queries on another queries: `select(x.a for x in prev_query if x.b)`
+* Added support of Python 3.7
+* Added support of PyPy
+* `group_concat()` aggregate function added
+* pony.flask subpackage added for integration with Flask
+
+## Other features
+
+* `distinct` option added to aggregate functions
+* Support of explicit casting to `float` and `bool` in queries
+
+## Improvements
+
+* Apply @cut_traceback decorator only when pony.MODE is 'INTERACTIVE'
+
+## Bugfixes
+
+* In SQLite3 `LIKE` is case sensitive now
+* #249: Fix incorrect mixin used for Timedelta
+* #251: correct dealing with qualified table names
+* #301: Fix aggregation over JSON Column
+* #306: Support of frozenset constants added
+* #308: Fixed an error when assigning JSON attribute value to the same attribute: obj.json_attr = obj.json_attr
+* #313: Fix missed retry on exception raised during db_session.__exit__
+* #314: Fix AttributeError: 'NoneType' object has no attribute 'seeds'
+* #315: Fix attribute lifting for JSON attributes
+* #321: Fix KeyError on obj.delete()
+* #325: duplicating percentage sign in raw SQL queries without parameters
+* #331: Overriding __len__ in entity fails
+* #336: entity declaration serialization
+* #357: reconnect after PostgreSQL server closed the connection unexpectedly
+* Fix Python implementation of between() function and rename arguments: between(a, x, y) -> between(x, a, b)
+* Fix retry handling: in PostgreSQL and Oracle an error can be raised during commit
+* Fix optimistic update checks for composite foreign keys
+* Don't raise OptimisticCheckError if db_session is not optimistic
+* Handling incorrect datetime values in MySQL
+* Improved ImportError exception messages when MySQLdb, pymysql, psycopg2 or psycopg2cffi driver was not found
+* desc() function fixed to allow reverse its effect by calling desc(desc(x))
+* __contains__ method should check if objects belong to the same db_session
+* Fix pony.MODE detection; mod_wsgi detection according to official doc
+* A lot of inner fixes
+
+
 # Pony ORM Release 0.7.3 (2017-10-23)
 
 ## New features

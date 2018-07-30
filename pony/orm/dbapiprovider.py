@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, basestring, unicode, buffer, int_types
+from pony.py23compat import PY2, basestring, unicode, buffer, int_types, iteritems
 
 import os, re, json
 from decimal import Decimal, InvalidOperation
@@ -12,7 +12,7 @@ from functools import partial
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, Json
+from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, Json, QueryType
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -255,7 +255,10 @@ class DBAPIProvider(object):
         return provider.quote_name(name)
 
     def normalize_vars(provider, vars, vartypes):
-        pass
+        for key, value in iteritems(vars):
+            vartype = vartypes[key]
+            if isinstance(vartype, QueryType):
+                vartypes[key], vars[key] = value._normalize_var(vartype)
 
     def ast2sql(provider, ast):
         builder = provider.sqlbuilder_cls(provider, ast)
