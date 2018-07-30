@@ -678,9 +678,9 @@ class SQLTranslator(ASTTranslator):
                     limit = -1
                 elif provider.dialect == 'MySQL':
                     limit = 18446744073709551615
-            limit_section = [ 'LIMIT', [ 'VALUE', limit ]]
-            if offset: limit_section.append([ 'VALUE', offset ])
-            sql_ast = sql_ast + [ limit_section ]
+            limit_section = [ 'LIMIT', limit ]
+            if offset: limit_section.append(offset)
+            sql_ast.append(limit_section)
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets

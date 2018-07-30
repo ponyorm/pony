@@ -3098,7 +3098,7 @@ class SetInstance(object):
                 select_list = [ 'ALL' ] + [ [ 'COLUMN', None, column ] for column in attr.columns ]
                 attr_offsets = None
             sql_ast = [ 'SELECT', select_list, [ 'FROM', [ None, 'TABLE', table_name ] ],
-                        where_list, [ 'LIMIT', [ 'VALUE', 1 ] ] ]
+                        where_list, [ 'LIMIT', 1 ] ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_empty_sql = sql, adapter, attr_offsets
         else: sql, adapter, attr_offsets = cached_sql
@@ -3993,7 +3993,7 @@ class EntityMeta(type):
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
-        if limit is not None: sql_ast.append([ 'LIMIT', [ 'VALUE', limit ] ])
+        if limit is not None: sql_ast.append([ 'LIMIT', limit ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
