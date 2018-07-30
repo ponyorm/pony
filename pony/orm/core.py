@@ -2450,6 +2450,7 @@ class Attribute(object):
             assert len(attr.converters) == 1
             if not callable(attr.default): attr.default = attr.validate(attr.default)
         assert len(columns) == len(attr.converters)
+        attr.column_objects = column_objects = []
         if len(columns) == 1:
             converter = attr.converters[0]
             default = attr.sql_default
@@ -2461,16 +2462,14 @@ class Attribute(object):
                 default = unicode(value)
             column = table.add_column(columns[0], converter.get_sql_type(attr), converter, not attr.nullable, default)
             column.attr = attr
-            attr.column_objects = [ column ]
+            attr.column_objects.append(column)
         elif columns:
             if attr.sql_type is not None:
                 throw(NotImplementedError, 'sql_type cannot be specified for composite attribute %s' % attr)
-            attr.column_objects = [
-                table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
-                for (column_name, converter) in izip(columns, attr.converters)
-            ]
-            for column in attr.column_objects:
+            for (column_name, converter) in izip(columns, attr.converters):
+                column = table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
                 column.attr = attr
+                column_objects.append(column)
         else: pass  # virtual attribute of one-to-one pair
     def _add_foreign_key_(attr, table):
         if attr.is_collection:
