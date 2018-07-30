@@ -5919,6 +5919,11 @@ class QueryResultIterator(object):
         return len(self._query_result) - self._position
 
 
+def make_query_result_method_error_stub(name, title=None):
+    def func(self, *args, **kwargs):
+        throw(TypeError, 'In order to do %s, cast QueryResult to list first' % (title or name))
+    return func
+
 class QueryResult(object):
     __slots__ = '_query', '_limit', '_offset', '_items', '_expr_type', '_col_names'
     def __init__(self, query, limit, offset, lazy):
@@ -5985,6 +5990,8 @@ class QueryResult(object):
         self._get_items().reverse()
     def sort(self, *args, **kwargs):
         self._get_items().sort(*args, **kwargs)
+    def shuffle(self):
+        shuffle(self._get_items())
     @cut_traceback
     def show(self, width=None):
         if self._items is None:
@@ -6040,6 +6047,32 @@ class QueryResult(object):
             print(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
     def to_json(self, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return self._query._database.to_json(self, include, exclude, converter, with_schema, schema_hash)
+
+    def __add__(self, other):
+        result = []
+        result.extend(self)
+        result.extend(other)
+        return result
+    def __radd__(self, other):
+        result = []
+        result.extend(other)
+        result.extend(self)
+        return result
+    def to_list(self):
+        return list(self)
+
+    __setitem__ = make_query_result_method_error_stub('__setitem__', 'item assignment')
+    __delitem__ = make_query_result_method_error_stub('__delitem__', 'item deletion')
+    __iadd__ = make_query_result_method_error_stub('__iadd__', '+=')
+    __imul__ = make_query_result_method_error_stub('__imul__', '*=')
+    __mul__ = make_query_result_method_error_stub('__mul__', '*')
+    __rmul__ = make_query_result_method_error_stub('__rmul__', '*')
+    append = make_query_result_method_error_stub('append', 'append')
+    clear = make_query_result_method_error_stub('clear', 'clear')
+    extend = make_query_result_method_error_stub('extend', 'extend')
+    insert = make_query_result_method_error_stub('insert', 'insert')
+    pop = make_query_result_method_error_stub('pop', 'pop')
+    remove = make_query_result_method_error_stub('remove', 'remove')
 
 
 @cut_traceback
