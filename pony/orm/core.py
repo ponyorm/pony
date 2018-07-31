@@ -5303,24 +5303,23 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
 def unpickle_query(query_result):
     return query_result
 
-filter_num_counter = itertools.count()
-
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         tree, extractors = create_extractors(code_key, tree, globals, locals, special_functions, const_functions)
-        filter_num = next(filter_num_counter)
+        filter_num = 0
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
         origin = vars[filter_num, node.src]
         if isinstance(origin, Query):
-            database = origin._translator.database
+            base_query = origin
         elif isinstance(origin, QueryResult):
-            database = origin._query._translator.database
+            base_query = origin._query
         elif isinstance(origin, QueryResultIterator):
-            database = origin._query_result._query._translator.database
+            base_query = origin._query_result._query
         else:
+            base_query = None
             if isinstance(origin, EntityIter):
                 origin = origin.entity
             elif not isinstance(origin, EntityMeta):
@@ -5331,6 +5330,12 @@ class Query(object):
             if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
             if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
 
+        if base_query is not None:
+            database = base_query._translator.database
+            filter_num = base_query._filter_num + 1
+            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+
+        query._filter_num = filter_num
         database.provider.normalize_vars(vars, vartypes)
 
         query._key = HashableDict(code_key=code_key, vartypes=vartypes, left_join=left_join, filters=())
@@ -5694,23 +5699,23 @@ class Query(object):
         else:
             original_names = True
 
-        filter_num = next(filter_num_counter)
+        new_filter_num = query._filter_num + 1
         func_ast, extractors = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.namespace)
         if extractors:
-            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(new_filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_vars = query._vars.copy()
             new_vars.update(vars)
         else: new_vars, vartypes = query._vars, HashableDict()
         tup = (('order_by' if order_by else 'where' if original_names else 'filter', func_id, vartypes),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
-        new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
+        new_filters = query._filters + (('apply_lambda', new_filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
 
         new_translator, new_vars = query._get_translator(new_key, new_vars)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
-            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+            new_translator = prev_translator.apply_lambda(new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
@@ -5724,9 +5729,10 @@ class Query(object):
                     except UseAnotherTranslator:
                         assert False
                     new_translator = query._reapply_filters(new_translator)
-                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+                    new_translator = new_translator.apply_lambda(new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        return query._clone(_vars=new_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
+        return query._clone(_filter_num=new_filter_num, _vars=new_vars, _key=new_key, _filters=new_filters,
+                            _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
             method_name, args = tup[0], tup[1:]
