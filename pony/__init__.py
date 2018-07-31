@@ -20,9 +20,12 @@ def detect_mode():
     except: pass
     else: return 'MOD_WSGI'
 
-    try:
-        sys.modules['__main__'].__file__
-    except AttributeError:
+    main = sys.modules['__main__']
+
+    if not hasattr(main, '__file__'): # console
+        return 'INTERACTIVE'
+
+    if getattr(main, 'INTERACTIVE_MODE_AVAILABLE', False): # pycharm console
         return 'INTERACTIVE'
 
     if 'flup.server.fcgi' in sys.modules: return 'FCGI-FLUP'
