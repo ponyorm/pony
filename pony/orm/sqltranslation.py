@@ -670,11 +670,17 @@ class SQLTranslator(ASTTranslator):
 
         if translator.order and not aggr_func_name: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
-        if limit is not None:
+        if limit is not None or offset is not None:
             assert not aggr_func_name
-            limit_section = [ 'LIMIT', [ 'VALUE', limit ]]
-            if offset: limit_section.append([ 'VALUE', offset ])
-            sql_ast = sql_ast + [ limit_section ]
+            provider = translator.database.provider
+            if limit is None:
+                if provider.dialect == 'SQLite':
+                    limit = -1
+                elif provider.dialect == 'MySQL':
+                    limit = 18446744073709551615
+            limit_section = [ 'LIMIT', limit ]
+            if offset: limit_section.append(offset)
+            sql_ast.append(limit_section)
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
@@ -890,7 +896,11 @@ class SQLTranslator(ASTTranslator):
     def resolve_name(translator, name):
         if name not in translator.namespace:
             throw(TranslationError, 'Name %s is not found in %s' % (name, translator.namespace))
-        return translator.namespace[name]
+        monad = translator.namespace[name]
+        assert isinstance(monad, Monad)
+        if monad.translator is not translator:
+            monad.translator.sqlquery.used_from_subquery = True
+        return monad
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):

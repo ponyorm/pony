@@ -3,7 +3,7 @@ from __future__ import absolute_import, print_function
 import sys
 from os.path import dirname
 
-__version__ = '0.7.5'
+__version__ = '0.7.6-dev'
 
 def detect_mode():
     try: import google.appengine
@@ -17,9 +17,12 @@ def detect_mode():
     except: pass
     else: return 'MOD_WSGI'
 
-    try:
-        sys.modules['__main__'].__file__
-    except AttributeError:
+    main = sys.modules['__main__']
+
+    if not hasattr(main, '__file__'): # console
+        return 'INTERACTIVE'
+
+    if getattr(main, 'INTERACTIVE_MODE_AVAILABLE', False): # pycharm console
         return 'INTERACTIVE'
 
     if 'flup.server.fcgi' in sys.modules: return 'FCGI-FLUP'

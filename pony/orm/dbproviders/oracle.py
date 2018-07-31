@@ -175,26 +175,26 @@ class OraBuilder(SQLBuilder):
                 indent0 = ''
                 x = 't.*'
 
-            if not limit: pass
+            if not limit and not offset:
+                pass
             elif not offset:
                 result = [ indent0, 'SELECT * FROM (\n' ]
                 builder.indent += 1
                 result.extend(builder._subquery(*sections))
                 builder.indent -= 1
-                result.extend((indent, ') WHERE ROWNUM <= ', builder(limit), '\n'))
+                result.extend((indent, ') WHERE ROWNUM <= %d\n' % limit))
             else:
                 indent2 = indent + builder.indent_spaces
                 result = [ indent0, 'SELECT %s FROM (\n' % x, indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
                 builder.indent += 2
                 result.extend(builder._subquery(*sections))
                 builder.indent -= 2
-                result.extend((indent2, ') t '))
-                if limit[0] == 'VALUE' and offset[0] == 'VALUE' \
-                        and isinstance(limit[1], int) and isinstance(offset[1], int):
-                    total_limit = [ 'VALUE', limit[1] + offset[1] ]
-                    result.extend(('WHERE ROWNUM <= ', builder(total_limit), '\n'))
-                else: result.extend(('WHERE ROWNUM <= ', builder(limit), ' + ', builder(offset), '\n'))
-                result.extend((indent, ') t WHERE "row-num" > ', builder(offset), '\n'))
+                if limit is None:
+                    result.append('%s) t\n' % indent2)
+                    result.append('%s) t WHERE "row-num" > %d\n' % (indent, offset))
+                else:
+                    result.append('%s) t WHERE ROWNUM <= %d\n' % (indent2, limit + offset))
+                    result.append('%s) t WHERE "row-num" > %d\n' % (indent, offset))
             if builder.indent:
                 indent = builder.indent_spaces * builder.indent
                 return '(\n', result, indent + ')'

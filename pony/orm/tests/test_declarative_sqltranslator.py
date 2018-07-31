@@ -372,6 +372,85 @@ class TestSQLTranslator(unittest.TestCase):
     def test_optimized_2(self):
         q = select((s, count(s.courses)) for s in Student if count(s.courses) > 1)
         self.assertEqual(set(q), {(Student[2], 2)})
+    def test_delete(self):
+        q = select(g for g in Grade if g.teacher.id == 101).delete()
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
+    def test_delete_2(self):
+        delete(g for g in Grade if g.teacher.id == 101)
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
+    def test_delete_3(self):
+        select(g for g in Grade if g.teacher.id == 101).delete(bulk=True)
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
+    def test_delete_4(self):
+        select(g for g in Grade if exists(g2 for g2 in Grade if g2.value > g.value)).delete(bulk=True)
+        q2 = select(g for g in Grade)[:]
+        self.assertEqual([g.value for g in q2], ['C'])
+    def test_select_2(self):
+        result = select(s for s in Student)[:]
+        self.assertEqual(result, [Student[1], Student[2], Student[3]])
+    def test_select_add(self):
+        result = [None] + select(s for s in Student)[:]
+        self.assertEqual(result, [None, Student[1], Student[2], Student[3]])
+    def test_query_result_radd(self):
+        result = select(s for s in Student)[:] + [None]
+        self.assertEqual(result, [Student[1], Student[2], Student[3], None])
+    def test_query_result_sort(self):
+        result = select(s for s in Student)[:]
+        result.sort()
+        self.assertEqual(result, [Student[1], Student[2], Student[3]])
+    def test_query_result_reverse(self):
+        result = select(s for s in Student)[:]
+        items = list(result)
+        result.reverse()
+        self.assertEqual(items, list(reversed(result)))
+    def test_query_result_shuffle(self):
+        result = select(s for s in Student)[:]
+        items = set(result)
+        result.shuffle()
+        self.assertEqual(items, set(result))
+    def test_query_result_to_list(self):
+        result = select(s for s in Student)[:]
+        items = result.to_list()
+        self.assertTrue(type(items) is list)
+    @raises_exception(TypeError, 'In order to do item assignment, cast QueryResult to list first')
+    def test_query_result_setitem(self):
+        result = select(s for s in Student)[:]
+        result[0] = None
+    @raises_exception(TypeError, 'In order to do item deletion, cast QueryResult to list first')
+    def test_query_result_delitem(self):
+        result = select(s for s in Student)[:]
+        del result[0]
+    @raises_exception(TypeError, 'In order to do +=, cast QueryResult to list first')
+    def test_query_result_iadd(self):
+        result = select(s for s in Student)[:]
+        result += None
+    @raises_exception(TypeError, 'In order to do append, cast QueryResult to list first')
+    def test_query_result_append(self):
+        result = select(s for s in Student)[:]
+        result.append(None)
+    @raises_exception(TypeError, 'In order to do clear, cast QueryResult to list first')
+    def test_query_result_clear(self):
+        result = select(s for s in Student)[:]
+        result.clear()
+    @raises_exception(TypeError, 'In order to do extend, cast QueryResult to list first')
+    def test_query_result_extend(self):
+        result = select(s for s in Student)[:]
+        result.extend([])
+    @raises_exception(TypeError, 'In order to do insert, cast QueryResult to list first')
+    def test_query_result_insert(self):
+        result = select(s for s in Student)[:]
+        result.insert(0, None)
+    @raises_exception(TypeError, 'In order to do pop, cast QueryResult to list first')
+    def test_query_result_pop(self):
+        result = select(s for s in Student)[:]
+        result.pop()
+    @raises_exception(TypeError, 'In order to do remove, cast QueryResult to list first')
+    def test_query_result_remove(self):
+        result = select(s for s in Student)[:]
+        result.remove(None)
 
 
 if __name__ == "__main__":

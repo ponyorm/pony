@@ -3098,7 +3098,7 @@ class SetInstance(object):
                 select_list = [ 'ALL' ] + [ [ 'COLUMN', None, column ] for column in attr.columns ]
                 attr_offsets = None
             sql_ast = [ 'SELECT', select_list, [ 'FROM', [ None, 'TABLE', table_name ] ],
-                        where_list, [ 'LIMIT', [ 'VALUE', 1 ] ] ]
+                        where_list, [ 'LIMIT', 1 ] ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_empty_sql = sql, adapter, attr_offsets
         else: sql, adapter, attr_offsets = cached_sql
@@ -3329,7 +3329,7 @@ class SetInstance(object):
             query = query.filter(func, globals, locals)
         return query
     filter = select
-    def limit(wrapper, limit, offset=None):
+    def limit(wrapper, limit=None, offset=None):
         return wrapper.select().limit(limit, offset)
     def page(wrapper, pagenum, pagesize=10):
         return wrapper.select().page(pagenum, pagesize)
@@ -3993,7 +3993,7 @@ class EntityMeta(type):
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
-        if limit is not None: sql_ast.append([ 'LIMIT', [ 'VALUE', limit ] ])
+        if limit is not None: sql_ast.append([ 'LIMIT', limit ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
@@ -5303,24 +5303,23 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
 def unpickle_query(query_result):
     return query_result
 
-filter_num_counter = itertools.count()
-
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         tree, extractors = create_extractors(code_key, tree, globals, locals, special_functions, const_functions)
-        filter_num = next(filter_num_counter)
+        filter_num = 0
         vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
         origin = vars[filter_num, node.src]
         if isinstance(origin, Query):
-            database = origin._translator.database
+            base_query = origin
         elif isinstance(origin, QueryResult):
-            database = origin._query._translator.database
+            base_query = origin._query
         elif isinstance(origin, QueryResultIterator):
-            database = origin._query_result._query._translator.database
+            base_query = origin._query_result._query
         else:
+            base_query = None
             if isinstance(origin, EntityIter):
                 origin = origin.entity
             elif not isinstance(origin, EntityMeta):
@@ -5331,6 +5330,12 @@ class Query(object):
             if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
             if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
 
+        if base_query is not None:
+            database = base_query._translator.database
+            filter_num = base_query._filter_num + 1
+            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+
+        query._filter_num = filter_num
         database.provider.normalize_vars(vars, vartypes)
 
         query._key = HashableDict(code_key=code_key, vartypes=vartypes, left_join=left_join, filters=())
@@ -5694,23 +5699,23 @@ class Query(object):
         else:
             original_names = True
 
-        filter_num = next(filter_num_counter)
+        new_filter_num = query._filter_num + 1
         func_ast, extractors = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.namespace)
         if extractors:
-            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(new_filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_vars = query._vars.copy()
             new_vars.update(vars)
         else: new_vars, vartypes = query._vars, HashableDict()
         tup = (('order_by' if order_by else 'where' if original_names else 'filter', func_id, vartypes),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
-        new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
+        new_filters = query._filters + (('apply_lambda', new_filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
 
         new_translator, new_vars = query._get_translator(new_key, new_vars)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
-            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+            new_translator = prev_translator.apply_lambda(new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
@@ -5724,9 +5729,10 @@ class Query(object):
                     except UseAnotherTranslator:
                         assert False
                     new_translator = query._reapply_filters(new_translator)
-                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+                    new_translator = new_translator.apply_lambda(new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        return query._clone(_vars=new_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
+        return query._clone(_filter_num=new_filter_num, _vars=new_vars, _key=new_key, _filters=new_filters,
+                            _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
             method_name, args = tup[0], tup[1:]
@@ -5809,9 +5815,12 @@ class Query(object):
         elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
         stop = key.stop
         if stop is None:
-            if not start: return query._fetch()
-            else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
-        if start >= stop: return []
+            if not start:
+                return query._fetch()
+            else:
+                return query._fetch(limit=None, offset=start)
+        if start >= stop:
+            return query._fetch(limit=0)
         return query._fetch(limit=stop-start, offset=start)
     def _fetch(query, limit=None, offset=None, lazy=False):
         return QueryResult(query, limit, offset, lazy=lazy)
@@ -5819,7 +5828,7 @@ class Query(object):
     def fetch(query, limit=None, offset=None):
         return query._fetch(limit, offset)
     @cut_traceback
-    def limit(query, limit, offset=None):
+    def limit(query, limit=None, offset=None):
         return query._fetch(limit, offset, lazy=True)
     @cut_traceback
     def page(query, pagenum, pagesize=10):
@@ -5916,6 +5925,11 @@ class QueryResultIterator(object):
         return len(self._query_result) - self._position
 
 
+def make_query_result_method_error_stub(name, title=None):
+    def func(self, *args, **kwargs):
+        throw(TypeError, 'In order to do %s, cast QueryResult to list first' % (title or name))
+    return func
+
 class QueryResult(object):
     __slots__ = '_query', '_limit', '_offset', '_items', '_expr_type', '_col_names'
     def __init__(self, query, limit, offset, lazy):
@@ -5982,6 +5996,8 @@ class QueryResult(object):
         self._get_items().reverse()
     def sort(self, *args, **kwargs):
         self._get_items().sort(*args, **kwargs)
+    def shuffle(self):
+        shuffle(self._get_items())
     @cut_traceback
     def show(self, width=None):
         if self._items is None:
@@ -6037,6 +6053,32 @@ class QueryResult(object):
             print(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
     def to_json(self, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return self._query._database.to_json(self, include, exclude, converter, with_schema, schema_hash)
+
+    def __add__(self, other):
+        result = []
+        result.extend(self)
+        result.extend(other)
+        return result
+    def __radd__(self, other):
+        result = []
+        result.extend(other)
+        result.extend(self)
+        return result
+    def to_list(self):
+        return list(self)
+
+    __setitem__ = make_query_result_method_error_stub('__setitem__', 'item assignment')
+    __delitem__ = make_query_result_method_error_stub('__delitem__', 'item deletion')
+    __iadd__ = make_query_result_method_error_stub('__iadd__', '+=')
+    __imul__ = make_query_result_method_error_stub('__imul__', '*=')
+    __mul__ = make_query_result_method_error_stub('__mul__', '*')
+    __rmul__ = make_query_result_method_error_stub('__rmul__', '*')
+    append = make_query_result_method_error_stub('append', 'append')
+    clear = make_query_result_method_error_stub('clear', 'clear')
+    extend = make_query_result_method_error_stub('extend', 'extend')
+    insert = make_query_result_method_error_stub('insert', 'insert')
+    pop = make_query_result_method_error_stub('pop', 'pop')
+    remove = make_query_result_method_error_stub('remove', 'remove')
 
 
 @cut_traceback
