@@ -444,54 +444,54 @@ class SQLTranslator(ASTTranslator):
             if not aggr_path.startswith(name):
                 return False
         return aggr_path
-    def process_query_qual(translator, other_translator, names, try_extend_prev_query=False):
+    def process_query_qual(translator, prev_translator, names, try_extend_prev_query=False):
         sqlquery = translator.sqlquery
         tablerefs = sqlquery.tablerefs
-        expr_types = other_translator.expr_type
+        expr_types = prev_translator.expr_type
         if not isinstance(expr_types, tuple): expr_types = (expr_types,)
         expr_count = len(expr_types)
 
         if expr_count > 1 and len(names) == 1:
             throw(NotImplementedError,
                   'Please unpack a tuple of (%s) in for-loop to individual variables (like: "for x, y in ...")'
-                  % (', '.join(ast2src(m.node) for m in other_translator.expr_monads)))
+                  % (', '.join(ast2src(m.node) for m in prev_translator.expr_monads)))
         elif expr_count > len(names):
             throw(TranslationError,
                   'Not enough values to unpack "for %s in select(%s for ...)" (expected %d, got %d)'
                   % (', '.join(names),
-                     ', '.join(ast2src(m.node) for m in other_translator.expr_monads),
+                     ', '.join(ast2src(m.node) for m in prev_translator.expr_monads),
                      len(names), expr_count))
         elif expr_count < len(names):
             throw(TranslationError,
                   'Too many values to unpack "for %s in select(%s for ...)" (expected %d, got %d)'
                   % (', '.join(names),
-                     ', '.join(ast2src(m.node) for m in other_translator.expr_monads),
+                     ', '.join(ast2src(m.node) for m in prev_translator.expr_monads),
                      len(names), expr_count))
 
         if try_extend_prev_query:
-            if other_translator.aggregated: pass
-            elif other_translator.left_join: pass
+            if prev_translator.aggregated: pass
+            elif prev_translator.left_join: pass
             else:
                 assert translator.parent is None
-                assert other_translator.vars is None
-                other_translator.filter_num = translator.filter_num
-                other_translator.extractors.update(translator.extractors)
-                other_translator.vars = translator.vars
-                other_translator.vartypes.update(translator.vartypes)
-                other_translator.left_join = translator.left_join
-                other_translator.optimize = translator.optimize
-                other_translator.namespace_stack = [
-                    {name: expr for name, expr in izip(names, other_translator.expr_monads)}
+                assert prev_translator.vars is None
+                prev_translator.filter_num = translator.filter_num
+                prev_translator.extractors.update(translator.extractors)
+                prev_translator.vars = translator.vars
+                prev_translator.vartypes.update(translator.vartypes)
+                prev_translator.left_join = translator.left_join
+                prev_translator.optimize = translator.optimize
+                prev_translator.namespace_stack = [
+                    {name: expr for name, expr in izip(names, prev_translator.expr_monads)}
                 ]
-                raise UseAnotherTranslator(other_translator)
+                raise UseAnotherTranslator(prev_translator)
 
-        if len(names) == 1 and isinstance(other_translator.expr_type, EntityMeta) \
-                and not other_translator.aggregated and not other_translator.distinct:
+        if len(names) == 1 and isinstance(prev_translator.expr_type, EntityMeta) \
+                and not prev_translator.aggregated and not prev_translator.distinct:
             name = names[0]
-            entity = other_translator.expr_type
-            [expr_monad] = other_translator.expr_monads
+            entity = prev_translator.expr_type
+            [expr_monad] = prev_translator.expr_monads
             entity_alias = expr_monad.tableref.alias
-            subquery_ast = other_translator.construct_subquery_ast(star=entity_alias)
+            subquery_ast = prev_translator.construct_subquery_ast(star=entity_alias)
             tableref = StarTableRef(sqlquery, name, entity, subquery_ast)
             tablerefs[name] = tableref
             tableref.make_join()
@@ -499,7 +499,7 @@ class SQLTranslator(ASTTranslator):
         else:
             aliases = []
             aliases_dict = {}
-            for name, base_expr_monad in izip(names, other_translator.expr_monads):
+            for name, base_expr_monad in izip(names, prev_translator.expr_monads):
                 t = base_expr_monad.type
                 if isinstance(t, EntityMeta):
                     t_aliases = []
@@ -512,13 +512,13 @@ class SQLTranslator(ASTTranslator):
                     aliases.append(name)
                     aliases_dict[base_expr_monad] = name
 
-            subquery_ast = other_translator.construct_subquery_ast(aliases=aliases)
+            subquery_ast = prev_translator.construct_subquery_ast(aliases=aliases)
             tableref = ExprTableRef(sqlquery, 't', subquery_ast, names, aliases)
             for name in names:
                 tablerefs[name] = tableref
             tableref.make_join()
 
-            for name, base_expr_monad in izip(names, other_translator.expr_monads):
+            for name, base_expr_monad in izip(names, prev_translator.expr_monads):
                 t = base_expr_monad.type
                 if isinstance(t, EntityMeta):
                     columns = aliases_dict[base_expr_monad]
