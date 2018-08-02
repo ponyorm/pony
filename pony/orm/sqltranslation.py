@@ -263,10 +263,10 @@ class SQLTranslator(ASTTranslator):
                     tableref.make_join()
                     translator.namespace[name] = node.monad = ObjectIterMonad(translator, tableref, entity)
                 elif isinstance(iterable, QueryType):
-                    base_translator = deepcopy(iterable.translator)
-                    database = base_translator.database
+                    prev_translator = deepcopy(iterable.translator)
+                    database = prev_translator.database
                     try:
-                        translator.process_query_qual(base_translator, names, try_extend_base_query=not i)
+                        translator.process_query_qual(prev_translator, names, try_extend_prev_query=not i)
                     except UseAnotherTranslator as e:
                         translator = e.translator
                 else: throw(TranslationError, 'Inside declarative query, iterator must be entity. '
@@ -444,7 +444,7 @@ class SQLTranslator(ASTTranslator):
             if not aggr_path.startswith(name):
                 return False
         return aggr_path
-    def process_query_qual(translator, other_translator, names, try_extend_base_query=False):
+    def process_query_qual(translator, other_translator, names, try_extend_prev_query=False):
         sqlquery = translator.sqlquery
         tablerefs = sqlquery.tablerefs
         expr_types = other_translator.expr_type
@@ -468,7 +468,7 @@ class SQLTranslator(ASTTranslator):
                      ', '.join(ast2src(m.node) for m in other_translator.expr_monads),
                      len(names), expr_count))
 
-        if try_extend_base_query:
+        if try_extend_prev_query:
             if other_translator.aggregated: pass
             elif other_translator.left_join: pass
             else:

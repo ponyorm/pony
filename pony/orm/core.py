@@ -5313,13 +5313,13 @@ class Query(object):
         node = tree.quals[0].iter
         origin = vars[filter_num, node.src]
         if isinstance(origin, Query):
-            base_query = origin
+            prev_query = origin
         elif isinstance(origin, QueryResult):
-            base_query = origin._query
+            prev_query = origin._query
         elif isinstance(origin, QueryResultIterator):
-            base_query = origin._query_result._query
+            prev_query = origin._query_result._query
         else:
-            base_query = None
+            prev_query = None
             if isinstance(origin, EntityIter):
                 origin = origin.entity
             elif not isinstance(origin, EntityMeta):
@@ -5330,9 +5330,9 @@ class Query(object):
             if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
             if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
 
-        if base_query is not None:
-            database = base_query._translator.database
-            filter_num = base_query._filter_num + 1
+        if prev_query is not None:
+            database = prev_query._translator.database
+            filter_num = prev_query._filter_num + 1
             vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
 
         query._filter_num = filter_num
