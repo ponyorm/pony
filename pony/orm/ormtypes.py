@@ -184,6 +184,8 @@ def normalize(value):
 def normalize_type(t):
     tt = type(t)
     if tt is tuple: return tuple(normalize_type(item) for item in t)
+    if not isinstance(t, type):
+        return t
     assert t.__name__ != 'EntityMeta'
     if tt.__name__ == 'EntityMeta': return t
     if t is NoneType: return t

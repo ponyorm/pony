@@ -94,6 +94,13 @@ class SQLTranslator(ASTTranslator):
             if isinstance(t.item_type, EntityMeta):
                 monad = EntityMonad(translator, t.item_type)
             else: throw(NotImplementedError)  # pragma: no cover
+        elif tt is QueryType:
+            prev_translator = deepcopy(t.translator)
+            prev_translator.parent = translator
+            prev_translator.injected = True
+            if translator.database is not prev_translator.database:
+                throw(TranslationError, 'Mixing queries from different databases')
+            monad = QuerySetMonad(translator, prev_translator)
         elif tt is FuncType:
             func = t.func
             func_monad_class = translator.registered_functions.get(func, ErrorSpecialFuncMonad)
@@ -171,6 +178,7 @@ class SQLTranslator(ASTTranslator):
         ASTTranslator.__init__(translator, tree)
         translator.can_be_cached = True
         translator.parent = parent_translator
+        translator.injected = False
         if parent_translator is None:
             translator.root_translator = translator
             translator.database = None
@@ -3132,13 +3140,37 @@ class QuerySetMonad(SetMixin, Monad):
                 subquery_ast = sub.construct_subquery_ast(distinct=False, is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
             else:
+                ambiguous_names = set()
+                if sub.injected:
+                    for name in translator.sqlquery.tablerefs:
+                        if name in sub.sqlquery.tablerefs:
+                            ambiguous_names.add(name)
                 subquery_ast = sub.construct_subquery_ast(distinct=False)
+                if ambiguous_names:
+                    select_ast = subquery_ast[1]
+                    expr_aliases = []
+                    for i, expr_ast in enumerate(select_ast):
+                        if i > 0:
+                            if expr_ast[0] == 'AS':
+                                expr_ast = expr_ast[1]
+                            expr_alias = 'expr-%d' % i
+                            expr_aliases.append(expr_alias)
+                            expr_ast = [ 'AS', expr_ast, expr_alias ]
+                            select_ast[i] = expr_ast
+
+                    new_table_alias = translator.sqlquery.make_alias('t')
+                    new_select_ast = [ 'ALL' ]
+                    for expr_alias in expr_aliases:
+                        new_select_ast.append([ 'COLUMN', new_table_alias, expr_alias ])
+                    new_from_ast = [ 'FROM', [ new_table_alias, 'SELECT', subquery_ast[1:] ] ]
+                    new_where_ast = [ 'WHERE' ]
+                    subquery_ast = [ 'SELECT', new_select_ast, new_from_ast, new_where_ast ]
                 select_ast, from_ast, where_ast = subquery_ast[1:4]
                 in_conditions = [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
-                if not sub.aggregated: where_ast += in_conditions
-                else:
+                if not ambiguous_names and sub.aggregated:
                     having_ast = find_or_create_having_ast(subquery_ast)
                     having_ast += in_conditions
+                else: where_ast += in_conditions
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS' ] + subquery_ast[2:]
         return BoolExprMonad(translator, sql_ast, nullable=False)
     def nonzero(monad):

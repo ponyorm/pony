@@ -300,6 +300,48 @@ class TestSelectFromSelect(unittest.TestCase):
         q2 = q.filter(lambda s: s.scholarship > 450)
         self.assertEqual(set(q2), {Student[3]})
 
+    @db_session
+    def test_35(self):
+        q = select(s for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s not in q)
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 2)
+
+    @db_session
+    def test_36(self):
+        q = select(s for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s not in q[:])
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 1)
+
+    @db_session
+    def test_37(self):
+        q = select(s.last_name for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s.last_name not in q)
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 2)
+
+    @db_session
+    def test_38(self):
+        q = select(s.last_name for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s.last_name not in q[:])
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 1)
+
+    @db_session
+    def test_39(self):
+        q = select((s.first_name, s.last_name) for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if (s.first_name, s.last_name) not in q)
+        self.assertEqual(set(q2), {1})
+        self.assertTrue(db.last_sql.count('SELECT') > 1)
+
+    # @db_session
+    # def test_40(self):  # TODO
+    #     q = select((s.first_name, s.last_name) for s in Student if s.scholarship > 0)
+    #     q2 = select(s.id for s in Student if (s.first_name, s.last_name) not in q[:])
+    #     self.assertEqual(set(q2), {1})
+    #     self.assertTrue(db.last_sql.count('SELECT'), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
