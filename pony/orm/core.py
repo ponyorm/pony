@@ -5456,8 +5456,8 @@ class Query(object):
         cache = database._get_cache()
         if query._for_update: cache.immediate = True
         cache.prepare_connection_for_query_execution()  # may clear cache.query_results
-        try: items = cache.query_results[query_key]
-        except KeyError:
+        items = cache.query_results.get(query_key)
+        if items is None:
             cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
