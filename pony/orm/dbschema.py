@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import itervalues, basestring
+from pony.py23compat import itervalues, basestring, int_types
 
 from operator import attrgetter
 
@@ -219,7 +219,7 @@ class Column(object):
         result = []
         append = result.append
         append(quote_name(column.name))
-        if column.is_pk == 'auto' and column.auto_template:
+        if column.is_pk == 'auto' and column.auto_template and column.converter.py_type in int_types:
             append(case(column.auto_template % dict(type=column.sql_type)))
         else:
             append(case(column.sql_type))

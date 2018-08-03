@@ -1908,8 +1908,6 @@ class Attribute(object):
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = kwargs.pop('auto', False)
-        if attr.auto and (attr.py_type not in int_types): throw(TypeError,
-            '`auto=True` option can be specified for `int` attributes only, not for `%s`' % (attr.py_type.__name__))
         attr.cascade_delete = kwargs.pop('cascade_delete', None)
 
         attr.reverse = kwargs.pop('reverse', None)
