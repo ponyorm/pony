@@ -85,7 +85,7 @@ class SQLTranslator(ASTTranslator):
         translator.call(translator.__class__.dispatch_external, node)
 
     def dispatch_external(translator, node):
-        varkey = translator.filter_num, node.src
+        varkey = translator.filter_num, node.src, translator.code_key
         t = translator.root_translator.vartypes[varkey]
         tt = type(t)
         if t is NoneType:
@@ -172,7 +172,7 @@ class SQLTranslator(ASTTranslator):
                     else: throw(TranslationError, 'Too complex aggregation, expressions cannot be combined: %s' % ast2src(node))
             return monad
 
-    def __init__(translator, tree, parent_translator, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
+    def __init__(translator, tree, parent_translator, code_key=None, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
         this = translator
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
@@ -183,14 +183,17 @@ class SQLTranslator(ASTTranslator):
             translator.root_translator = translator
             translator.database = None
             translator.sqlquery = SqlQuery(left_join=left_join)
-            assert filter_num is not None
+            assert code_key is not None and filter_num is not None
+            translator.code_key = translator.original_code_key = code_key
             translator.filter_num = translator.original_filter_num = filter_num
         else:
             translator.root_translator = parent_translator.root_translator
             translator.database = parent_translator.database
             translator.sqlquery = SqlQuery(parent_translator.sqlquery, left_join=left_join)
+            assert code_key is None and filter_num is None
+            translator.code_key = parent_translator.code_key
             translator.filter_num = parent_translator.filter_num
-            translator.original_filter_num = None
+            translator.original_code_key = translator.original_filter_num = None
         translator.extractors = extractors
         translator.vars = vars
         translator.vartypes = vartypes
@@ -255,7 +258,8 @@ class SQLTranslator(ASTTranslator):
                 else: assert False  # pragma: no cover
                 translator.namespace[name] = ObjectIterMonad(translator, tableref, entity)
             elif node.external:
-                iterable = translator.root_translator.vartypes[translator.filter_num, node.src]
+                varkey = translator.filter_num, node.src, translator.code_key
+                iterable = translator.root_translator.vartypes[varkey]
                 if isinstance(iterable, SetType):
                     check_name_is_single()
                     entity = iterable.item_type
@@ -482,6 +486,7 @@ class SQLTranslator(ASTTranslator):
             else:
                 assert translator.parent is None
                 assert prev_translator.vars is None
+                prev_translator.code_key = translator.code_key
                 prev_translator.filter_num = translator.filter_num
                 prev_translator.extractors.update(translator.extractors)
                 prev_translator.vars = translator.vars
@@ -801,9 +806,10 @@ class SQLTranslator(ASTTranslator):
                 monads.append(CmpMonad('==', attr_monad, param_monad))
         for m in monads: translator.conditions.extend(m.getsql())
         return translator
-    def apply_lambda(translator, filter_num, order_by, func_ast, argnames, original_names, extractors, vars, vartypes):
+    def apply_lambda(translator, func_id, filter_num, order_by, func_ast, argnames, original_names, extractors, vars, vartypes):
         translator = deepcopy(translator)
         func_ast = copy_ast(func_ast)  # func_ast = deepcopy(func_ast)
+        translator.code_key = func_id
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vars = vars.copy() if vars is not None else None
@@ -1045,7 +1051,22 @@ class SQLTranslator(ASTTranslator):
                                nullable=test_monad.nullable or then_monad.nullable or else_monad.nullable)
         result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
         return result
-
+    def postStr(translator, node):
+        val_monad = node.value.monad
+        if isinstance(val_monad, StringMixin):
+            return val_monad
+        sql = ['TO_STR', val_monad.getsql()[0] ]
+        return StringExprMonad(translator, unicode, sql, nullable=val_monad.nullable)
+    def postJoinedStr(translator, node):
+        nullable = False
+        for subnode in node.values:
+            assert isinstance(subnode.monad, StringMixin), (subnode.monad, subnode)
+            if subnode.monad.nullable:
+                nullable = True
+        sql = [ 'CONCAT' ] + [ value.monad.getsql()[0] for value in node.values ]
+        return StringExprMonad(translator, unicode, sql, nullable=nullable)
+    def postFormattedValue(translator, node):
+        throw(NotImplementedError, 'You cannot set width and precision markers in query')
 def coerce_monads(m1, m2, for_comparison=False):
     result_type = coerce_types(m1.type, m2.type)
     if result_type in numeric_types and bool in (m1.type, m2.type) and (
@@ -1526,7 +1547,6 @@ class HybridMethodMonad(MethodMonad):
         if PY2 and isinstance(func, types.UnboundMethodType):
             func = func.im_func
         func_id = id(func)
-        func_filter_num = translator.filter_num, 'func', id(func)
         func_ast, external_names, cells = decompile(func)
 
         func_ast, func_extractors = create_extractors(
@@ -1534,7 +1554,7 @@ class HybridMethodMonad(MethodMonad):
 
         root_translator = translator.root_translator
         if func not in root_translator.func_extractors_map:
-            func_vars, func_vartypes = extract_vars(func_filter_num, func_extractors, func.__globals__, {}, cells)
+            func_vars, func_vartypes = extract_vars(func_id, translator.filter_num, func_extractors, func.__globals__, {}, cells)
             translator.database.provider.normalize_vars(func_vars, func_vartypes)
             if func.__closure__:
                 translator.can_be_cached = False
@@ -1546,17 +1566,19 @@ class HybridMethodMonad(MethodMonad):
 
         stack = translator.namespace_stack
         stack.append(name_mapping)
-        prev_filter_num = translator.filter_num
-        translator.filter_num = func_filter_num
         func_ast = copy_ast(func_ast)
         try:
-            translator.dispatch(func_ast)
+            prev_code_key = translator.code_key
+            translator.code_key = func_id
+            try:
+                translator.dispatch(func_ast)
+            finally:
+                translator.code_key = prev_code_key
         except Exception as e:
             if len(e.args) == 1 and isinstance(e.args[0], basestring):
                 msg = e.args[0] + ' (inside %s.%s)' % (monad.parent.type.__name__, monad.attrname)
                 e.args = (msg,)
             raise
-        translator.filter_num = prev_filter_num
         stack.pop()
         return func_ast.monad
 

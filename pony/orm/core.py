@@ -5249,7 +5249,7 @@ def raw_sql(sql, result_type=None):
     locals = sys._getframe(1).f_locals
     return RawSQL(sql, globals, locals, result_type)
 
-def extract_vars(filter_num, extractors, globals, locals, cells=None):
+def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
@@ -5260,7 +5260,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
     vars = {}
     vartypes = HashableDict()
     for src, extractor in iteritems(extractors):
-        key = filter_num, src
+        varkey = filter_num, src, code_key
         try: value = extractor(globals, locals)
         except Exception as cause: raise ExprEvalError(src, cause)
 
@@ -5282,7 +5282,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
         if src == 'None' and value is not None: throw(TranslationError)
         if src == 'True' and value is not True: throw(TranslationError)
         if src == 'False' and value is not False: throw(TranslationError)
-        try: vartypes[key], value = normalize(value)
+        try: vartypes[varkey], value = normalize(value)
         except TypeError:
             if not isinstance(value, dict):
                 unsupported = False
@@ -5294,8 +5294,8 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
                 if src == '.0':
                     throw(TypeError, 'Query cannot iterate over anything but entity class or another query')
                 throw(TypeError, 'Expression `%s` has unsupported type %r' % (src, typename))
-            vartypes[key], value = normalize(value)
-        vars[key] = value
+            vartypes[varkey], value = normalize(value)
+        vars[varkey] = value
     return vars, vartypes
 
 def unpickle_query(query_result):
@@ -5306,10 +5306,11 @@ class Query(object):
         assert isinstance(tree, ast.GenExprInner)
         tree, extractors = create_extractors(code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = 0
-        vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+        vars, vartypes = extract_vars(code_key, filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
-        origin = vars[filter_num, node.src]
+        varkey = filter_num, node.src, code_key
+        origin = vars[varkey]
         if isinstance(origin, Query):
             prev_query = origin
         elif isinstance(origin, QueryResult):
@@ -5331,11 +5332,12 @@ class Query(object):
         if prev_query is not None:
             database = prev_query._translator.database
             filter_num = prev_query._filter_num + 1
-            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(code_key, filter_num, extractors, globals, locals, cells)
 
         query._filter_num = filter_num
         database.provider.normalize_vars(vars, vartypes)
 
+        query._code_key = code_key
         query._key = HashableDict(code_key=code_key, vartypes=vartypes, left_join=left_join, filters=())
         query._database = database
 
@@ -5347,14 +5349,14 @@ class Query(object):
             tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             try:
-                translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(), left_join=left_join)
+                translator = translator_cls(tree_copy, None, code_key, filter_num, extractors, vars, vartypes.copy(), left_join=left_join)
             except UseAnotherTranslator as e:
                 translator = e.translator
             name_path = translator.can_be_optimized()
             if name_path:
                 tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
                 try:
-                    translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(),
+                    translator = translator_cls(tree_copy, None, code_key, filter_num, extractors, vars, vartypes.copy(),
                                                 left_join=True, optimize=name_path)
                 except UseAnotherTranslator as e:
                     translator = e.translator
@@ -5701,19 +5703,19 @@ class Query(object):
         func_ast, extractors = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.namespace)
         if extractors:
-            vars, vartypes = extract_vars(new_filter_num, extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(func_id, new_filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_vars = query._vars.copy()
             new_vars.update(vars)
         else: new_vars, vartypes = query._vars, HashableDict()
         tup = (('order_by' if order_by else 'where' if original_names else 'filter', func_id, vartypes),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
-        new_filters = query._filters + (('apply_lambda', new_filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
+        new_filters = query._filters + (('apply_lambda', func_id, new_filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
 
         new_translator, new_vars = query._get_translator(new_key, new_vars)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
-            new_translator = prev_translator.apply_lambda(new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+            new_translator = prev_translator.apply_lambda(func_id, new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
@@ -5721,13 +5723,13 @@ class Query(object):
                     translator_cls = prev_translator.__class__
                     try:
                         new_translator = translator_cls(
-                            tree_copy, None, prev_translator.original_filter_num,
+                            tree_copy, None, prev_translator.original_code_key, prev_translator.original_filter_num,
                             prev_translator.extractors, None, prev_translator.vartypes.copy(),
                             left_join=True, optimize=name_path)
                     except UseAnotherTranslator:
                         assert False
                     new_translator = query._reapply_filters(new_translator)
-                    new_translator = new_translator.apply_lambda(new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+                    new_translator = new_translator.apply_lambda(func_id, new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             query._database._translator_cache[new_key] = new_translator
         return query._clone(_filter_num=new_filter_num, _vars=new_vars, _key=new_key, _filters=new_filters,
                             _translator=new_translator)
