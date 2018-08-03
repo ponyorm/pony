@@ -342,6 +342,20 @@ class TestSelectFromSelect(unittest.TestCase):
     #     self.assertEqual(set(q2), {1})
     #     self.assertTrue(db.last_sql.count('SELECT'), 1)
 
+    @db_session
+    def test_41(self):
+        def f1():
+            x = 21
+            return select(s for s in Student if s.age > x)
+
+        def f2(q):
+            x = 23
+            return select(s.last_name for s in Student if s.age < x and s in q)
+
+        q = f1()
+        q2 = f2(q)
+        self.assertEqual(set(q2), {'Lee'})
+
 
 if __name__ == '__main__':
     unittest.main()
