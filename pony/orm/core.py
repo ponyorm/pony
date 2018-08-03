@@ -5260,7 +5260,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
     vars = {}
     vartypes = HashableDict()
     for src, extractor in iteritems(extractors):
-        key = filter_num, src
+        varkey = filter_num, src
         try: value = extractor(globals, locals)
         except Exception as cause: raise ExprEvalError(src, cause)
 
@@ -5282,7 +5282,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
         if src == 'None' and value is not None: throw(TranslationError)
         if src == 'True' and value is not True: throw(TranslationError)
         if src == 'False' and value is not False: throw(TranslationError)
-        try: vartypes[key], value = normalize(value)
+        try: vartypes[varkey], value = normalize(value)
         except TypeError:
             if not isinstance(value, dict):
                 unsupported = False
@@ -5294,8 +5294,8 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
                 if src == '.0':
                     throw(TypeError, 'Query cannot iterate over anything but entity class or another query')
                 throw(TypeError, 'Expression `%s` has unsupported type %r' % (src, typename))
-            vartypes[key], value = normalize(value)
-        vars[key] = value
+            vartypes[varkey], value = normalize(value)
+        vars[varkey] = value
     return vars, vartypes
 
 def unpickle_query(query_result):
