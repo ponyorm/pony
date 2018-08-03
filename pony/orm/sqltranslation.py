@@ -1045,7 +1045,22 @@ class SQLTranslator(ASTTranslator):
                                nullable=test_monad.nullable or then_monad.nullable or else_monad.nullable)
         result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
         return result
-
+    def postStr(translator, node):
+        val_monad = node.value.monad
+        if isinstance(val_monad, StringMixin):
+            return val_monad
+        sql = ['TO_STR', val_monad.getsql()[0] ]
+        return StringExprMonad(translator, unicode, sql, nullable=val_monad.nullable)
+    def postJoinedStr(translator, node):
+        nullable = False
+        for subnode in node.values:
+            assert isinstance(subnode.monad, StringMixin), (subnode.monad, subnode)
+            if subnode.monad.nullable:
+                nullable = True
+        sql = [ 'CONCAT' ] + [ value.monad.getsql()[0] for value in node.values ]
+        return StringExprMonad(translator, unicode, sql, nullable=nullable)
+    def postFormattedValue(translator, node):
+        throw(NotImplementedError, 'You cannot set width and precision markers in query')
 def coerce_monads(m1, m2, for_comparison=False):
     result_type = coerce_types(m1.type, m2.type)
     if result_type in numeric_types and bool in (m1.type, m2.type) and (

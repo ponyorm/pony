@@ -67,6 +67,7 @@ def ast2src(tree):
 class PythonTranslator(ASTTranslator):
     def __init__(translator, tree):
         ASTTranslator.__init__(translator, tree)
+        translator.top_level_f_str = None
         translator.dispatch(tree)
     def call(translator, method, node):
         node.src = method(translator, node)
@@ -223,6 +224,34 @@ class PythonTranslator(ASTTranslator):
         return node.name
     def postKeyword(translator, node):
         return '='.join((node.name, node.expr.src))
+    def preStr(self, node):
+        if self.top_level_f_str is None:
+            self.top_level_f_str = node
+    def postStr(self, node):
+        if self.top_level_f_str is node:
+            self.top_level_f_str = None
+            return "f%r" % ('{%s}' % node.value.src)
+        return '{%s}' % node.value.src
+    def preJoinedStr(self, node):
+        if self.top_level_f_str is None:
+            self.top_level_f_str = node
+    def postJoinedStr(self, node):
+        result = ''.join(
+            value.value if isinstance(value, ast.Const) else value.src
+            for value in node.values)
+        if self.top_level_f_str is node:
+            self.top_level_f_str = None
+            return "f%r" % result
+        return result
+    def preFormattedValue(self, node):
+        if self.top_level_f_str is None:
+            self.top_level_f_str = node
+    def postFormattedValue(self, node):
+        res = '{%s:%s}' % (node.value.src, node.fmt_spec.src)
+        if self.top_level_f_str is node:
+            self.top_level_f_str = None
+            return "f%r" % res
+        return res
 
 nonexternalizable_types = (ast.Keyword, ast.Sliceobj, ast.List, ast.Tuple)
 
