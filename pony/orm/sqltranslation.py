@@ -452,8 +452,8 @@ class SQLTranslator(ASTTranslator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         aggr_path = next(iter(translator.aggregated_subquery_paths))
-        for name in translator.sqlquery.tablerefs:
-            if not aggr_path.startswith(name):
+        for tableref in translator.sqlquery.tablerefs.values():
+            if tableref.joined and not aggr_path.startswith(tableref.name_path):
                 return False
         return aggr_path
     def process_query_qual(translator, prev_translator, names, try_extend_prev_query=False):
@@ -1258,7 +1258,7 @@ class JoinedTableRef(object):
                     tableref.alias = parent_alias
                     tableref.pk_columns = left_columns
                     tableref.optimized = True
-                    tableref.joined = True
+                    # tableref.joined = True
                     return parent_alias, left_columns
                 alias = sqlquery.make_alias(tableref.var_name or entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
