@@ -67,9 +67,5 @@ class TestFString(unittest.TestCase):
             q = select(p.first_name + f"{' ' + x}" for p in Person if p.id == 1)
             self.assertEqual(set(q), {'Alexander Tischenko'})
 
-        @sql_debugging
         def test_8(self):
-            q = select(p for p in Person if not p.age).show()
-
-
-
+            q = select(p for p in Person if not p.age)[:]
