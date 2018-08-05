@@ -366,6 +366,7 @@ class SQLTranslator(ASTTranslator):
                         if j == last_index: name_path = name
                         else: name_path += '-' + attr.name
                         tableref = translator.sqlquery.add_tableref(name_path, parent_tableref, attr)
+                        tableref.make_join(pk_only=True)
                         if j == last_index:
                             translator.namespace[name] = ObjectIterMonad(tableref, tableref.entity)
                         if can_affect_distinct is not None:
