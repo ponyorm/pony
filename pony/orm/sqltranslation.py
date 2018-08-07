@@ -651,7 +651,7 @@ class SQLTranslator(ASTTranslator):
         return [ 'SELECT', select_ast, from_ast, where_ast ] + other_ast
     def construct_sql_ast(translator, limit=None, offset=None, distinct=None,
                           aggr_func_name=None, aggr_func_distinct=None, sep=None,
-                          for_update=False, nowait=False, attrs_to_prefetch=(), is_not_null_checks=False):
+                          for_update=False, nowait=False, is_not_null_checks=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
@@ -720,7 +720,7 @@ class SQLTranslator(ASTTranslator):
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:
             select_ast, attr_offsets = translator.expr_type._construct_select_clause_(
-                translator.alias, distinct, translator.tableref.used_attrs, attrs_to_prefetch)
+                translator.alias, distinct, translator.tableref.used_attrs)
         sql_ast.append(select_ast)
         sql_ast.append(translator.sqlquery.from_ast)
 

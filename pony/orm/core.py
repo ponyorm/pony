@@ -282,6 +282,42 @@ def adapt_sql(sql, paramstyle):
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
 
+
+class PrefetchContext(object):
+    def __init__(self, database=None):
+        self.database = database
+        self.attrs_to_prefetch_dict = defaultdict(set)
+        self.entities_to_prefetch = set()
+        self.relations_to_prefetch_cache = {}
+    def copy(self):
+        result = PrefetchContext(self.database)
+        result.attrs_to_prefetch_dict = self.attrs_to_prefetch_dict.copy()
+        result.entities_to_prefetch = self.entities_to_prefetch.copy()
+        return result
+    def __enter__(self):
+        assert local.prefetch_context is None
+        local.prefetch_context = self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        assert local.prefetch_context is self
+        local.prefetch_context = None
+    def get_frozen_attrs_to_prefetch(self, entity):
+        attrs_to_prefetch = self.attrs_to_prefetch_dict.get(entity, ())
+        if type(attrs_to_prefetch) is set:
+            attrs_to_prefetch = frozenset(attrs_to_prefetch)
+            self.attrs_to_prefetch_dict[entity] = attrs_to_prefetch
+        return attrs_to_prefetch
+    def get_relations_to_prefetch(self, entity):
+        result = self.relations_to_prefetch_cache.get(entity)
+        if result is None:
+            attrs_to_prefetch = self.attrs_to_prefetch_dict[entity]
+            result = tuple(attr for attr in entity._attrs_
+                                if attr.is_relation and (
+                                    attr in attrs_to_prefetch or
+                                    attr.py_type in self.entities_to_prefetch and not attr.is_collection))
+            self.relations_to_prefetch_cache[entity] = result
+        return result
+
+
 class Local(localbase):
     def __init__(local):
         local.debug = False
@@ -290,6 +326,7 @@ class Local(localbase):
         local.db2cache = {}
         local.db_context_counter = 0
         local.db_session = None
+        local.prefetch_context = None
         local.current_user = None
         local.perms_context = None
         local.user_groups_cache = {}
@@ -2718,6 +2755,63 @@ class Set(Collection):
             if item._session_cache_ is not cache:
                 throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
         return items
+    def prefetch_load_all(attr, objects):
+        entity = attr.entity
+        database = entity._database_
+        cache = database._get_cache()
+        if cache is None or not cache.is_alive:
+            throw(DatabaseSessionIsOver, 'Cannot load objects from the database: the database session is over')
+        reverse = attr.reverse
+        rentity = reverse.entity
+        objects = sorted(objects, key=entity._get_raw_pkval_)
+        max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
+        result = set()
+        if not reverse.is_collection:
+            for i in xrange(0, len(objects), max_batch_size):
+                batch = objects[i:i+max_batch_size]
+                sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(batch), reverse)
+                arguments = adapter(batch)
+                cursor = database._exec_sql(sql, arguments)
+                result.update(rentity._fetch_objects(cursor, attr_offsets))
+        else:
+            pk_len = len(entity._pk_columns_)
+            m2m_dict = defaultdict(set)
+            for i in xrange(0, len(objects), max_batch_size):
+                batch = objects[i:i+max_batch_size]
+                sql, adapter = attr.construct_sql_m2m(len(batch))
+                arguments = adapter(batch)
+                cursor = database._exec_sql(sql, arguments)
+                if len(batch) > 1:
+                    for row in cursor.fetchall():
+                        obj = entity._get_by_raw_pkval_(row[:pk_len])
+                        item = rentity._get_by_raw_pkval_(row[pk_len:])
+                        m2m_dict[obj].add(item)
+                else:
+                    obj = batch[0]
+                    m2m_dict[obj] = {rentity._get_by_raw_pkval_(row) for row in cursor.fetchall()}
+
+                for obj2, items in iteritems(m2m_dict):
+                    setdata2 = obj2._vals_.get(attr)
+                    if setdata2 is None: setdata2 = obj2._vals_[attr] = SetData()
+                    else:
+                        phantoms = setdata2 - items
+                        if setdata2.added: phantoms -= setdata2.added
+                        if phantoms: throw(UnrepeatableReadError,
+                            'Phantom object %s disappeared from collection %s.%s'
+                            % (safe_repr(phantoms.pop()), safe_repr(obj2), attr.name))
+                    items -= setdata2
+                    if setdata2.removed: items -= setdata2.removed
+                    setdata2 |= items
+                    reverse.db_reverse_add(items, obj2)
+                    result.update(items)
+        for obj in objects:
+            setdata = obj._vals_.get(attr)
+            if setdata is None:
+                setdata = obj._vals_[attr] = SetData()
+            setdata.is_fully_loaded = True
+            setdata.absent = None
+            setdata.count = len(setdata)
+        return result
     def load(attr, obj, items=None):
         cache = obj._session_cache_
         if cache is None or not cache.is_alive: throw_db_session_is_over('load collection', obj, attr)
@@ -2728,7 +2822,6 @@ class Set(Collection):
         entity = attr.entity
         reverse = attr.reverse
         rentity = reverse.entity
-        if not reverse: throw(NotImplementedError)
         database = obj._database_
         if cache is not database._get_cache():
             throw(TransactionError, "Transaction of object %s belongs to different thread")
@@ -3978,11 +4071,12 @@ class EntityMeta(type):
 
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
-    def _construct_select_clause_(entity, alias=None, distinct=False,
-                                  query_attrs=(), attrs_to_prefetch=(), all_attributes=False):
+    def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=(), all_attributes=False):
         attr_offsets = {}
         select_list = [ 'DISTINCT' ] if distinct else [ 'ALL' ]
         root = entity._root_
+        pc = local.prefetch_context
+        attrs_to_prefetch = pc.attrs_to_prefetch_dict.get(entity, ()) if pc else ()
         for attr in chain(root._attrs_, root._subclass_attrs_):
             if not all_attributes and not issubclass(attr.entity, entity) \
                                   and not issubclass(entity, attr.entity): continue
@@ -4001,7 +4095,9 @@ class EntityMeta(type):
         discr_values.append([ 'VALUE', entity._discriminator_])
         return [ 'IN', [ 'COLUMN', alias, discr_attr.column ], discr_values ]
     def _construct_batchload_sql_(entity, batch_size, attr=None, from_seeds=True):
-        query_key = batch_size, attr, from_seeds
+        pc = local.prefetch_context
+        attrs_to_prefetch = pc.get_frozen_attrs_to_prefetch(entity) if pc is not None else ()
+        query_key = batch_size, attr, from_seeds, attrs_to_prefetch
         cached_sql = entity._batchload_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
         select_list, attr_offsets = entity._construct_select_clause_(all_attributes=True)
@@ -4504,6 +4600,20 @@ class Entity(with_metaclass(EntityMeta)):
         if obj._pk_is_composite_: pkval = ','.join(imap(repr, pkval))
         else: pkval = repr(pkval)
         return '%s[%s]' % (obj.__class__.__name__, pkval)
+    @classmethod
+    def _prefetch_load_all_(entity, objects):
+        objects = sorted(objects, key=entity._get_raw_pkval_)
+        database = entity._database_
+        cache = database._get_cache()
+        if cache is None or not cache.is_alive:
+            throw(DatabaseSessionIsOver, 'Cannot load objects from the database: the database session is over')
+        max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
+        for i in xrange(0, len(objects), max_batch_size):
+            batch = objects[i:i+max_batch_size]
+            sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(batch))
+            arguments = adapter(batch)
+            cursor = database._exec_sql(sql, arguments)
+            entity._fetch_objects(cursor, attr_offsets)
     def _load_(obj):
         cache = obj._session_cache_
         if cache is None or not cache.is_alive: throw_db_session_is_over('load object', obj)
@@ -5438,8 +5548,7 @@ class Query(object):
         query._for_update = query._nowait = False
         query._distinct = None
         query._prefetch = False
-        query._entities_to_prefetch = set()
-        query._attrs_to_prefetch_dict = defaultdict(set)
+        query._prefetch_context = PrefetchContext(query._database)
     def _get_type_(query):
         return QueryType(query)
     def _normalize_var(query, query_type):
@@ -5477,8 +5586,9 @@ class Query(object):
     def _construct_sql_and_arguments(query, limit=None, offset=None, range=None, aggr_func_name=None, aggr_func_distinct=None, sep=None):
         translator = query._translator
         expr_type = translator.expr_type
-        if isinstance(expr_type, EntityMeta) and query._attrs_to_prefetch_dict:
-            attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
+        attrs_to_prefetch_dict = query._prefetch_context.attrs_to_prefetch_dict
+        if isinstance(expr_type, EntityMeta) and attrs_to_prefetch_dict:
+            attrs_to_prefetch = tuple(sorted(attrs_to_prefetch_dict.get(expr_type, ())))
         else:
             attrs_to_prefetch = ()
         sql_key = HashableDict(
@@ -5499,7 +5609,7 @@ class Query(object):
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
                 limit, offset, query._distinct, aggr_func_name, aggr_func_distinct, sep,
-                query._for_update, query._nowait, attrs_to_prefetch)
+                query._for_update, query._nowait)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -5518,115 +5628,110 @@ class Query(object):
         return sql
     def _actual_fetch(query, limit=None, offset=None):
         translator = query._translator
-        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(limit, offset)
-        database = query._database
-        cache = database._get_cache()
-        if query._for_update: cache.immediate = True
-        cache.prepare_connection_for_query_execution()  # may clear cache.query_results
-        items = cache.query_results.get(query_key)
-        if items is None:
-            cursor = database._exec_sql(sql, arguments)
-            if isinstance(translator.expr_type, EntityMeta):
-                entity = translator.expr_type
-                items = entity._fetch_objects(cursor, attr_offsets, for_update=query._for_update,
-                                               used_attrs=translator.get_used_attrs())
-            elif len(translator.row_layout) == 1:
-                func, slice_or_offset, src = translator.row_layout[0]
-                items = list(starmap(func, cursor.fetchall()))
+        with query._prefetch_context:
+            sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(limit, offset)
+            database = query._database
+            cache = database._get_cache()
+            if query._for_update: cache.immediate = True
+            cache.prepare_connection_for_query_execution()  # may clear cache.query_results
+            items = cache.query_results.get(query_key)
+            if items is None:
+                cursor = database._exec_sql(sql, arguments)
+                if isinstance(translator.expr_type, EntityMeta):
+                    entity = translator.expr_type
+                    items = entity._fetch_objects(cursor, attr_offsets, for_update=query._for_update,
+                                                   used_attrs=translator.get_used_attrs())
+                elif len(translator.row_layout) == 1:
+                    func, slice_or_offset, src = translator.row_layout[0]
+                    items = list(starmap(func, cursor.fetchall()))
+                else:
+                    items = [ tuple(func(sql_row[slice_or_offset])
+                                     for func, slice_or_offset, src in translator.row_layout)
+                               for sql_row in cursor.fetchall() ]
+                    for i, t in enumerate(translator.expr_type):
+                        if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in items)
+                if query_key is not None: cache.query_results[query_key] = items
             else:
-                items = [ tuple(func(sql_row[slice_or_offset])
-                                 for func, slice_or_offset, src in translator.row_layout)
-                           for sql_row in cursor.fetchall() ]
-                for i, t in enumerate(translator.expr_type):
-                    if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in items)
-            if query_key is not None: cache.query_results[query_key] = items
-        else:
-            stats = database._dblocal.stats
-            stat = stats.get(sql)
-            if stat is not None: stat.cache_count += 1
-            else: stats[sql] = QueryStat(sql)
-        if query._prefetch: query._do_prefetch(items)
+                stats = database._dblocal.stats
+                stat = stats.get(sql)
+                if stat is not None: stat.cache_count += 1
+                else: stats[sql] = QueryStat(sql)
+            if query._prefetch: query._do_prefetch(items)
         return items
     @cut_traceback
     def prefetch(query, *args):
-        query = query._clone(_entities_to_prefetch=query._entities_to_prefetch.copy(),
-                             _attrs_to_prefetch_dict=query._attrs_to_prefetch_dict.copy())
+        query = query._clone(_prefetch_context=query._prefetch_context.copy())
         query._prefetch = True
+        prefetch_context = query._prefetch_context
         for arg in args:
             if isinstance(arg, EntityMeta):
                 entity = arg
                 if query._database is not entity._database_: throw(TypeError,
                     'Entity %s belongs to different database and cannot be prefetched' % entity.__name__)
-                query._entities_to_prefetch.add(entity)
+                prefetch_context.entities_to_prefetch.add(entity)
             elif isinstance(arg, Attribute):
                 attr = arg
                 entity = attr.entity
                 if query._database is not entity._database_: throw(TypeError,
                     'Entity of attribute %s belongs to different database and cannot be prefetched' % attr)
                 if isinstance(attr.py_type, EntityMeta) or attr.lazy:
-                    query._attrs_to_prefetch_dict[entity].add(attr)
+                    prefetch_context.attrs_to_prefetch_dict[entity].add(attr)
             else: throw(TypeError, 'Argument of prefetch() query method must be entity class or attribute. '
                                    'Got: %r' % arg)
         return query
-    def _do_prefetch(query, result):
+    def _do_prefetch(query, query_result):
         expr_type = query._translator.expr_type
-        object_list = []
-        object_set = set()
-        append_to_object_list = object_list.append
-        add_to_object_set = object_set.add
+        all_objects = set()
+        objects_to_process = set()
+        objects_to_prefetch = set()
 
         if isinstance(expr_type, EntityMeta):
-            for obj in result:
-                if obj not in object_set:
-                    add_to_object_set(obj)
-                    append_to_object_list(obj)
+            objects_to_process.update(query_result)
+            all_objects.update(query_result)
         elif type(expr_type) is tuple:
-            for i, t in enumerate(expr_type):
-                if not isinstance(t, EntityMeta): continue
-                for row in result:
-                    obj = row[i]
-                    if obj not in object_set:
-                        add_to_object_set(obj)
-                        append_to_object_list(obj)
+            obj_indexes = [ i for i, t in enumerate(expr_type) if isinstance(t, EntityMeta) ]
+            if obj_indexes:
+                for row in query_result:
+                    objects_to_prefetch.update(row[i] for i in obj_indexes)
+                all_objects.update(objects_to_prefetch)
 
-        cache = query._database._get_cache()
-        entities_to_prefetch = query._entities_to_prefetch
-        attrs_to_prefetch_dict = query._attrs_to_prefetch_dict
-        prefetching_attrs_cache = {}
-        for obj in object_list:
-            entity = obj.__class__
-            if obj in cache.seeds[entity._pk_attrs_]: obj._load_()
+        prefetch_context = local.prefetch_context
+        assert prefetch_context
+        collection_prefetch_dict = defaultdict(set)
 
-            all_attrs_to_prefetch = prefetching_attrs_cache.get(entity)
-            if all_attrs_to_prefetch is None:
-                all_attrs_to_prefetch = []
-                append = all_attrs_to_prefetch.append
-                attrs_to_prefetch = attrs_to_prefetch_dict[entity]
-                for attr in obj._attrs_:
+        objects_to_prefetch_dict = defaultdict(set)
+        while objects_to_process or objects_to_prefetch:
+            for obj in objects_to_process:
+                entity = obj.__class__
+                relations_to_prefetch = prefetch_context.get_relations_to_prefetch(entity)
+                for attr in relations_to_prefetch:
                     if attr.is_collection:
-                        if attr in attrs_to_prefetch: append(attr)
-                    elif attr.is_relation:
-                        if attr in attrs_to_prefetch or attr.py_type in entities_to_prefetch: append(attr)
-                    elif attr.lazy:
-                        if attr in attrs_to_prefetch: append(attr)
-                prefetching_attrs_cache[entity] = all_attrs_to_prefetch
+                        collection_prefetch_dict[attr].add(obj)
+                    else:
+                        obj2 = attr.get(obj)
+                        if obj2 not in all_objects:
+                            all_objects.add(obj2)
+                            objects_to_prefetch.add(obj2)
 
-            for attr in all_attrs_to_prefetch:
-                if attr.is_collection:
-                    if not isinstance(attr, Set): throw(NotImplementedError)
-                    setdata = obj._vals_.get(attr)
-                    if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
-                    for obj2 in setdata:
-                        if obj2 not in object_set:
-                            add_to_object_set(obj2)
-                            append_to_object_list(obj2)
-                elif attr.is_relation:
-                    obj2 = attr.get(obj)
-                    if obj2 is not None and obj2 not in object_set:
-                        add_to_object_set(obj2)
-                        append_to_object_list(obj2)
-                elif attr.lazy: attr.get(obj)
-                else: assert False  # pragma: no cover
+            next_objects_to_process = set()
+            for attr, objects in collection_prefetch_dict.items():
+                items = attr.prefetch_load_all(objects)
+                if attr.reverse.is_collection:
+                    objects_to_prefetch.update(items)
+                else:
+                    next_objects_to_process.update(item for item in items if item not in all_objects)
+            collection_prefetch_dict.clear()
+
+            for obj in objects_to_prefetch:
+                objects_to_prefetch_dict[obj.__class__._root_].add(obj)
+            objects_to_prefetch.clear()
+
+            for entity, objects in objects_to_prefetch_dict.items():
+                next_objects_to_process.update(objects)
+                entity._prefetch_load_all_(objects)
+            objects_to_prefetch_dict.clear()
+
+            objects_to_process = next_objects_to_process
     @cut_traceback
     def show(query, width=None):
         query._fetch().show(width)
