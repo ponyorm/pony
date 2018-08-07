@@ -106,15 +106,15 @@ class OraSchema(DBSchema):
     column_class = OraColumn
 
 class OraNoneMonad(sqltranslation.NoneMonad):
-    def __init__(monad, translator, value=None):
+    def __init__(monad, value=None):
         assert value in (None, '')
-        sqltranslation.ConstMonad.__init__(monad, translator, None)
+        sqltranslation.ConstMonad.__init__(monad, None)
 
 class OraConstMonad(sqltranslation.ConstMonad):
     @staticmethod
-    def new(translator, value):
+    def new(value):
         if value == '': value = None
-        return sqltranslation.ConstMonad.new(translator, value)
+        return sqltranslation.ConstMonad.new(value)
 
 class OraTranslator(sqltranslation.SQLTranslator):
     dialect = 'Oracle'
