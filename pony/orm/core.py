@@ -5954,12 +5954,6 @@ class Query(object):
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return query._database.to_json(query[:], include, exclude, converter, with_schema, schema_hash)
 
-def strcut(s, width):
-    if len(s) <= width:
-        return s + ' ' * (width - len(s))
-    else:
-        return s[:width-3] + '...'
-
 
 class QueryResultIterator(object):
     __slots__ = '_query_result', '_position'
@@ -6145,6 +6139,13 @@ class QueryResult(object):
     insert = make_query_result_method_error_stub('insert', 'insert')
     pop = make_query_result_method_error_stub('pop', 'pop')
     remove = make_query_result_method_error_stub('remove', 'remove')
+
+
+def strcut(s, width):
+    if len(s) <= width:
+        return s + ' ' * (width - len(s))
+    else:
+        return s[:width-3] + '...'
 
 
 @cut_traceback
