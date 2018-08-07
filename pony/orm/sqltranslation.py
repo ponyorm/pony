@@ -1329,7 +1329,8 @@ class Monad(with_metaclass(MonadMeta)):
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): throw(TypeError)
-    def nonzero(monad): throw(TypeError)
+    def nonzero(monad):
+        return CmpMonad('is not', monad, NoneMonad(monad.translator))
     def negate(monad):
         return NotMonad(monad)
     def getattr(monad, attrname):
@@ -2255,6 +2256,8 @@ class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
 class BoolMonad(Monad):
     def __init__(monad, translator, nullable=True):
         Monad.__init__(monad, translator, bool, nullable=nullable)
+    def nonzero(monad):
+        return monad
 
 sql_negation = { 'IN' : 'NOT_IN', 'EXISTS' : 'NOT_EXISTS', 'LIKE' : 'NOT_LIKE', 'BETWEEN' : 'NOT_BETWEEN', 'IS_NULL' : 'IS_NOT_NULL' }
 sql_negation.update((value, key) for key, value in items_list(sql_negation))
@@ -3197,6 +3200,14 @@ class QuerySetMonad(SetMixin, Monad):
         return BoolExprMonad(translator, sql_ast, nullable=False)
     def nonzero(monad):
         subquery_ast = monad.subtranslator.construct_subquery_ast(distinct=False)
+        expr_monads = monad.subtranslator.expr_monads
+        if len(expr_monads) > 1:
+            throw(NotImplementedError)
+        expr_monad = expr_monads[0]
+        if not isinstance(expr_monad, ObjectIterMonad):
+            sql = expr_monad.nonzero().getsql()
+            assert subquery_ast[3][0] == 'WHERE'
+            subquery_ast[3].append(sql[0])
         subquery_ast = [ 'EXISTS' ] + subquery_ast[2:]
         translator = monad.translator
         return BoolExprMonad(translator, subquery_ast, nullable=False)
