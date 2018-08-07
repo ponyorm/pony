@@ -38,7 +38,7 @@ __all__ = [
     'Warning', 'Error', 'InterfaceError', 'DatabaseError', 'DataError', 'OperationalError',
     'IntegrityError', 'InternalError', 'ProgrammingError', 'NotSupportedError',
 
-    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError',
+    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError', 'BindingError',
     'TableDoesNotExist', 'TableIsNotEmpty', 'ConstraintError', 'CacheIndexError',
     'ObjectNotFound', 'MultipleObjectsFoundError', 'TooManyObjectsFoundError', 'OperationWithDeletedObjectError',
     'TransactionError', 'ConnectionClosedError', 'TransactionIntegrityError', 'IsolationError',
@@ -134,6 +134,7 @@ class OrmError(Exception): pass
 class ERDiagramError(OrmError): pass
 class DBSchemaError(OrmError): pass
 class MappingError(OrmError): pass
+class BindingError(OrmError): pass
 
 class TableDoesNotExist(OrmError): pass
 class TableIsNotEmpty(OrmError): pass
@@ -636,6 +637,31 @@ def db_decorator(func, *args, **kwargs):
         if web: throw(web.Http404NotFound)
         raise
 
+known_providers = ('sqlite', 'postgres', 'mysql', 'oracle')
+
+class OnConnectDecorator(object):
+
+    @staticmethod
+    def check_provider(provider):
+        if provider:
+            if not isinstance(provider, basestring):
+                throw(TypeError, "'provider' option should be type of 'string', got %r" % type(provider).__name__)
+            if provider not in known_providers:
+                throw(BindingError, 'Unknown provider %s' % provider)
+
+    def __init__(self, database, provider):
+        OnConnectDecorator.check_provider(provider)
+        self.provider = provider
+        self.database = database
+
+    def __call__(self, func=None, provider=None):
+        if isinstance(func, types.FunctionType):
+            self.database._on_connect_funcs.append((func, provider or self.provider))
+        if not provider and func is basestring:
+            provider = func
+        OnConnectDecorator.check_provider(provider)
+        return OnConnectDecorator(self.database, provider)
+
 class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
@@ -658,15 +684,22 @@ class Database(object):
         self._global_stats_lock = RLock()
         self._dblocal = DbLocal()
 
-        self.provider = None
+        self.on_connect = OnConnectDecorator(self, None)
+        self._on_connect_funcs = []
+        self.provider = self.provider_name = None
         if args or kwargs: self._bind(*args, **kwargs)
+    def call_on_connect(database, con):
+        for func, provider in database._on_connect_funcs:
+            if not provider or provider == database.provider_name:
+                func(database, con)
+                con.commit()
     @cut_traceback
     def bind(self, *args, **kwargs):
         self._bind(*args, **kwargs)
     def _bind(self, *args, **kwargs):
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
-            throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
+            throw(BindingError, 'Database object was already bound to %s provider' % self.provider.dialect)
         if args: provider, args = args[0], args[1:]
         elif 'provider' not in kwargs: throw(TypeError, 'Database provider is not specified')
         else: provider = kwargs.pop('provider')
@@ -676,6 +709,7 @@ class Database(object):
             if not isinstance(provider, basestring): throw(TypeError)
             if provider == 'pygresql': throw(TypeError,
                 'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
+            self.provider_name = provider
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
         self.provider = provider_cls(*args, **kwargs)
@@ -839,7 +873,7 @@ class Database(object):
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
-        if database.schema: throw(MappingError, 'Mapping was already generated')
+        if database.schema: throw(BindingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
         schema = database.schema = provider.dbschema_cls(provider)
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
@@ -1631,12 +1665,17 @@ class SessionCache(object):
         assert cache.connection is None
         if cache.in_transaction: throw(ConnectionClosedError,
             'Transaction cannot be continued because database connection failed')
-        provider = cache.database.provider
-        connection = provider.connect()
-        try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
+        database = cache.database
+        provider = database.provider
+        connection, is_new_connection = provider.connect()
+        if is_new_connection:
+            database.call_on_connect(connection)
+        try:
+            provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
         except:
             provider.drop(connection, cache)
             raise
+
         cache.connection = connection
         return connection
     def reconnect(cache, exc):
