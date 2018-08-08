@@ -712,6 +712,7 @@ class Database(object):
             self.provider_name = provider
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
+        kwargs['pony_call_on_connect'] = self.call_on_connect
         self.provider = provider_cls(*args, **kwargs)
     @property
     def last_sql(database):
