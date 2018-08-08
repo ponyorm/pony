@@ -1466,6 +1466,8 @@ class Monad(with_metaclass(MonadMeta)):
     def cast_from_json(monad, type): assert False, monad
     def to_int(monad):
         return NumericExprMonad(int, [ 'TO_INT', monad.getsql()[0] ], nullable=monad.nullable)
+    def to_str(monad):
+        return StringExprMonad(unicode, [ 'TO_STR', monad.getsql()[0] ], nullable=monad.nullable)
     def to_real(monad):
         return NumericExprMonad(float, [ 'TO_REAL', monad.getsql()[0] ], nullable=monad.nullable)
 
@@ -2207,6 +2209,10 @@ class JsonItemMonad(JsonMixin, Monad):
         return monad, path
     def to_int(monad):
         return monad.cast_from_json(int)
+    def to_str(monad):
+        return monad.cast_from_json(unicode)
+    def to_real(monad):
+        return monad.cast_from_json(float)
     def cast_from_json(monad, type):
         translator = monad.translator
         if issubclass(type, Json):
@@ -2456,6 +2462,11 @@ class FuncIntMonad(FuncMonad):
     func = int
     def call(monad, x):
         return x.to_int()
+
+class FuncStrMonad(FuncMonad):
+    func = str
+    def call(monad, x):
+        return x.to_str()
 
 class FuncFloatMonad(FuncMonad):
     func = float

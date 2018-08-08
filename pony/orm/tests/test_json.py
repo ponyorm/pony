@@ -609,6 +609,17 @@ class TestJson(unittest.TestCase):
         p = get(p for p in self.Product if p.info['some_attr'] is None)
         self.assertTrue(p)
 
+    @db_session
+    def test_str_cast(self):
+        p = get(coalesce(str(p.name), 'empty') for p in self.Product)
+        self.assertTrue('AS text' in self.db.last_sql)
+
+    @db_session
+    def test_int_cast(self):
+        p = get(coalesce(int(p.info['os']['version']), 0) for p in self.Product)
+        self.assertTrue('as integer' in self.db.last_sql)
+
+
     def test_nonzero(self):
         Product = self.Product
         with db_session:
