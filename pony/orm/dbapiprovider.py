@@ -111,7 +111,7 @@ class DBAPIProvider(object):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         if pool_mockup: provider.pool = pool_mockup
         else: provider.pool = provider.get_pool(*args, **kwargs)
-        connection = provider.connect()
+        connection, is_new_connection = provider.connect()
         provider.inspect_connection(connection)
         provider.release(connection)
 
@@ -321,12 +321,15 @@ class Pool(localbase):
             pool.forked_connections.append((pool.con, pool.pid))
             pool.con = pool.pid = None
         core = pony.orm.core
+        is_new_connection = False
         if pool.con is None:
             if core.local.debug: core.log_orm('GET NEW CONNECTION')
+            is_new_connection = True
             pool._connect()
             pool.pid = pid
-        elif core.local.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
-        return pool.con
+        elif core.local.debug:
+            core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
+        return pool.con, is_new_connection
     def _connect(pool):
         pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
     def release(pool, con):

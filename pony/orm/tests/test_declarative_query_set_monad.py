@@ -209,8 +209,16 @@ class TestQuerySetMonad(unittest.TestCase):
         select(avg(s.scholarship, distinct=True) for s in Student)[:]
         self.assertTrue('AVG(DISTINCT' in db.last_sql)
 
-    def test_exists(self):
-        result = set(select(g for g in Group if exists(s for s in g.students if s.name == 'S1')))
+    def test_exists_1(self):
+        result = set(select(g for g in Group if exists(s for s in g.students if s.age < 23)))
+        self.assertEqual(result, {Group[1]})
+
+    def test_exists_2(self):
+        result = set(select(g for g in Group if exists(s.age < 23 for s in g.students)))
+        self.assertEqual(result, {Group[1]})
+
+    def test_exists_3(self):
+        result = set(select(g for g in Group if (s.age < 23 for s in g.students)))
         self.assertEqual(result, {Group[1]})
 
     def test_negate(self):

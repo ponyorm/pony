@@ -581,7 +581,7 @@ class OraPool(object):
         if core.local.debug: log_orm('GET CONNECTION')
         con = pool.cx_pool.acquire()
         con.outputtypehandler = output_type_handler
-        return con
+        return con, True
     def release(pool, con):
         pool.cx_pool.release(con)
     def drop(pool, con):
