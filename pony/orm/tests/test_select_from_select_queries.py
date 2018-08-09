@@ -88,7 +88,7 @@ class TestSelectFromSelect(unittest.TestCase):
         self.assertEqual(db.last_sql.count('SELECT'), 1)
 
     @db_session
-    @raises_exception(ExprEvalError, "s.scholarship > 0 raises NameError: name 's' is not defined")
+    @raises_exception(ExprEvalError, "`s.scholarship > 0` raises NameError: name 's' is not defined")
     def test_7(self):  # test access to original query var name from the new query
         q = select(s.first_name for s in Student if s.scholarship < 500)
         q2 = select(x for x in q if s.scholarship > 0)

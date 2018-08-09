@@ -160,8 +160,8 @@ class TestRawSQL(unittest.TestCase):
 
     @db_session
     @raises_exception(ExprEvalError,
-                      "raw_sql('p.dob < $x') raises NameError: global name 'x' is not defined" if PYPY2 else
-                      "raw_sql('p.dob < $x') raises NameError: name 'x' is not defined")
+                      "`raw_sql('p.dob < $x')` raises NameError: global name 'x' is not defined" if PYPY2 else
+                      "`raw_sql('p.dob < $x')` raises NameError: name 'x' is not defined")
     def test_20(self):
         # testing for situation where parameter variable is missing
         select(p for p in Person if raw_sql('p.dob < $x'))[:]

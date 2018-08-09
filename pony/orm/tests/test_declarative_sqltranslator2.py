@@ -177,7 +177,7 @@ class TestSQLTranslator2(unittest.TestCase):
          get(s for s in Student)
     def test_exists(self):
         result = exists(s for s in Student)
-    @raises_exception(ExprEvalError, "db.FooBar raises AttributeError: 'Database' object has no attribute 'FooBar'")
+    @raises_exception(ExprEvalError, "`db.FooBar` raises AttributeError: 'Database' object has no attribute 'FooBar'")
     def test_entity_not_found(self):
         select(s for s in db.Student for g in db.FooBar)
     def test_keyargs1(self):
