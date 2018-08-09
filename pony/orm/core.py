@@ -202,7 +202,7 @@ class UnexpectedError(TransactionError):
 class ExprEvalError(TranslationError):
     def __init__(exc, src, cause):
         assert isinstance(cause, Exception)
-        msg = '%s raises %s: %s' % (src, type(cause).__name__, str(cause))
+        msg = '`%s` raises %s: %s' % (src, type(cause).__name__, str(cause))
         TranslationError.__init__(exc, msg)
         exc.cause = cause
 
