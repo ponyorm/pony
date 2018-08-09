@@ -5433,9 +5433,10 @@ class Query(object):
         if translator is not None:
             if translator.func_extractors_map:
                 for func, func_extractors in iteritems(translator.func_extractors_map):
-                    func_filter_num = translator.filter_num, 'func', id(func)
+                    func_id = id(func.func_code if PY2 else func.__code__)
+                    func_filter_num = translator.filter_num, 'func', func_id
                     func_vars, func_vartypes = extract_vars(
-                        func_filter_num, func_extractors, func.__globals__, {}, func.__closure__)  # todo closures
+                        func_id, func_filter_num, func_extractors, func.__globals__, {}, func.__closure__)  # todo closures
                     database.provider.normalize_vars(func_vars, func_vartypes)
                     new_vars.update(func_vars)
                     all_func_vartypes.update(func_vartypes)
