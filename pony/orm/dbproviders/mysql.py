@@ -158,6 +158,8 @@ class MySQLBuilder(SQLBuilder):
             return 'NULLIF(', result, ", CAST('null' as JSON))"
         if type in (bool, int):
             return 'CAST(', result, ' AS SIGNED)'
+        if type is float:
+            return 'CAST(', result, ' AS DOUBLE)'
         return 'json_unquote(', result, ')'
     def JSON_NONZERO(builder, expr):
         return 'COALESCE(CAST(', builder(expr), ''' as CHAR), 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''

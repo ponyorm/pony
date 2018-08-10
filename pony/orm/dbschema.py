@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import iteritems, itervalues, basestring, imap
+from pony.py23compat import iteritems, itervalues, basestring, int_types, imap
 
 from operator import attrgetter
 
@@ -378,7 +378,7 @@ class Column(object):
             pk_constraint_template = column.pk_constraint_template % {
                 'constraint_name': constraint_name
             }
-        if column.is_pk == 'auto' and column.auto_template:
+        if column.is_pk == 'auto' and column.auto_template and column.converter.py_type in int_types:
             append(column.auto_template % {
                 'type': column.sql_type,
                 'pk_constraint_template': pk_constraint_template,

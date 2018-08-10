@@ -16,6 +16,10 @@ class Person(db.Entity):
         return self.first_name + ' ' + self.last_name
 
     @property
+    def full_name_2(self):
+        return concat(self.first_name, ' ', self.last_name)  # tests using of function `concat` from external scope
+
+    @property
     def has_car(self):
         return not self.cars.is_empty()
 
@@ -32,6 +36,10 @@ class Person(db.Entity):
     @property
     def incorrect_full_name(self):
         return self.first_name + ' ' + p.last_name  # p is FakePerson instance here
+
+    @classmethod
+    def find_by_full_name(cls, full_name):
+        return cls.select(lambda p: p.full_name_2 == full_name)
 
 
 class FakePerson(object):
@@ -138,6 +146,16 @@ class TestHybridsAndProperties(unittest.TestCase):
         # This test checks if accessing function-specific globals works correctly
         persons = select(p.incorrect_full_name for p in Person if p.has_car)[:]
         self.assertEqual(set(persons), {'Alexander ***', 'Alexei ***', 'Alexander ***'})
+
+    @db_session
+    def test15(self):
+        # Test repeated use of the same generator with hybrid method/property that uses funciton from external scope
+        result = Person.find_by_full_name('Alexander Kozlovsky')
+        self.assertEqual(set(obj.last_name for obj in result), {'Kozlovsky'})
+        result = Person.find_by_full_name('Alexander Kozlovsky')
+        self.assertEqual(set(obj.last_name for obj in result), {'Kozlovsky'})
+        result = Person.find_by_full_name('Alexander Tischenko')
+        self.assertEqual(set(obj.last_name for obj in result), {'Tischenko'})
 
 
 if __name__ == '__main__':

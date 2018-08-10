@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, izip, imap, itervalues, basestring, unicode, buffer
+from pony.py23compat import PY2, izip, imap, itervalues, basestring, unicode, buffer, int_types
 
 from operator import attrgetter
 from decimal import Decimal
@@ -361,8 +361,15 @@ class SQLBuilder(object):
         return builder(expr), ' DESC'
     @indentable
     def LIMIT(builder, limit, offset=None):
-        if not offset: return 'LIMIT ', builder(limit), '\n'
-        else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
+        if limit is None:
+            limit = 'null'
+        else:
+            assert isinstance(limit, int_types)
+        assert offset is None or isinstance(offset, int)
+        if offset:
+            return 'LIMIT %s OFFSET %d\n' % (limit, offset)
+        else:
+            return 'LIMIT %s\n' % limit
     def COLUMN(builder, table_alias, col_name):
         if builder.suppress_aliases or not table_alias:
             return [ '%s' % builder.quote_name(col_name) ]
