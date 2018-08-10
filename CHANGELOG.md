@@ -1,8 +1,15 @@
+# Pony ORM Release 0.7.6 (2018-08-10)
+
+## Bugfixes
+
+* Fixed a bug with hybrid properties that use external functions
+
+
 # Pony ORM Release 0.7.6rc1 (2018-08-08)
 
 ## New features
 
-* f-strings support in queries: select(f'{s.name} - {s.age}' for s in Student)
+* f-strings support in queries: `select(f'{s.name} - {s.age}' for s in Student)`
 * #344: It is now possible to specify offset without limit: `query.limit(offset=10)`
 * #371: Support of explicit casting of JSON expressions to `str`, `int` or `float`
 * `@db.on_connect` decorator added
@@ -11,9 +18,9 @@
 
 * Fix bulk delete bug introduced in 0.7.4
 * #370 Fix memory leak introduced in 0.7.4
-* Now exists() in query does not throw away condition in generator expression: `exists(s.gpa > 3 for s in Student)`
+* Now `exists()` in query does not throw away condition in generator expression: `exists(s.gpa > 3 for s in Student)`
 * #373: 0.7.4/0.7.5 breaks queries using the `in` operator to test membership of another query result
-* #374: `auto=True` can be used with all PrimaryKey types, not only int
+* #374: `auto=True` can be used with all PrimaryKey types, not only `int`
 * #369: Make QueryResult looks like a list object again: add concatenation with lists, `.shuffle()` and `.to_list()` methods
 * #355: Fix binary primary keys `PrimaryKey(buffer)` in Python2
 * Interactive mode support for PyCharm console
