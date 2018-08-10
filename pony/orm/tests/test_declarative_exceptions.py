@@ -72,26 +72,26 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         def test5(self):
             select(s for s in Student if s.name.upper(**{'a':'b', 'c':'d'}))
 
-    @raises_exception(ExprEvalError, "1 in 2 raises TypeError: argument of type 'int' is not iterable" if not PYPY else
-                                     "1 in 2 raises TypeError: 'int' object is not iterable")
+    @raises_exception(ExprEvalError, "`1 in 2` raises TypeError: argument of type 'int' is not iterable" if not PYPY else
+                                     "`1 in 2` raises TypeError: 'int' object is not iterable")
     def test6(self):
         select(s for s in Student if 1 in 2)
     @raises_exception(NotImplementedError, 'Group[s.group.number]')
     def test7(self):
         select(s for s in Student if Group[s.group.number].dept.number == 44)
-    @raises_exception(ExprEvalError, "Group[123, 456].dept.number == 44 raises TypeError: Invalid count of attrs in Group primary key (2 instead of 1)")
+    @raises_exception(ExprEvalError, "`Group[123, 456].dept.number == 44` raises TypeError: Invalid count of attrs in Group primary key (2 instead of 1)")
     def test8(self):
         select(s for s in Student if Group[123, 456].dept.number == 44)
-    @raises_exception(ExprEvalError, "Course[123] raises TypeError: Invalid count of attrs in Course primary key (1 instead of 2)")
+    @raises_exception(ExprEvalError, "`Course[123]` raises TypeError: Invalid count of attrs in Course primary key (1 instead of 2)")
     def test9(self):
         select(s for s in Student if Course[123] in s.courses)
     @raises_exception(TypeError, "Incomparable types '%s' and 'float' in expression: s.name < s.gpa" % unicode.__name__)
     def test10(self):
         select(s for s in Student if s.name < s.gpa)
-    @raises_exception(ExprEvalError, "Group(101) raises TypeError: Group constructor accept only keyword arguments. Got: 1 positional argument")
+    @raises_exception(ExprEvalError, "`Group(101)` raises TypeError: Group constructor accept only keyword arguments. Got: 1 positional argument")
     def test11(self):
         select(s for s in Student if s.group == Group(101))
-    @raises_exception(ExprEvalError, "Group[date(2011, 1, 2)] raises TypeError: Value type for attribute Group.number must be int. Got: %r" % date)
+    @raises_exception(ExprEvalError, "`Group[date(2011, 1, 2)]` raises TypeError: Value type for attribute Group.number must be int. Got: %r" % date)
     def test12(self):
         select(s for s in Student if s.group == Group[date(2011, 1, 2)])
     @raises_exception(TypeError, "Unsupported operand types 'int' and '%s' for operation '+' in expression: s.group.number + s.name" % unicode.__name__)
@@ -142,7 +142,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(AttributeError, "Entity Group does not have attribute foo: s.group.foo")
     def test27(self):
         select(s.name for s in Student if s.group.foo.bar == 10)
-    @raises_exception(ExprEvalError, "g.dept.foo.bar raises AttributeError: 'Department' object has no attribute 'foo'")
+    @raises_exception(ExprEvalError, "`g.dept.foo.bar` raises AttributeError: 'Department' object has no attribute 'foo'")
     def test28(self):
         g = Group[101]
         select(s for s in Student if s.name == g.dept.foo.bar)
@@ -153,8 +153,8 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
     def test30(self):
         select(s for s in Student if s.dob < date(s.id, 1, 1))
-    @raises_exception(ExprEvalError, "max() raises TypeError: max expected 1 arguments, got 0" if not PYPY else
-                                     "max() raises TypeError: max() expects at least one argument")
+    @raises_exception(ExprEvalError, "`max()` raises TypeError: max expected 1 arguments, got 0" if not PYPY else
+                                     "`max()` raises TypeError: max() expects at least one argument")
     def test31(self):
         select(s for s in Student if s.id < max())
     @raises_exception(TypeError, "Incomparable types 'Student' and 'Course' in expression: s in s.courses")
@@ -182,9 +182,9 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test39(self):
         select(s for s in Student if s.name.strip(1, 2, 3))
     @raises_exception(ExprEvalError,
-                      "len(1, 2) == 3 raises TypeError: len() takes exactly 1 argument (2 given)" if PYPY2 else
-                      "len(1, 2) == 3 raises TypeError: len() takes 1 positional argument but 2 were given" if PYPY else
-                      "len(1, 2) == 3 raises TypeError: len() takes exactly one argument (2 given)")
+                      "`len(1, 2) == 3` raises TypeError: len() takes exactly 1 argument (2 given)" if PYPY2 else
+                      "`len(1, 2) == 3` raises TypeError: len() takes 1 positional argument but 2 were given" if PYPY else
+                      "`len(1, 2) == 3` raises TypeError: len() takes exactly one argument (2 given)")
     def test40(self):
         select(s for s in Student if len(1, 2) == 3)
     @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'Student' in sum(s for s in Student if s.group == g)")

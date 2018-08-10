@@ -84,7 +84,7 @@ class TestPool(object):
     def __init__(pool, database):
         pool.database = database
     def connect(pool):
-        return TestConnection(pool.database)
+        return TestConnection(pool.database), True
     def release(pool, con):
         pass
     def drop(pool, con):

@@ -40,7 +40,7 @@ __all__ = [
     'Warning', 'Error', 'InterfaceError', 'DatabaseError', 'DataError', 'OperationalError',
     'IntegrityError', 'InternalError', 'ProgrammingError', 'NotSupportedError',
 
-    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError', 'UpgradeError',
+    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError', 'BindingError', 'UpgradeError',
     'TableDoesNotExist', 'TableIsNotEmpty', 'ConstraintError', 'CacheIndexError',
     'ObjectNotFound', 'MultipleObjectsFoundError', 'TooManyObjectsFoundError', 'OperationWithDeletedObjectError',
     'TransactionError', 'ConnectionClosedError', 'TransactionIntegrityError', 'IsolationError',
@@ -138,6 +138,7 @@ class OrmError(Exception): pass
 class ERDiagramError(OrmError): pass
 class DBSchemaError(OrmError): pass
 class MappingError(OrmError): pass
+class BindingError(OrmError): pass
 
 class TableDoesNotExist(OrmError): pass
 class TableIsNotEmpty(OrmError): pass
@@ -205,7 +206,7 @@ class UnexpectedError(TransactionError):
 class ExprEvalError(TranslationError):
     def __init__(exc, src, cause):
         assert isinstance(cause, Exception)
-        msg = '%s raises %s: %s' % (src, type(cause).__name__, str(cause))
+        msg = '`%s` raises %s: %s' % (src, type(cause).__name__, str(cause))
         TranslationError.__init__(exc, msg)
         exc.cause = cause
 
@@ -640,6 +641,31 @@ def db_decorator(func, *args, **kwargs):
         if web: throw(web.Http404NotFound)
         raise
 
+known_providers = ('sqlite', 'postgres', 'mysql', 'oracle')
+
+class OnConnectDecorator(object):
+
+    @staticmethod
+    def check_provider(provider):
+        if provider:
+            if not isinstance(provider, basestring):
+                throw(TypeError, "'provider' option should be type of 'string', got %r" % type(provider).__name__)
+            if provider not in known_providers:
+                throw(BindingError, 'Unknown provider %s' % provider)
+
+    def __init__(self, database, provider):
+        OnConnectDecorator.check_provider(provider)
+        self.provider = provider
+        self.database = database
+
+    def __call__(self, func=None, provider=None):
+        if isinstance(func, types.FunctionType):
+            self.database._on_connect_funcs.append((func, provider or self.provider))
+        if not provider and func is basestring:
+            provider = func
+        OnConnectDecorator.check_provider(provider)
+        return OnConnectDecorator(self.database, provider)
+
 @deconstructible
 class Database(object):
     def __deepcopy__(self, memo):
@@ -664,8 +690,15 @@ class Database(object):
         self._global_stats_lock = RLock()
         self._dblocal = DbLocal()
 
-        self.provider = None
+        self.on_connect = OnConnectDecorator(self, None)
+        self._on_connect_funcs = []
+        self.provider = self.provider_name = None
         if args or kwargs: self._bind(*args, **kwargs)
+    def call_on_connect(database, con):
+        for func, provider in database._on_connect_funcs:
+            if not provider or provider == database.provider_name:
+                func(database, con)
+                con.commit()
     @cut_traceback
     def connect(self, *args, **kwargs):
         check_tables = kwargs.pop('check_tables', True)
@@ -695,7 +728,7 @@ class Database(object):
         self._constructor_args = (args, dict(kwargs))
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
-            throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
+            throw(BindingError, 'Database object was already bound to %s provider' % self.provider.dialect)
         if args: provider, args = args[0], args[1:]
         elif 'provider' not in kwargs: throw(TypeError, 'Database provider is not specified')
         else: provider = kwargs.pop('provider')
@@ -705,8 +738,10 @@ class Database(object):
             if not isinstance(provider, basestring): throw(TypeError)
             if provider == 'pygresql': throw(TypeError,
                 'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
+            self.provider_name = provider
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
+        kwargs['pony_call_on_connect'] = self.call_on_connect
         self.provider = provider_cls(*args, **kwargs)
     def _add_entity_(database, entity_name, base_names, attrs):
         assert entity_name not in database.entities
@@ -1606,12 +1641,17 @@ class SessionCache(object):
         assert cache.connection is None
         if cache.in_transaction: throw(ConnectionClosedError,
             'Transaction cannot be continued because database connection failed')
-        provider = cache.database.provider
-        connection = provider.connect()
-        try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
+        database = cache.database
+        provider = database.provider
+        connection, is_new_connection = provider.connect()
+        if is_new_connection:
+            database.call_on_connect(connection)
+        try:
+            provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
         except:
             provider.drop(connection, cache)
             raise
+
         cache.connection = connection
         return connection
     def reconnect(cache, exc):
@@ -1885,8 +1925,6 @@ class Attribute(object):
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = kwargs.pop('auto', False)
-        if attr.auto and (attr.py_type not in int_types): throw(TypeError,
-            '`auto=True` option can be specified for `int` attributes only, not for `%s`' % (attr.py_type.__name__))
         attr.cascade_delete = kwargs.pop('cascade_delete', None)
 
         attr.reverse = kwargs.pop('reverse', None)
@@ -3305,7 +3343,7 @@ class SetInstance(object):
                 select_list = [ 'ALL' ] + [ [ 'COLUMN', None, column ] for column in attr.columns ]
                 attr_offsets = None
             sql_ast = [ 'SELECT', select_list, [ 'FROM', [ None, 'TABLE', table_name ] ],
-                        where_list, [ 'LIMIT', [ 'VALUE', 1 ] ] ]
+                        where_list, [ 'LIMIT', 1 ] ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_empty_sql = sql, adapter, attr_offsets
         else: sql, adapter, attr_offsets = cached_sql
@@ -3536,7 +3574,7 @@ class SetInstance(object):
             query = query.filter(func, globals, locals)
         return query
     filter = select
-    def limit(wrapper, limit, offset=None):
+    def limit(wrapper, limit=None, offset=None):
         return wrapper.select().limit(limit, offset)
     def page(wrapper, pagenum, pagesize=10):
         return wrapper.select().page(pagenum, pagesize)
@@ -4316,7 +4354,7 @@ class EntityMeta(type):
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
-        if limit is not None: sql_ast.append([ 'LIMIT', [ 'VALUE', limit ] ])
+        if limit is not None: sql_ast.append([ 'LIMIT', limit ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
@@ -5574,7 +5612,7 @@ def raw_sql(sql, result_type=None):
     locals = sys._getframe(1).f_locals
     return RawSQL(sql, globals, locals, result_type)
 
-def extract_vars(filter_num, extractors, globals, locals, cells=None):
+def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
@@ -5585,7 +5623,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
     vars = {}
     vartypes = HashableDict()
     for src, extractor in iteritems(extractors):
-        key = filter_num, src
+        varkey = filter_num, src, code_key
         try: value = extractor(globals, locals)
         except Exception as cause: raise ExprEvalError(src, cause)
 
@@ -5607,7 +5645,7 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
         if src == 'None' and value is not None: throw(TranslationError)
         if src == 'True' and value is not True: throw(TranslationError)
         if src == 'False' and value is not False: throw(TranslationError)
-        try: vartypes[key], value = normalize(value)
+        try: vartypes[varkey], value = normalize(value)
         except TypeError:
             if not isinstance(value, dict):
                 unsupported = False
@@ -5619,31 +5657,31 @@ def extract_vars(filter_num, extractors, globals, locals, cells=None):
                 if src == '.0':
                     throw(TypeError, 'Query cannot iterate over anything but entity class or another query')
                 throw(TypeError, 'Expression `%s` has unsupported type %r' % (src, typename))
-            vartypes[key], value = normalize(value)
-        vars[key] = value
+            vartypes[varkey], value = normalize(value)
+        vars[varkey] = value
     return vars, vartypes
 
 def unpickle_query(query_result):
     return query_result
 
-filter_num_counter = itertools.count()
-
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         tree, extractors = create_extractors(code_key, tree, globals, locals, special_functions, const_functions)
-        filter_num = next(filter_num_counter)
-        vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+        filter_num = 0
+        vars, vartypes = extract_vars(code_key, filter_num, extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
-        origin = vars[filter_num, node.src]
+        varkey = filter_num, node.src, code_key
+        origin = vars[varkey]
         if isinstance(origin, Query):
-            database = origin._translator.database
+            prev_query = origin
         elif isinstance(origin, QueryResult):
-            database = origin._query._translator.database
+            prev_query = origin._query
         elif isinstance(origin, QueryResultIterator):
-            database = origin._query_result._query._translator.database
+            prev_query = origin._query_result._query
         else:
+            prev_query = None
             if isinstance(origin, EntityIter):
                 origin = origin.entity
             elif not isinstance(origin, EntityMeta):
@@ -5654,8 +5692,15 @@ class Query(object):
             if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
             if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
 
+        if prev_query is not None:
+            database = prev_query._translator.database
+            filter_num = prev_query._filter_num + 1
+            vars, vartypes = extract_vars(code_key, filter_num, extractors, globals, locals, cells)
+
+        query._filter_num = filter_num
         database.provider.normalize_vars(vars, vartypes)
 
+        query._code_key = code_key
         query._key = HashableDict(code_key=code_key, vartypes=vartypes, left_join=left_join, filters=())
         query._database = database
 
@@ -5667,14 +5712,14 @@ class Query(object):
             tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             try:
-                translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(), left_join=left_join)
+                translator = translator_cls(tree_copy, None, code_key, filter_num, extractors, vars, vartypes.copy(), left_join=left_join)
             except UseAnotherTranslator as e:
                 translator = e.translator
             name_path = translator.can_be_optimized()
             if name_path:
                 tree_copy = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
                 try:
-                    translator = translator_cls(tree_copy, None, filter_num, extractors, vars, vartypes.copy(),
+                    translator = translator_cls(tree_copy, None, code_key, filter_num, extractors, vars, vartypes.copy(),
                                                 left_join=True, optimize=name_path)
                 except UseAnotherTranslator as e:
                     translator = e.translator
@@ -5711,9 +5756,10 @@ class Query(object):
         if translator is not None:
             if translator.func_extractors_map:
                 for func, func_extractors in iteritems(translator.func_extractors_map):
-                    func_filter_num = translator.filter_num, 'func', id(func)
+                    func_id = id(func.func_code if PY2 else func.__code__)
+                    func_filter_num = translator.filter_num, 'func', func_id
                     func_vars, func_vartypes = extract_vars(
-                        func_filter_num, func_extractors, func.__globals__, {}, func.__closure__)  # todo closures
+                        func_id, func_filter_num, func_extractors, func.__globals__, {}, func.__closure__)  # todo closures
                     database.provider.normalize_vars(func_vars, func_vartypes)
                     new_vars.update(func_vars)
                     all_func_vartypes.update(func_vartypes)
@@ -5774,8 +5820,8 @@ class Query(object):
         cache = database._get_cache()
         if query._for_update: cache.immediate = True
         cache.prepare_connection_for_query_execution()  # may clear cache.query_results
-        try: items = cache.query_results[query_key]
-        except KeyError:
+        items = cache.query_results.get(query_key)
+        if items is None:
             cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
@@ -6017,23 +6063,23 @@ class Query(object):
         else:
             original_names = True
 
-        filter_num = next(filter_num_counter)
+        new_filter_num = query._filter_num + 1
         func_ast, extractors = create_extractors(
             func_id, func_ast, globals, locals, special_functions, const_functions, argnames or prev_translator.namespace)
         if extractors:
-            vars, vartypes = extract_vars(filter_num, extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(func_id, new_filter_num, extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_vars = query._vars.copy()
             new_vars.update(vars)
         else: new_vars, vartypes = query._vars, HashableDict()
         tup = (('order_by' if order_by else 'where' if original_names else 'filter', func_id, vartypes),)
         new_key = HashableDict(query._key, filters=query._key['filters'] + tup)
-        new_filters = query._filters + (('apply_lambda', filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
+        new_filters = query._filters + (('apply_lambda', func_id, new_filter_num, order_by, func_ast, argnames, original_names, extractors, None, vartypes),)
 
         new_translator, new_vars = query._get_translator(new_key, new_vars)
         if new_translator is None:
             prev_optimized = prev_translator.optimize
-            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+            new_translator = prev_translator.apply_lambda(func_id, new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
@@ -6041,15 +6087,16 @@ class Query(object):
                     translator_cls = prev_translator.__class__
                     try:
                         new_translator = translator_cls(
-                            tree_copy, None, prev_translator.original_filter_num,
+                            tree_copy, None, prev_translator.original_code_key, prev_translator.original_filter_num,
                             prev_translator.extractors, None, prev_translator.vartypes.copy(),
                             left_join=True, optimize=name_path)
                     except UseAnotherTranslator:
                         assert False
                     new_translator = query._reapply_filters(new_translator)
-                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
+                    new_translator = new_translator.apply_lambda(func_id, new_filter_num, order_by, func_ast, argnames, original_names, extractors, new_vars, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        return query._clone(_vars=new_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
+        return query._clone(_filter_num=new_filter_num, _vars=new_vars, _key=new_key, _filters=new_filters,
+                            _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
             method_name, args = tup[0], tup[1:]
@@ -6132,9 +6179,12 @@ class Query(object):
         elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
         stop = key.stop
         if stop is None:
-            if not start: return query._fetch()
-            else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
-        if start >= stop: return []
+            if not start:
+                return query._fetch()
+            else:
+                return query._fetch(limit=None, offset=start)
+        if start >= stop:
+            return query._fetch(limit=0)
         return query._fetch(limit=stop-start, offset=start)
     def _fetch(query, limit=None, offset=None, lazy=False):
         return QueryResult(query, limit, offset, lazy=lazy)
@@ -6142,7 +6192,7 @@ class Query(object):
     def fetch(query, limit=None, offset=None):
         return query._fetch(limit, offset)
     @cut_traceback
-    def limit(query, limit, offset=None):
+    def limit(query, limit=None, offset=None):
         return query._fetch(limit, offset, lazy=True)
     @cut_traceback
     def page(query, pagenum, pagesize=10):
@@ -6239,6 +6289,11 @@ class QueryResultIterator(object):
         return len(self._query_result) - self._position
 
 
+def make_query_result_method_error_stub(name, title=None):
+    def func(self, *args, **kwargs):
+        throw(TypeError, 'In order to do %s, cast QueryResult to list first' % (title or name))
+    return func
+
 class QueryResult(object):
     __slots__ = '_query', '_limit', '_offset', '_items', '_expr_type', '_col_names'
     def __init__(self, query, limit, offset, lazy):
@@ -6305,6 +6360,8 @@ class QueryResult(object):
         self._get_items().reverse()
     def sort(self, *args, **kwargs):
         self._get_items().sort(*args, **kwargs)
+    def shuffle(self):
+        shuffle(self._get_items())
     @cut_traceback
     def show(self, width=None):
         if self._items is None:
@@ -6360,6 +6417,32 @@ class QueryResult(object):
             print(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
     def to_json(self, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return self._query._database.to_json(self, include, exclude, converter, with_schema, schema_hash)
+
+    def __add__(self, other):
+        result = []
+        result.extend(self)
+        result.extend(other)
+        return result
+    def __radd__(self, other):
+        result = []
+        result.extend(other)
+        result.extend(self)
+        return result
+    def to_list(self):
+        return list(self)
+
+    __setitem__ = make_query_result_method_error_stub('__setitem__', 'item assignment')
+    __delitem__ = make_query_result_method_error_stub('__delitem__', 'item deletion')
+    __iadd__ = make_query_result_method_error_stub('__iadd__', '+=')
+    __imul__ = make_query_result_method_error_stub('__imul__', '*=')
+    __mul__ = make_query_result_method_error_stub('__mul__', '*')
+    __rmul__ = make_query_result_method_error_stub('__rmul__', '*')
+    append = make_query_result_method_error_stub('append', 'append')
+    clear = make_query_result_method_error_stub('clear', 'clear')
+    extend = make_query_result_method_error_stub('extend', 'extend')
+    insert = make_query_result_method_error_stub('insert', 'insert')
+    pop = make_query_result_method_error_stub('pop', 'pop')
+    remove = make_query_result_method_error_stub('remove', 'remove')
 
 
 @cut_traceback

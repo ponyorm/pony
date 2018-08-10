@@ -104,7 +104,7 @@ def make_overriden_string_func(sqlop):
         sql = monad.getsql()
         assert len(sql) == 1
         translator = monad.translator
-        return StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
+        return StringExprMonad(monad.type, [ sqlop, sql[0] ])
     func.__name__ = sqlop
     return func
 

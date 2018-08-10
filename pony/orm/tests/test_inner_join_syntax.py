@@ -3,8 +3,6 @@ import unittest
 from pony.orm import *
 from pony import orm
 
-import pony.orm.tests.fixtures
-
 class TestJoin(unittest.TestCase):
 
     exclude_fixtures = {'test': ['clear_tables']}

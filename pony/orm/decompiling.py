@@ -185,6 +185,10 @@ class Decompiler(object):
     def BUILD_TUPLE(decompiler, size):
         return ast.Tuple(decompiler.pop_items(size))
 
+    def BUILD_STRING(decompiler, count):
+        values = list(reversed([decompiler.stack.pop() for _ in range(count)]))
+        return ast.JoinedStr(values)
+
     def CALL_FUNCTION(decompiler, argc, star=None, star2=None):
         pop = decompiler.stack.pop
         kwarg, posarg = divmod(argc, 256)
@@ -260,6 +264,15 @@ class Decompiler(object):
         iter = decompiler.stack.pop()
         ifs = []
         return ast.GenExprFor(assign, iter, ifs)
+
+    def FORMAT_VALUE(decompiler, flags):
+        if flags in (0, 1, 2, 3):
+            value = decompiler.stack.pop()
+            return ast.Str(value, flags)
+        elif flags == 4:
+            fmt_spec = decompiler.stack.pop()
+            value = decompiler.stack.pop()
+            return ast.FormattedValue(value, fmt_spec)
 
     def GET_ITER(decompiler):
         pass

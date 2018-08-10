@@ -88,7 +88,7 @@ class TestSelectFromSelect(unittest.TestCase):
         self.assertEqual(db.last_sql.count('SELECT'), 1)
 
     @db_session
-    @raises_exception(ExprEvalError, "s.scholarship > 0 raises NameError: name 's' is not defined")
+    @raises_exception(ExprEvalError, "`s.scholarship > 0` raises NameError: name 's' is not defined")
     def test_7(self):  # test access to original query var name from the new query
         q = select(s.first_name for s in Student if s.scholarship < 500)
         q2 = select(x for x in q if s.scholarship > 0)
@@ -299,6 +299,62 @@ class TestSelectFromSelect(unittest.TestCase):
         q = select(s for s in Student).sort_by(lambda x: x.scholarship)
         q2 = q.filter(lambda s: s.scholarship > 450)
         self.assertEqual(set(q2), {Student[3]})
+
+    @db_session
+    def test_35(self):
+        q = select(s for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s not in q)
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 2)
+
+    @db_session
+    def test_36(self):
+        q = select(s for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s not in q[:])
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 1)
+
+    @db_session
+    def test_37(self):
+        q = select(s.last_name for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s.last_name not in q)
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 2)
+
+    @db_session
+    def test_38(self):
+        q = select(s.last_name for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if s.last_name not in q[:])
+        self.assertEqual(set(q2), {1})
+        self.assertEqual(db.last_sql.count('SELECT'), 1)
+
+    @db_session
+    def test_39(self):
+        q = select((s.first_name, s.last_name) for s in Student if s.scholarship > 0)
+        q2 = select(s.id for s in Student if (s.first_name, s.last_name) not in q)
+        self.assertEqual(set(q2), {1})
+        self.assertTrue(db.last_sql.count('SELECT') > 1)
+
+    # @db_session
+    # def test_40(self):  # TODO
+    #     q = select((s.first_name, s.last_name) for s in Student if s.scholarship > 0)
+    #     q2 = select(s.id for s in Student if (s.first_name, s.last_name) not in q[:])
+    #     self.assertEqual(set(q2), {1})
+    #     self.assertTrue(db.last_sql.count('SELECT'), 1)
+
+    @db_session
+    def test_41(self):
+        def f1():
+            x = 21
+            return select(s for s in Student if s.age > x)
+
+        def f2(q):
+            x = 23
+            return select(s.last_name for s in Student if s.age < x and s in q)
+
+        q = f1()
+        q2 = f2(q)
+        self.assertEqual(set(q2), {'Lee'})
 
 
 if __name__ == '__main__':

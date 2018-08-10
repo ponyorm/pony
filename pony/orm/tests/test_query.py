@@ -47,8 +47,8 @@ class TestQuery(unittest.TestCase):
     def test3(self):
         g = Group[1]
         select(s for s in g.students)
-    @raises_exception(ExprEvalError, "a raises NameError: global name 'a' is not defined" if PYPY2 else
-                                     "a raises NameError: name 'a' is not defined")
+    @raises_exception(ExprEvalError, "`a` raises NameError: global name 'a' is not defined" if PYPY2 else
+                                     "`a` raises NameError: name 'a' is not defined")
     def test4(self):
         select(a for s in Student)
     @raises_exception(TypeError, "Incomparable types '%s' and 'list' in expression: s.name == x" % unicode.__name__)
