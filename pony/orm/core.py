@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
-import json, re, sys, types, datetime, logging, itertools, warnings
+import json, re, sys, types, datetime, logging, itertools, warnings, inspect
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from collections import defaultdict
 from hashlib import md5
 from inspect import isgeneratorfunction
+from functools import wraps
 
 from pony.thirdparty.compiler import ast, parse
 
@@ -406,9 +407,9 @@ class DBSessionContextManager(object):
         if kwargs: throw(TypeError,
             'Pass only keyword arguments to db_session or use db_session as decorator')
         func = args[0]
-        if not isgeneratorfunction(func):
-            return db_session._wrap_function(func)
-        return db_session._wrap_generator_function(func)
+        if isgeneratorfunction(func) or hasattr(inspect, 'iscoroutinefunction') and inspect.iscoroutinefunction(func):
+            return db_session._wrap_coroutine_or_generator_function(func)
+        return db_session._wrap_function(func)
     def __enter__(db_session):
         if db_session.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
@@ -483,7 +484,7 @@ class DBSessionContextManager(object):
                 if db_session.sql_debug is not None:
                     local.pop_debug_state()
         return decorator(new_func, func)
-    def _wrap_generator_function(db_session, gen_func):
+    def _wrap_coroutine_or_generator_function(db_session, gen_func):
         for option in ('ddl', 'retry', 'serializable'):
             if getattr(db_session, option, None): throw(TypeError,
                 "db_session with `%s` option cannot be applied to generator function" % option)
@@ -501,7 +502,8 @@ class DBSessionContextManager(object):
             if throw_ is None: reraise(*exc_info)
             return throw_(*exc_info)
 
-        def new_gen_func(gen_func, *args, **kwargs):
+        @wraps(gen_func)
+        def new_gen_func(*args, **kwargs):
             db2cache_copy = {}
 
             def wrapped_interact(iterator, input=None, exc_info=None):
@@ -538,7 +540,7 @@ class DBSessionContextManager(object):
                     local.db_session = None
 
             gen = gen_func(*args, **kwargs)
-            iterator = iter(gen)
+            iterator = gen.__await__() if hasattr(gen, '__await__') else iter(gen)
             output = wrapped_interact(iterator)
             try:
                 while True:
@@ -550,7 +552,10 @@ class DBSessionContextManager(object):
                         output = wrapped_interact(iterator, input)
             except StopIteration:
                 return
-        return decorator(new_gen_func, gen_func)
+
+        if hasattr(types, 'coroutine'):
+            new_gen_func = types.coroutine(new_gen_func)
+        return new_gen_func
 
 db_session = DBSessionContextManager()
 
