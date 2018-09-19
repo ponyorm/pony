@@ -5359,9 +5359,7 @@ class Query(object):
             prev_query = origin._query_result._query
         else:
             prev_query = None
-            if isinstance(origin, EntityIter):
-                origin = origin.entity
-            elif not isinstance(origin, EntityMeta):
+            if not isinstance(origin, EntityMeta):
                 if node.src == '.0': throw(TypeError,
                     'Query can only iterate over entity or another query (not a list of objects)')
                 throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)

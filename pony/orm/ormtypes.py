@@ -158,7 +158,8 @@ def normalize(value):
         return SetType(value), value
 
     if t.__name__ == 'EntityIter':
-        return SetType(value.entity), value
+        entity = value.entity
+        return SetType(entity), entity
 
     if PY2 and isinstance(value, str):
         try:
