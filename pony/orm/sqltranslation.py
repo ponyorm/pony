@@ -255,11 +255,11 @@ class SQLTranslator(ASTTranslator):
             elif isinstance(assign, ast.AssName):
                 ass_names = (assign,)
             else:
-                throw(NotImplemented, ast2src(assign))
+                throw(NotImplementedError, ast2src(assign))
 
             for ass_name in ass_names:
                 if not isinstance(ass_name, ast.AssName):
-                    throw(NotImplemented, ast2src(ass_name))
+                    throw(NotImplementedError, ast2src(ass_name))
                 if ass_name.flags != 'OP_ASSIGN':
                     throw(TypeError, ast2src(ass_name))
 
