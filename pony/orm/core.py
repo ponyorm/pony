@@ -5308,14 +5308,14 @@ def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
             value = make_query((value,), frame_depth=None)
 
         if isinstance(value, QueryResultIterator):
-            query_result = value._query_result
-            if query_result._items:
-                value = tuple(query_result._items[value._position:])
-            else:
-                value = value._query_result._query
+            qr = value._query_result
+            value = qr if not qr._items else tuple(qr._items[value._position:])
 
-        if isinstance(value, Query):
-            query = value
+        if isinstance(value, QueryResult) and value._items:
+            value = tuple(value._items)
+
+        if isinstance(value, (Query, QueryResult)):
+            query = value._query if isinstance(value, QueryResult) else value
             vars.update(query._vars)
             vartypes.update(query._translator.vartypes)
 
@@ -5981,7 +5981,7 @@ class QueryResult(object):
         self._col_names = translator.col_names
     def _get_type_(self):
         if self._items is None:
-            return QueryType(self._query)
+            return QueryType(self._query, self._limit, self._offset)
         item_type = self._query._translator.expr_type
         return tuple(item_type for item in self._items)
     def _normalize_var(self, query_type):
@@ -6000,6 +6000,10 @@ class QueryResult(object):
         self._query = None
         self._items, self._limit, self._offset, self._expr_type, self._col_names = state
     def __repr__(self):
+        if self._items is not None:
+            return self.__str__()
+        return '<Lazy QueryResult object at %s>' % hex(id(self))
+    def __str__(self):
         return repr(self._get_items())
     def __iter__(self):
         return QueryResultIterator(self)
