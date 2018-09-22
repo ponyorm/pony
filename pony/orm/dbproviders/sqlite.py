@@ -495,7 +495,7 @@ def py_json_unwrap(value):
 
 path_cache = {}
 
-json_path_re = re.compile(r'\[(\d+)\]|\.(?:(\w+)|"([^"]*)")', re.UNICODE)
+json_path_re = re.compile(r'\[(-?\d+)\]|\.(?:(\w+)|"([^"]*)")', re.UNICODE)
 
 def _parse_path(path):
     if path in path_cache:

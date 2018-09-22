@@ -124,13 +124,21 @@ class RawSQLType(object):
         return not self.__eq__(other)
 
 class QueryType(object):
-    def __init__(self, query):
+    def __init__(self, query, limit=None, offset=None):
         self.query_key = query._key
         self.translator = query._translator
+        self.limit = limit
+        self.offset = offset
     def __hash__(self):
-        return hash(self.query_key)
+        result = hash(self.query_key)
+        if self.limit is not None:
+            result ^= hash(self.limit + 3)
+        if self.offset is not None:
+            result ^= hash(self.offset)
+        return result
     def __eq__(self, other):
-        return type(other) is QueryType and self.query_key == other.query_key
+        return type(other) is QueryType and self.query_key == other.query_key \
+               and self.limit == other.limit and self.offset == other.offset
     def __ne__(self, other):
         return not self.__eq__(other)
 
@@ -158,7 +166,8 @@ def normalize(value):
         return SetType(value), value
 
     if t.__name__ == 'EntityIter':
-        return SetType(value.entity), value
+        entity = value.entity
+        return SetType(entity), entity
 
     if PY2 and isinstance(value, str):
         try:
