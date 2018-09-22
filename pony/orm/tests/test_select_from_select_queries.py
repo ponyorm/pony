@@ -356,6 +356,38 @@ class TestSelectFromSelect(unittest.TestCase):
         q2 = f2(q)
         self.assertEqual(set(q2), {'Lee'})
 
+    @db_session
+    def test_42(self):
+        q = select(s for s in Student if s.scholarship > 0)
+        q2 = select(g for g in Group if g.major == 'Computer Science')[:]
+        q3 = select(s.first_name for s in q if s.group in q2)
+        self.assertEqual(set(q3), {'Alex', 'Mary'})
+
+    @db_session
+    def test_43(self):
+        q = select(s for s in Student).order_by(Student.first_name).limit(3, offset=1)
+        q2 = select(s.first_name for s in Student if s in q)
+        self.assertEqual(set(q2), {'John', 'Bruce'})
+
+    @db_session
+    def test_44(self):
+        q = select(s for s in Student).order_by(Student.first_name).limit(3, offset=1)
+        q2 = select(s.first_name for s in q)
+        self.assertEqual(set(q2), {'Bruce', 'John', 'Mary'})
+
+    @db_session
+    def test_45(self):
+        q = select(s for s in Student).order_by(Student.first_name).limit(3, offset=1)
+        q2 = select(s for s in q if s.age > 18).limit(2, offset=1)
+        q3 = select(s.last_name for s in q2).limit(2, offset=1)
+        self.assertEqual(set(q3), {'Brown'})
+
+    @db_session
+    def test_46(self):
+        q = select((c, count(c.students)) for c in Course).order_by(-2).limit(2)
+        q2 = select((c.name, c.credits, m) for c, m in q).limit(1, offset=1)
+        self.assertEqual(set(q2), {('3D Modeling', 15, 2)})
+
 
 if __name__ == '__main__':
     unittest.main()

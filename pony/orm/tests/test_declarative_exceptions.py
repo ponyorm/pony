@@ -54,11 +54,11 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test1(self):
         x = 10
         select(s for s in Student for x in s.name)
-    @raises_exception(TranslationError, "Inside declarative query, iterator must be entity. Got: for i in x")
+    @raises_exception(TranslationError, "Inside declarative query, iterator must be entity or query. Got: for i in x")
     def test2(self):
         x = [1, 2, 3]
         select(s for s in Student for i in x)
-    @raises_exception(TranslationError, "Inside declarative query, iterator must be entity. Got: for s2 in g.students")
+    @raises_exception(TranslationError, "Inside declarative query, iterator must be entity or query. Got: for s2 in g.students")
     def test3(self):
         g = Group[101]
         select(s for s in Student for s2 in g.students)
