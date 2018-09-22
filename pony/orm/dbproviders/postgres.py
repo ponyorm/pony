@@ -45,7 +45,14 @@ class PGColumn(dbschema.Column):
         prefix = '%s %s' % (table.schema.ALTER_COLUMN, quote_name(column.name))
         ops = []
         if column.sql_type != column.prev.sql_type:
-            sql = '%s TYPE %s USING %s::%s' % (prefix, column.sql_type, quote_name(column.name), column.sql_type)
+            if column.prev.sql_type.lower() in ('json', 'jsonb'):
+                if column.sql_type.lower() != 'text':
+                    sql_type = 'TEXT::%s' % column.sql_type
+                else:
+                    sql_type = column.sql_type
+            else:
+                sql_type = column.sql_type
+            sql = '%s TYPE %s USING %s::%s' % (prefix, column.sql_type, quote_name(column.name), sql_type)
             ops.append(Op(sql, obj=column, type='alter', prefix=alter_table(table)))
 
         if column.is_not_null and not column.prev.is_not_null:
