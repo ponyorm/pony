@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass
+from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass, int_types
 
 import types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -121,6 +121,8 @@ class SQLTranslator(ASTTranslator):
             if translator.database is not prev_translator.database:
                 throw(TranslationError, 'Mixing queries from different databases')
             monad = QuerySetMonad(prev_translator)
+            if t.limit is not None or t.offset is not None:
+                monad = monad.call_limit(t.limit, t.offset)
         elif tt is FuncType:
             func = t.func
             func_monad_class = translator.registered_functions.get(func, ErrorSpecialFuncMonad)
@@ -243,6 +245,7 @@ class SQLTranslator(ASTTranslator):
         translator.conditions = translator.sqlquery.conditions
         translator.having_conditions = []
         translator.order = []
+        translator.limit = translator.offset = None
         translator.inside_order_by = False
         translator.aggregated = False if not optimize else True
         translator.hint_join = False
@@ -255,11 +258,11 @@ class SQLTranslator(ASTTranslator):
             elif isinstance(assign, ast.AssName):
                 ass_names = (assign,)
             else:
-                throw(NotImplemented, ast2src(assign))
+                throw(NotImplementedError, ast2src(assign))
 
             for ass_name in ass_names:
                 if not isinstance(ass_name, ast.AssName):
-                    throw(NotImplemented, ast2src(ass_name))
+                    throw(NotImplementedError, ast2src(ass_name))
                 if ass_name.flags != 'OP_ASSIGN':
                     throw(TypeError, ast2src(ass_name))
 
@@ -310,14 +313,17 @@ class SQLTranslator(ASTTranslator):
                     translator.namespace[name] = node.monad = ObjectIterMonad(tableref, entity)
                 elif isinstance(iterable, QueryType):
                     prev_translator = deepcopy(iterable.translator)
+                    prev_limit = iterable.limit
+                    prev_offset = iterable.offset
                     database = prev_translator.database
                     try:
-                        translator.process_query_qual(prev_translator, names, try_extend_prev_query=not i)
+                        translator.process_query_qual(prev_translator, prev_limit, prev_offset,
+                                                      names, try_extend_prev_query=not i)
                     except UseAnotherTranslator as e:
                         assert local.translators and local.translators[-1] is translator
                         translator = e.translator
                         local.translators[-1] = translator
-                else: throw(TranslationError, 'Inside declarative query, iterator must be entity. '
+                else: throw(TranslationError, 'Inside declarative query, iterator must be entity or query. '
                                               'Got: for %s in %s' % (name, ast2src(qual.iter)))
 
             else:
@@ -328,7 +334,7 @@ class SQLTranslator(ASTTranslator):
                     subtranslator = monad.subtranslator
                     database = subtranslator.database
                     try:
-                        translator.process_query_qual(subtranslator, names)
+                        translator.process_query_qual(subtranslator, monad.limit, monad.offset, names)
                     except UseAnotherTranslator:
                         assert False
                 else:
@@ -493,7 +499,7 @@ class SQLTranslator(ASTTranslator):
             if tableref.joined and not aggr_path.startswith(tableref.name_path):
                 return False
         return aggr_path
-    def process_query_qual(translator, prev_translator, names, try_extend_prev_query=False):
+    def process_query_qual(translator, prev_translator, prev_limit, prev_offset, names, try_extend_prev_query=False):
         sqlquery = translator.sqlquery
         tablerefs = sqlquery.tablerefs
         expr_types = prev_translator.expr_type
@@ -533,7 +539,10 @@ class SQLTranslator(ASTTranslator):
                 prev_translator.namespace_stack = [
                     {name: expr for name, expr in izip(names, prev_translator.expr_monads)}
                 ]
+                prev_translator.limit, prev_translator.offset = combine_limit_and_offset(
+                    prev_translator.limit, prev_translator.offset, prev_limit, prev_offset)
                 raise UseAnotherTranslator(prev_translator)
+
 
         if len(names) == 1 and isinstance(prev_translator.expr_type, EntityMeta) \
                 and not prev_translator.aggregated and not prev_translator.distinct:
@@ -541,7 +550,7 @@ class SQLTranslator(ASTTranslator):
             entity = prev_translator.expr_type
             [expr_monad] = prev_translator.expr_monads
             entity_alias = expr_monad.tableref.alias
-            subquery_ast = prev_translator.construct_subquery_ast(star=entity_alias)
+            subquery_ast = prev_translator.construct_subquery_ast(prev_limit, prev_offset, star=entity_alias)
             tableref = StarTableRef(sqlquery, name, entity, subquery_ast)
             tablerefs[name] = tableref
             tableref.make_join()
@@ -562,7 +571,7 @@ class SQLTranslator(ASTTranslator):
                     aliases.append(name)
                     aliases_dict[base_expr_monad] = name
 
-            subquery_ast = prev_translator.construct_subquery_ast(aliases=aliases)
+            subquery_ast = prev_translator.construct_subquery_ast(prev_limit, prev_offset, aliases=aliases)
             tableref = ExprTableRef(sqlquery, 't', subquery_ast, names, aliases)
             for name in names:
                 tablerefs[name] = tableref
@@ -580,8 +589,10 @@ class SQLTranslator(ASTTranslator):
                     expr_monad = ExprMonad.new(t, expr_ast, base_expr_monad.nullable)
                 assert name not in translator.namespace
                 translator.namespace[name] = expr_monad
-    def construct_subquery_ast(translator, aliases=None, star=None, distinct=None, is_not_null_checks=False):
-        subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=distinct, is_not_null_checks=is_not_null_checks)
+    def construct_subquery_ast(translator, limit=None, offset=None, aliases=None, star=None,
+                               distinct=None, is_not_null_checks=False):
+        subquery_ast, attr_offsets = translator.construct_sql_ast(
+            limit, offset, distinct, is_not_null_checks=is_not_null_checks)
         assert len(subquery_ast) >= 3 and subquery_ast[0] == 'SELECT'
 
         select_ast = subquery_ast[1][:]
@@ -720,6 +731,7 @@ class SQLTranslator(ASTTranslator):
 
         if translator.order and not aggr_func_name: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
+        limit, offset = combine_limit_and_offset(translator.limit, translator.offset, limit, offset)
         if limit is not None or offset is not None:
             assert not aggr_func_name
             provider = translator.database.provider
@@ -1106,6 +1118,27 @@ class SQLTranslator(ASTTranslator):
         return StringExprMonad(unicode, sql, nullable=nullable)
     def postFormattedValue(translator, node):
         throw(NotImplementedError, 'You cannot set width and precision markers in query')
+
+def combine_limit_and_offset(limit, offset, limit2, offset2):
+    assert limit is None or limit >= 0
+    assert limit2 is None or limit2 >= 0
+
+    if offset2 is not None:
+        if limit is not None:
+            limit = max(0, limit - offset2)
+        offset = (offset or 0) + offset2
+
+    if limit2 is not None:
+        if limit is not None:
+            limit = min(limit, limit2)
+        else:
+            limit = limit2
+
+    if limit == 0:
+        offset = None
+
+    return limit, offset
+
 def coerce_monads(m1, m2, for_comparison=False):
     result_type = coerce_types(m1.type, m2.type)
     if result_type in numeric_types and bool in (m1.type, m2.type) and (
@@ -3119,8 +3152,21 @@ class QuerySetMonad(SetMixin, Monad):
         Monad.__init__(monad, monad_type)
         monad.subtranslator = subtranslator
         monad.item_type = item_type
+        monad.limit = monad.offset = None
     def requires_distinct(monad, joined=False):
         assert False
+    def call_limit(monad, limit=None, offset=None):
+        if limit is not None and not isinstance(limit, int_types):
+            if not isinstance(limit, (NoneMonad, NumericConstMonad)):
+                throw(TypeError, '`limit` parameter should be of int type')
+            limit = limit.value
+        if offset is not None and not isinstance(offset, int_types):
+            if not isinstance(offset, (NoneMonad, NumericConstMonad)):
+                throw(TypeError, '`offset` parameter should be of int type')
+            offset = offset.value
+        monad.limit = limit
+        monad.offset = offset
+        return monad
     def contains(monad, item, not_in=False):
         translator = monad.translator
         check_comparable(item, monad, 'in')
@@ -3131,7 +3177,7 @@ class QuerySetMonad(SetMixin, Monad):
 
         sub = monad.subtranslator
         if translator.hint_join and len(sub.sqlquery.from_ast[1]) == 3:
-            subquery_ast = sub.construct_subquery_ast(distinct=False)
+            subquery_ast = sub.construct_subquery_ast(monad.limit, monad.offset, distinct=False)
             select_ast, from_ast, where_ast = subquery_ast[1:4]
             sqlquery = translator.sqlquery
             if not not_in:
@@ -3167,10 +3213,10 @@ class QuerySetMonad(SetMixin, Monad):
             else: sql_ast = [ 'EQ', [ 'VALUE', 1 ], [ 'VALUE', 1 ] ]
         else:
             if len(item_columns) == 1:
-                subquery_ast = sub.construct_subquery_ast(distinct=False, is_not_null_checks=not_in)
+                subquery_ast = sub.construct_subquery_ast(monad.limit, monad.offset, distinct=False, is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', item_columns[0], subquery_ast ]
             elif translator.row_value_syntax:
-                subquery_ast = sub.construct_subquery_ast(distinct=False, is_not_null_checks=not_in)
+                subquery_ast = sub.construct_subquery_ast(monad.limit, monad.offset, distinct=False, is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
             else:
                 ambiguous_names = set()
@@ -3178,7 +3224,7 @@ class QuerySetMonad(SetMixin, Monad):
                     for name in translator.sqlquery.tablerefs:
                         if name in sub.sqlquery.tablerefs:
                             ambiguous_names.add(name)
-                subquery_ast = sub.construct_subquery_ast(distinct=False)
+                subquery_ast = sub.construct_subquery_ast(monad.limit, monad.offset, distinct=False)
                 if ambiguous_names:
                     select_ast = subquery_ast[1]
                     expr_aliases = []
@@ -3314,7 +3360,7 @@ class QuerySetMonad(SetMixin, Monad):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
         return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
     def getsql(monad):
-        return monad.subtranslator.construct_subquery_ast()
+        return monad.subtranslator.construct_subquery_ast(monad.limit, monad.offset)
 
 def find_or_create_having_ast(sections):
     groupby_offset = None
