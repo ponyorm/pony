@@ -95,5 +95,11 @@ class TestVolatile(unittest.TestCase):
         q = select(p.name for p in Person if isinstance(p, Person))
         self.assertEqual(set(q), {'Person1', 'Student1', 'Student2', 'Assistant1', 'Assistant2', 'Professor1'})
 
+    @db_session
+    def test_8(self):
+        q = select(g.number for g in Group if isinstance(g, Group))
+        self.assertEqual(set(q), {123})
+
+
 if __name__ == '__main__':
     unittest.main()
