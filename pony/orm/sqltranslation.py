@@ -2465,6 +2465,42 @@ class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
         except TypeError as exc:
             reraise_improved_typeerror(exc, 'call', monad.type.__name__)
 
+def get_classes(classinfo):
+    if isinstance(classinfo, EntityMonad):
+        yield classinfo.type.item_type
+    elif isinstance(classinfo, ListMonad):
+        for item in classinfo.items:
+            for type in get_classes(item):
+                yield type
+    else: throw(TypeError, ast2src(classinfo.node))
+
+class FuncIsinstanceMonad(FuncMonad):
+    func = isinstance
+    def call(monad, obj, classinfo):
+        if not isinstance(obj, ObjectMixin): throw(ValueError,
+            'Inside a query, isinstance first argument should be of entity type. Got: %s' % ast2src(obj.node))
+        entity = obj.type
+        classes = list(get_classes(classinfo))
+        subclasses = set()
+        for cls in classes:
+            if entity._root_ is cls._root_:
+                subclasses.add(cls)
+                subclasses.update(cls._subclasses_)
+        if entity in subclasses:
+            return BoolExprMonad(['EQ', ['VALUE', 1], ['VALUE', 1]], nullable=False)
+
+        subclasses.intersection_update(entity._subclasses_)
+        if not subclasses:
+            return BoolExprMonad(['EQ', ['VALUE', 0], ['VALUE', 1]], nullable=False)
+
+        discr_attr = entity._discriminator_attr_
+        assert discr_attr is not None
+        discr_values = [ [ 'VALUE', cls._discriminator_ ] for cls in subclasses ]
+        alias, pk_columns = obj.tableref.make_join(pk_only=True)
+        sql = [ 'IN', [ 'COLUMN', alias, discr_attr.column ], discr_values ]
+        return BoolExprMonad(sql, nullable=False)
+
+
 class FuncBufferMonad(FuncMonad):
     func = buffer
     def call(monad, source, encoding=None, errors=None):
