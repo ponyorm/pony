@@ -96,7 +96,7 @@ class TestVolatile(unittest.TestCase):
         self.assertEqual(set(q), {'Person1', 'Student1', 'Student2', 'Assistant1', 'Assistant2', 'Professor1'})
 
     @db_session
-    def test_8(self):
+    def test_9(self):
         q = select(g.number for g in Group if isinstance(g, Group))
         self.assertEqual(set(q), {123})
 
