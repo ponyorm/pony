@@ -3,6 +3,13 @@ from __future__ import print_function
 from setuptools import setup
 import sys
 
+import unittest
+
+def test_suite():
+    test_loader = unittest.TestLoader()
+    test_suite = test_loader.discover('pony.orm.tests', pattern='test_*.py')
+    return test_suite
+
 name = "pony"
 version = __import__('pony').__version__
 description = "Pony Object-Relational Mapper"
@@ -116,5 +123,6 @@ if __name__ == "__main__":
         license=licence,
         packages=packages,
         package_data=package_data,
-        download_url=download_url
+        download_url=download_url,
+        test_suite='setup.test_suite'
     )
