@@ -870,7 +870,8 @@ class Database(object):
             if local.debug: log_sql(sql, arguments)
             t = time()
             new_id = provider.execute(cursor, sql, arguments, returning_id)
-        if cache.immediate: cache.in_transaction = True
+        if cache.immediate:
+            cache.in_transaction = True
         database._update_local_stat(sql, t)
         if not returning_id: return cursor
         if PY2 and type(new_id) is long: new_id = int(new_id)
@@ -1785,34 +1786,39 @@ class SessionCache(object):
         if cache.noflush_counter: return
         assert cache.is_alive
         assert not cache.saved_objects
-        if not cache.immediate: cache.immediate = True
-        for i in xrange(50):
-            if not cache.modified: return
+        prev_immediate = cache.immediate
+        cache.immediate = True
+        try:
+            for i in xrange(50):
+                if not cache.modified: return
 
-            with cache.flush_disabled():
-                for obj in cache.objects_to_save:  # can grow during iteration
-                    if obj is not None: obj._before_save_()
+                with cache.flush_disabled():
+                    for obj in cache.objects_to_save:  # can grow during iteration
+                        if obj is not None: obj._before_save_()
 
-                cache.query_results.clear()
-                modified_m2m = cache._calc_modified_m2m()
-                for attr, (added, removed) in iteritems(modified_m2m):
-                    if not removed: continue
-                    attr.remove_m2m(removed)
-                for obj in cache.objects_to_save:
-                    if obj is not None: obj._save_()
-                for attr, (added, removed) in iteritems(modified_m2m):
-                    if not added: continue
-                    attr.add_m2m(added)
+                    cache.query_results.clear()
+                    modified_m2m = cache._calc_modified_m2m()
+                    for attr, (added, removed) in iteritems(modified_m2m):
+                        if not removed: continue
+                        attr.remove_m2m(removed)
+                    for obj in cache.objects_to_save:
+                        if obj is not None: obj._save_()
+                    for attr, (added, removed) in iteritems(modified_m2m):
+                        if not added: continue
+                        attr.add_m2m(added)
 
-            cache.max_id_cache.clear()
-            cache.modified_collections.clear()
-            cache.objects_to_save[:] = ()
-            cache.modified = False
+                cache.max_id_cache.clear()
+                cache.modified_collections.clear()
+                cache.objects_to_save[:] = ()
+                cache.modified = False
 
-            cache.call_after_save_hooks()
-        else:
-            if cache.modified: throw(TransactionError,
-                'Recursion depth limit reached in obj._after_save_() call')
+                cache.call_after_save_hooks()
+            else:
+                if cache.modified: throw(TransactionError,
+                    'Recursion depth limit reached in obj._after_save_() call')
+        finally:
+            if not cache.in_transaction:
+                cache.immediate = prev_immediate
     def call_after_save_hooks(cache):
         saved_objects = cache.saved_objects
         cache.saved_objects = []
