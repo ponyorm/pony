@@ -117,7 +117,8 @@ class DBAPIProvider(object):
     drop_table_sql_template = "DROP TABLE %(table_name)s"
     rename_table_sql_template = "ALTER TABLE %(prev_name)s RENAME TO %(new_name)s"
 
-    def __init__(provider, *args, **kwargs):
+    def __init__(provider, db, *args, **kwargs):
+        provider.db = db
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         call_on_connect = kwargs.pop('pony_call_on_connect', None)
         if pool_mockup: provider.pool = pool_mockup

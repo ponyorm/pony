@@ -747,7 +747,7 @@ class Database(object):
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
         kwargs['pony_call_on_connect'] = self.call_on_connect
-        self.provider = provider_cls(*args, **kwargs)
+        self.provider = provider_cls(self, *args, **kwargs)
     def _add_entity_(database, entity_name, base_names, attrs):
         assert entity_name not in database.entities
         bases = []

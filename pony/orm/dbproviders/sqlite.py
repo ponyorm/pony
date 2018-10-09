@@ -325,8 +325,8 @@ class SQLiteProvider(DBAPIProvider):
         (Json, SQLiteJsonConverter)
     ]
 
-    def __init__(provider, *args, **kwargs):
-        DBAPIProvider.__init__(provider, *args, **kwargs)
+    def __init__(provider, db, *args, **kwargs):
+        DBAPIProvider.__init__(provider, db, *args, **kwargs)
         provider.transaction_lock = Lock()
 
     @wrap_dbapi_exceptions
@@ -425,7 +425,12 @@ class SQLiteProvider(DBAPIProvider):
             # 2 - pony.dbapiprovider.DBAPIProvider.__init__()
             # 1 - SQLiteProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
-            filename = absolutize_path(filename, frame_depth=cut_traceback_depth+5)
+            if 'abs_filename' in kwargs:
+                filename = kwargs['abs_filename']
+            else:
+                filename = absolutize_path(filename, frame_depth=cut_traceback_depth+5)
+                provider.db._constructor_args[1]['abs_filename'] = filename
+
         return SQLitePool(filename, create_db, **kwargs)
 
     def table_exists(provider, cursor, table_name, case_sensitive=True):
@@ -577,6 +582,7 @@ class SQLitePool(Pool):
         pool.create_db = create_db
         pool.kwargs = kwargs
         pool.con = None
+        pool.kwargs.pop('abs_filename', None)
     def _connect(pool):
         filename = pool.filename
         if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
