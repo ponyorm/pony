@@ -238,7 +238,7 @@ class TestAttribute(unittest.TestCase):
         class Entity1(db.Entity):
             a = PrimaryKey(str, auto=True)
         db.generate_mapping(create_tables=True)
-        self.assertTrue('AUTOINCREMENT' not in db.schema.tables['Entity1'].get_create_command())
+        self.assertTrue('AUTOINCREMENT' not in db.schema.tables['entity1'].get_create_command())
 
     @raises_exception(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
     def test_columns1(self):
