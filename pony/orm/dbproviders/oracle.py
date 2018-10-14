@@ -7,6 +7,7 @@ os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 import re
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
+from enum import Enum
 from uuid import UUID
 
 import cx_Oracle
@@ -414,6 +415,7 @@ class OraProvider(DBAPIProvider):
         (UUID, OraUuidConverter),
         (buffer, OraBlobConverter),
         (Json, OraJsonConverter),
+        (Enum, dbapiprovider.EnumConverter)
     ]
 
     @wrap_dbapi_exceptions

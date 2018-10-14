@@ -4,6 +4,7 @@ from pony.py23compat import PY2, imap, basestring, buffer, int_types
 import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
+from enum import Enum
 from uuid import UUID
 
 NoneType = type(None)
@@ -211,6 +212,7 @@ class MySQLProvider(DBAPIProvider):
         (UUID, MySQLUuidConverter),
         (buffer, MySQLBlobConverter),
         (ormtypes.Json, MySQLJsonConverter),
+        (Enum, dbapiprovider.EnumConverter)
     ]
 
     def normalize_name(provider, name):

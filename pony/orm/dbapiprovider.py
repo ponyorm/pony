@@ -4,6 +4,7 @@ from pony.py23compat import PY2, basestring, unicode, buffer, int_types, iterite
 import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
+from enum import Enum
 from uuid import uuid4, UUID
 
 import pony
@@ -416,6 +417,20 @@ class BoolConverter(Converter):
         return bool(val)
     def sql_type(converter):
         return "BOOLEAN"
+
+class EnumConverter(Converter):
+    def validate(self, val, obj=None):
+        if isinstance(val, Enum): return val
+        raise TypeError('EnumConverter expected type Enum but got %r' % (type(val)))
+
+    def py2sql(self, val):
+        return val.name
+
+    def sql2py(self, val):
+        return self.py_type[val]
+
+    def sql_type(self):
+        return 'TEXT'
 
 class StrConverter(Converter):
     def __init__(converter, provider, py_type, attr=None):

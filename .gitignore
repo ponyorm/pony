@@ -6,3 +6,8 @@ pony/orm/tests/coverage.bat
 pony/orm/tests/htmlcov/*.*
 MANIFEST
 docs/_build/
+.DS_Store
+.eggs/
+build/
+dist/
+pony.egg-info/

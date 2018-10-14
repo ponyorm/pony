@@ -3,6 +3,7 @@ from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
+from enum import Enum
 from uuid import UUID
 
 try:
@@ -290,6 +291,7 @@ class PGProvider(DBAPIProvider):
         (UUID, PGUuidConverter),
         (buffer, PGBlobConverter),
         (ormtypes.Json, PGJsonConverter),
+        (Enum, dbapiprovider.EnumConverter)
     ]
 
 provider_cls = PGProvider
