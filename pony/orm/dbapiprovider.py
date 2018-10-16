@@ -647,10 +647,13 @@ class BlobConverter(Converter):
         if isinstance(val, str): return buffer(val)
         throw(TypeError, "Attribute %r: expected type is 'buffer'. Got: %r" % (converter.attr, type(val)))
     def sql2py(converter, val):
-        if not isinstance(val, buffer) or \
-                (PY2 and converter.attr.pk_offset is not None and 'read-write' in repr(val)):  # Issue 355
+        if not isinstance(val, buffer):
             try: val = buffer(val)
             except: pass
+        elif PY2 and converter.attr is not None and converter.attr.is_part_of_unique_index:
+            try: hash(val)
+            except TypeError:
+                val = buffer(val)
         return val
     def sql_type(converter):
         return 'BLOB'
