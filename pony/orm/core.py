@@ -520,13 +520,14 @@ class DBSessionContextManager(object):
                     try:
                         output = interact(iterator, input, exc_info)
                     except StopIteration as e:
+                        commit()
                         for cache in _get_caches():
-                            if cache.modified or cache.in_transaction: throw(TransactionError,
-                                'You need to manually commit() changes before exiting from the generator')
-                        raise
+                            cache.release()
+                        assert not local.db2cache
+                        raise e
                     for cache in _get_caches():
                         if cache.modified or cache.in_transaction: throw(TransactionError,
-                            'You need to manually commit() changes before yielding from the generator')
+                            'You need to manually commit() changes before suspending the generator')
                 except:
                     rollback_and_reraise(sys.exc_info())
                 else:
@@ -541,8 +542,8 @@ class DBSessionContextManager(object):
 
             gen = gen_func(*args, **kwargs)
             iterator = gen.__await__() if hasattr(gen, '__await__') else iter(gen)
-            output = wrapped_interact(iterator)
             try:
+                output = wrapped_interact(iterator)
                 while True:
                     try:
                         input = yield output
@@ -551,6 +552,7 @@ class DBSessionContextManager(object):
                     else:
                         output = wrapped_interact(iterator, input)
             except StopIteration:
+                assert not db2cache_copy and not local.db2cache
                 return
 
         if hasattr(types, 'coroutine'):
