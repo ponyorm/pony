@@ -511,6 +511,8 @@ class IntConverter(Converter):
         converter.unsigned = unsigned
     def validate(converter, val, obj=None):
         if isinstance(val, int_types): pass
+        elif hasattr(val, '__index__'):
+            val = val.__index__()
         elif isinstance(val, basestring):
             try: val = int(val)
             except ValueError: throw(ValueError,

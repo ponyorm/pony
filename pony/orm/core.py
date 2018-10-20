@@ -3761,11 +3761,14 @@ class EntityMeta(type):
     @cut_traceback
     def __getitem__(entity, key):
         if type(key) is not tuple: key = (key,)
-        if len(key) != len(entity._pk_attrs_):
-            throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
-                             % (entity.__name__, len(key), len(entity._pk_attrs_)))
-        kwargs = {attr.name: value for attr, value in izip(entity._pk_attrs_, key)}
-        return entity._find_one_(kwargs)
+        if len(key) == len(entity._pk_attrs_):
+            kwargs = {attr.name: value for attr, value in izip(entity._pk_attrs_, key)}
+            return entity._find_one_(kwargs)
+        if len(key) == len(entity._pk_columns_):
+            return entity._get_by_raw_pkval_(key, from_db=False, seed=False)
+
+        throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
+                         % (entity.__name__, len(key), len(entity._pk_attrs_)))
     @cut_traceback
     def exists(entity, *args, **kwargs):
         if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).exists()
@@ -4210,7 +4213,7 @@ class EntityMeta(type):
             assert cache.in_transaction
             cache.for_update.add(obj)
         return obj
-    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False, from_db=True):
+    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False, from_db=True, seed=True):
         i = 0
         pkval = []
         for attr in entity._pk_attrs_:
@@ -4218,16 +4221,19 @@ class EntityMeta(type):
                 val = raw_pkval[i]
                 i += 1
                 if not attr.reverse: val = attr.validate(val, None, entity, from_db=from_db)
-                else: val = attr.py_type._get_by_raw_pkval_((val,), from_db=from_db)
+                else: val = attr.py_type._get_by_raw_pkval_((val,), from_db=from_db, seed=seed)
             else:
                 if not attr.reverse: throw(NotImplementedError)
                 vals = raw_pkval[i:i+len(attr.columns)]
-                val = attr.py_type._get_by_raw_pkval_(vals, from_db=from_db)
+                val = attr.py_type._get_by_raw_pkval_(vals, from_db=from_db, seed=seed)
                 i += len(attr.columns)
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
-        obj = entity._get_from_identity_map_(pkval, 'loaded', for_update)
+        if seed:
+            obj = entity._get_from_identity_map_(pkval, 'loaded', for_update)
+        else:
+            obj = entity[pkval]
         assert obj._status_ != 'cancelled'
         return obj
     def _get_propagation_mixin_(entity):
