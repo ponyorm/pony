@@ -605,3 +605,15 @@ class SQLBuilder(object):
         throw(NotImplementedError)
     def JSON_PARAM(builder, expr):
         return builder(expr)
+    def ARRAY_INDEX(builder, col, index):
+        throw(NotImplementedError)
+    def ARRAY_CONTAINS(builder, key, not_in, col):
+        throw(NotImplementedError)
+    def ARRAY_SUBSET(builder, array1, not_in, array2):
+        throw(NotImplementedError)
+    def ARRAY_LENGTH(builder, array):
+        throw(NotImplementedError)
+    def ARRAY_SLICE(builder, array, start, stop):
+        throw(NotImplementedError)
+    def MAKE_ARRAY(builder, *items):
+        throw(NotImplementedError)

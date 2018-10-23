@@ -20,7 +20,10 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue, QueryType
+from pony.orm.ormtypes import (
+    LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue, QueryType,
+    Array, IntArray, StrArray, FloatArray
+    )
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -54,7 +57,7 @@ __all__ = [
     'composite_key', 'composite_index',
     'flush', 'commit', 'rollback', 'db_session', 'with_transaction',
 
-    'LongStr', 'LongUnicode', 'Json',
+    'LongStr', 'LongUnicode', 'Json', 'IntArray', 'StrArray', 'FloatArray',
 
     'select', 'left_join', 'get', 'exists', 'delete',
 
@@ -1046,8 +1049,11 @@ class Database(object):
                     child_columns = get_columns(table, attr.columns)
                     table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index)
                 elif attr.index and attr.columns:
-                    columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
-                    table.add_index(attr.index, columns, is_unique=attr.is_unique)
+                    if isinstance(attr.py_type, Array) and provider.dialect != 'PostgreSQL':
+                        pass  # GIN indexes are supported only in PostgreSQL
+                    else:
+                        columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
+                        table.add_index(attr.index, columns, is_unique=attr.is_unique)
             entity._initialize_bits_()
 
         if create_tables: database.create_tables(check_tables)
@@ -1952,7 +1958,7 @@ class Attribute(object):
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
         attr.id = next(attr_id_counter)
-        if not isinstance(py_type, (type, basestring, types.FunctionType)):
+        if not isinstance(py_type, (type, basestring, types.FunctionType, Array)):
             if py_type is datetime: throw(TypeError,
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
             throw(TypeError, 'Incorrect type of attribute: %r' % py_type)
@@ -3693,7 +3699,7 @@ class EntityMeta(type):
         database = entity._database_
         for attr in entity._new_attrs_:
             py_type = attr.py_type
-            if not issubclass(py_type, Entity): continue
+            if not isinstance(py_type, EntityMeta): continue
 
             entity2 = py_type
             if entity2._database_ is not database:
