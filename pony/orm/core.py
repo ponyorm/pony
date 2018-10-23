@@ -2795,13 +2795,13 @@ class Set(Collection):
             else: d[obj] = {rentity._get_by_raw_pkval_(row) for row in cursor.fetchall()}
             for obj2, items in iteritems(d):
                 setdata2 = obj2._vals_.get(attr)
-                if setdata2 is None: setdata2 = obj._vals_[attr] = SetData()
+                if setdata2 is None: setdata2 = obj2._vals_[attr] = SetData()
                 else:
                     phantoms = setdata2 - items
                     if setdata2.added: phantoms -= setdata2.added
                     if phantoms: throw(UnrepeatableReadError,
                         'Phantom object %s disappeared from collection %s.%s'
-                        % (safe_repr(phantoms.pop()), safe_repr(obj), attr.name))
+                        % (safe_repr(phantoms.pop()), safe_repr(obj2), attr.name))
                 items -= setdata2
                 if setdata2.removed: items -= setdata2.removed
                 setdata2 |= items
