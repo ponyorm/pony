@@ -426,11 +426,15 @@ class DBSessionContextManager(object):
         if db_session.sql_debug is not None:
             local.push_debug_state(db_session.sql_debug, db_session.show_values)
     def __exit__(db_session, exc_type=None, exc=None, tb=None):
-        if db_session.sql_debug is not None:
-            local.pop_debug_state()
         local.db_context_counter -= 1
-        if local.db_context_counter: return
-        assert local.db_session is db_session
+        try:
+            if not local.db_context_counter:
+                assert local.db_session is db_session
+                db_session._commit_or_rollback(exc_type, exc, tb)
+        finally:
+            if db_session.sql_debug is not None:
+                local.pop_debug_state()
+    def _commit_or_rollback(db_session, exc_type, exc, tb):
         try:
             if exc_type is None: can_commit = True
             elif not callable(db_session.allowed_exceptions):
