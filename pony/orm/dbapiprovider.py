@@ -85,7 +85,7 @@ def get_version_tuple(s):
 class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
-    max_params_count = 200
+    max_params_count = 999
     max_name_len = 128
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = True
