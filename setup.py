@@ -111,6 +111,8 @@ if __name__ == "__main__":
         print(s % (name, version, sys.version.split(' ', 1)[0]))
         sys.exit(1)
 
+    deps = ['enum34'] if pv in ((2, 7), (3, 3)) else []
+
     setup(
         name=name,
         version=version,
@@ -124,5 +126,6 @@ if __name__ == "__main__":
         packages=packages,
         package_data=package_data,
         download_url=download_url,
-        test_suite='setup.test_suite'
+        test_suite='setup.test_suite',
+        install_requires=deps
     )

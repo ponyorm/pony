@@ -4,6 +4,7 @@ from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, 
 import types, sys, re, itertools, inspect
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
+from enum import Enum
 from random import random
 from copy import deepcopy
 from functools import update_wrapper
@@ -1694,6 +1695,9 @@ class BufferMixin(MonadMixin):
 class UuidMixin(MonadMixin):
     pass
 
+class EnumMixin(MonadMixin):
+    pass
+
 _binop_errmsg = 'Unsupported operand types %r and %r for operation %r in expression: {EXPR}'
 
 def make_numeric_binop(op, sqlop):
@@ -2071,6 +2075,7 @@ class AttrMonad(Monad):
         elif type is UUID: cls = UuidAttrMonad
         elif type is Json: cls = JsonAttrMonad
         elif isinstance(type, EntityMeta): cls = ObjectAttrMonad
+        elif issubclass(type, Enum): cls = EnumAttrMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
@@ -2124,6 +2129,7 @@ class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 class UuidAttrMonad(UuidMixin, AttrMonad): pass
 class JsonAttrMonad(JsonMixin, AttrMonad): pass
+class EnumAttrMonad(EnumMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
@@ -2139,6 +2145,7 @@ class ParamMonad(Monad):
         elif type is UUID: cls = UuidParamMonad
         elif type is Json: cls = JsonParamMonad
         elif isinstance(type, EntityMeta): cls = ObjectParamMonad
+        elif issubclass(type, Enum): cls = EnumParamMonad
         else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type,))
         result = cls(type, paramkey)
         result.aggregated = False
@@ -2180,6 +2187,7 @@ class TimedeltaParamMonad(TimedeltaMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
+class EnumParamMonad(EnumMixin, ParamMonad): pass
 
 class JsonParamMonad(JsonMixin, ParamMonad):
     def getsql(monad, sqlquery=None):

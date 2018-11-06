@@ -203,6 +203,7 @@ def normalize_type(t):
     if t in (slice, type(Ellipsis)): return t
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
+    if tt.__name__ == 'EnumMeta': return t
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
@@ -263,6 +264,8 @@ def are_comparable_types(t1, t2, op='=='):
             return False
         if tt1.__name__ == tt2.__name__ == 'EntityMeta':
             return t1._root_ is t2._root_
+        if tt1.__name__ == tt2.__name__ == 'EnumMeta':
+            return t1.__name__ == t2.__name__
         return False
     if t1 is t2 and t1 in comparable_types: return True
     return (t1, t2) in coercions
