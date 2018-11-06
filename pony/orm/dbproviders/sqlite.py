@@ -428,6 +428,8 @@ py_lower = make_string_function('py_lower', unicode.lower)
 
 def py_json_unwrap(value):
     # [null,some-value] -> some-value
+    if value is None:
+        return None
     assert value.startswith('[null,'), value
     return value[6:-1]
 
