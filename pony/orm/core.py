@@ -426,11 +426,15 @@ class DBSessionContextManager(object):
         if db_session.sql_debug is not None:
             local.push_debug_state(db_session.sql_debug, db_session.show_values)
     def __exit__(db_session, exc_type=None, exc=None, tb=None):
-        if db_session.sql_debug is not None:
-            local.pop_debug_state()
         local.db_context_counter -= 1
-        if local.db_context_counter: return
-        assert local.db_session is db_session
+        try:
+            if not local.db_context_counter:
+                assert local.db_session is db_session
+                db_session._commit_or_rollback(exc_type, exc, tb)
+        finally:
+            if db_session.sql_debug is not None:
+                local.pop_debug_state()
+    def _commit_or_rollback(db_session, exc_type, exc, tb):
         try:
             if exc_type is None: can_commit = True
             elif not callable(db_session.allowed_exceptions):
@@ -2791,13 +2795,13 @@ class Set(Collection):
             else: d[obj] = {rentity._get_by_raw_pkval_(row) for row in cursor.fetchall()}
             for obj2, items in iteritems(d):
                 setdata2 = obj2._vals_.get(attr)
-                if setdata2 is None: setdata2 = obj._vals_[attr] = SetData()
+                if setdata2 is None: setdata2 = obj2._vals_[attr] = SetData()
                 else:
                     phantoms = setdata2 - items
                     if setdata2.added: phantoms -= setdata2.added
                     if phantoms: throw(UnrepeatableReadError,
                         'Phantom object %s disappeared from collection %s.%s'
-                        % (safe_repr(phantoms.pop()), safe_repr(obj), attr.name))
+                        % (safe_repr(phantoms.pop()), safe_repr(obj2), attr.name))
                 items -= setdata2
                 if setdata2.removed: items -= setdata2.removed
                 setdata2 |= items
@@ -4637,7 +4641,8 @@ class Entity(with_metaclass(EntityMeta)):
                 for i, attr in enumerate(attrs):
                     if attr in avdict: vals[i] = avdict[attr]
                 new_vals = tuple(vals)
-                cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
+                if prev_vals != new_vals:
+                    cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
 
         for attr, new_val in iteritems(avdict):
             if not attr.reverse:
@@ -5949,12 +5954,6 @@ class Query(object):
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return query._database.to_json(query[:], include, exclude, converter, with_schema, schema_hash)
 
-def strcut(s, width):
-    if len(s) <= width:
-        return s + ' ' * (width - len(s))
-    else:
-        return s[:width-3] + '...'
-
 
 class QueryResultIterator(object):
     __slots__ = '_query_result', '_position'
@@ -6140,6 +6139,13 @@ class QueryResult(object):
     insert = make_query_result_method_error_stub('insert', 'insert')
     pop = make_query_result_method_error_stub('pop', 'pop')
     remove = make_query_result_method_error_stub('remove', 'remove')
+
+
+def strcut(s, width):
+    if len(s) <= width:
+        return s + ' ' * (width - len(s))
+    else:
+        return s[:width-3] + '...'
 
 
 @cut_traceback
