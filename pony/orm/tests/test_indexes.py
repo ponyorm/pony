@@ -92,5 +92,24 @@ class TestIndexes(unittest.TestCase):
             p1.set(name='John', age=19)
             p1.delete()
 
+    def test_5(self):
+        db = Database('sqlite', ':memory:')
+
+        class Table1(db.Entity):
+            name = Required(str)
+            table2s = Set('Table2')
+
+        class Table2(db.Entity):
+            height = Required(int)
+            length = Required(int)
+            table1 = Optional('Table1')
+            composite_key(height, length, table1)
+
+        db.generate_mapping(create_tables=True)
+
+        with db_session:
+            Table2(height=2, length=1)
+            Table2.exists(height=2, length=1)
+
 if __name__ == '__main__':
     unittest.main()

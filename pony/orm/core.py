@@ -4637,7 +4637,8 @@ class Entity(with_metaclass(EntityMeta)):
                 for i, attr in enumerate(attrs):
                     if attr in avdict: vals[i] = avdict[attr]
                 new_vals = tuple(vals)
-                cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
+                if prev_vals != new_vals:
+                    cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
 
         for attr, new_val in iteritems(avdict):
             if not attr.reverse:
