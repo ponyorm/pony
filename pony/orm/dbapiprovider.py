@@ -9,7 +9,7 @@ from uuid import uuid4, UUID
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedList, Json, QueryType, Array
+from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedArray, Json, QueryType, Array
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -841,12 +841,12 @@ class ArrayConverter(Converter):
                     throw(TypeError, 'Cannot store %s item in array of %s' %
                           (type(v).__name__, converter.py_type.item_type.__name__))
 
-        return TrackedList(obj, converter.attr, val)
+        return TrackedArray(obj, converter.attr, val)
 
     def dbval2val(converter, dbval, obj=None):
         if obj is None:
             return dbval
-        return TrackedList(obj, converter.attr, dbval)
+        return TrackedArray(obj, converter.attr, dbval)
 
     def val2dbval(converter, val, obj=None):
         return list(val)

@@ -340,6 +340,30 @@ class TrackedList(TrackedValue, list):
     def get_untracked(self):
         return [val.get_untracked() if isinstance(val, TrackedValue) else val for val in self]
 
+def validate_item(item_type, item):
+    if not isinstance(item, item_type):
+        if item_type is not unicode and hasattr(item, '__index__'):
+            return item.__index__()
+        throw(TypeError, 'Cannot store %r item in array of %r' % (type(item).__name__, item_type.__name__))
+    return item
+
+class TrackedArray(TrackedList):
+    def __init__(self, obj, attr, value):
+        TrackedList.__init__(self, obj, attr, value)
+        self.item_type = attr.py_type.item_type
+    def extend(self, items):
+        items = [validate_item(self.item_type, item) for item in items]
+        TrackedList.extend(self, items)
+    def append(self, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.append(self, item)
+    def insert(self, index, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.insert(self, index, item)
+    def __setitem__(self, index, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.__setitem__(self, index, item)
+
 class Json(object):
     """A wrapper over a dict or list
     """
@@ -351,7 +375,7 @@ class Json(object):
 
 class Array(object):
     def __init__(self, item_type):
-        if item_type not in(unicode, int, float):
+        if item_type not in (unicode, int, float):
             throw(NotImplementedError, 'Only int, float and str types are supported. Got: `Array(%r)`' % item_type)
         self.item_type = item_type
 
