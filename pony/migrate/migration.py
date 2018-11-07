@@ -278,7 +278,7 @@ class MigrationGraph(object):
                 'database': database,
                 'body': body,
                 'imports': imports,
-                'deps': leaves,
+                'deps': [l.name for l in leaves],
                 'version': pony.__version__,
                 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
