@@ -183,6 +183,7 @@ class MySQLProvider(DBAPIProvider):
     paramstyle = 'format'
     quote_char = "`"
     max_name_len = 64
+    max_params_count = 10000
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = False
     select_for_update_nowait_syntax = False

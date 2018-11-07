@@ -202,6 +202,7 @@ class PGProvider(DBAPIProvider):
     dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
     max_name_len = 63
+    max_params_count = 10000
     index_if_not_exists_syntax = False
 
     dbapi_module = psycopg2
