@@ -1708,6 +1708,7 @@ class SessionCache(object):
         cache.objects_to_save = []
         cache.saved_objects = []
         cache.query_results = {}
+        cache.dbvals_deduplication_cache = {}
         cache.modified = False
         cache.db_session = db_session = local.db_session
         cache.immediate = db_session is not None and db_session.immediate
@@ -1825,7 +1826,7 @@ class SessionCache(object):
 
             cache.objects = cache.objects_to_save = cache.saved_objects = cache.query_results \
                 = cache.indexes = cache.seeds = cache.for_update = cache.max_id_cache \
-                = cache.modified_collections = cache.collection_statistics = None
+                = cache.modified_collections = cache.collection_statistics = cache.dbvals_deduplication_cache = None
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1
@@ -2169,12 +2170,14 @@ class Attribute(object):
         if attr.py_check is not None and not attr.py_check(val):
             throw(ValueError, 'Check for attribute %s failed. Value: %s' % (attr, truncate_repr(val)))
         return val
-    def parse_value(attr, row, offsets):
+    def parse_value(attr, row, offsets, dbvals_deduplication_cache):
         assert len(attr.columns) == len(offsets)
         if not attr.reverse:
             if len(offsets) > 1: throw(NotImplementedError)
             offset = offsets[0]
             dbval = attr.validate(row[offset], None, attr.entity, from_db=True)
+            try: dbval = dbvals_deduplication_cache.setdefault(dbval, dbval)
+            except: pass
         else:
             dbvals = [ row[offset] for offset in offsets ]
             if None in dbvals:
@@ -2211,7 +2214,7 @@ class Attribute(object):
             arguments = adapter(obj._get_raw_pkval_())
             cursor = database._exec_sql(sql, arguments)
             row = cursor.fetchone()
-            dbval = attr.parse_value(row, offsets)
+            dbval = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
             attr.db_set(obj, dbval)
         else: obj._load_()
         return obj._vals_[attr]
@@ -4203,11 +4206,14 @@ class EntityMeta(type):
             real_entity_subclass = discr_attr.code2cls[discr_value]
             discr_value = real_entity_subclass._discriminator_  # To convert unicode to str in Python 2.x
 
+        database = entity._database_
+        cache = local.db2cache[database]
+
         avdict = {}
         for attr in real_entity_subclass._attrs_:
             offsets = attr_offsets.get(attr)
             if offsets is None or attr.is_discriminator: continue
-            avdict[attr] = attr.parse_value(row, offsets)
+            avdict[attr] = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
 
         pkval = tuple(avdict.pop(attr, discr_value) for attr in entity._pk_attrs_)
         assert None not in pkval
