@@ -9,7 +9,7 @@ from uuid import uuid4, UUID
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, Json, QueryType
+from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedList, Json, QueryType, Array
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -101,6 +101,7 @@ class DBAPIProvider(object):
     dbschema_cls = None
     translator_cls = None
     sqlbuilder_cls = None
+    array_converter_cls = None
 
     name_before_table = 'schema_name'
     default_schema_name = None
@@ -270,6 +271,11 @@ class DBAPIProvider(object):
         if isinstance(py_type, type):
             for t, converter_cls in provider.converter_classes:
                 if issubclass(py_type, t): return converter_cls
+        if isinstance(py_type, Array):
+            converter_cls = provider.array_converter_cls
+            if converter_cls is None:
+                throw(NotImplementedError, 'Array type is not supported for %r' % provider.dialect)
+            return converter_cls
         if isinstance(py_type, RawSQLType):
             return Converter  # for cases like select(raw_sql(...) for x in X)
         throw(TypeError, 'No database converter found for type %s' % py_type)
@@ -803,3 +809,48 @@ class JsonConverter(Converter):
         return x == y
     def sql_type(converter):
         return "JSON"
+
+class ArrayConverter(Converter):
+    array_types = {
+        int: ('int', IntConverter),
+        unicode: ('text', StrConverter),
+        float: ('real', RealConverter)
+    }
+
+    def __init__(converter, provider, py_type, attr=None):
+        Converter.__init__(converter, provider, py_type, attr)
+        converter.item_converter = converter.array_types[converter.py_type.item_type][1]
+
+    def validate(converter, val, obj=None):
+        if obj is None or converter.attr is None:
+            return val
+        if isinstance(val, TrackedValue) and val.obj_ref() is obj and val.attr is converter.attr:
+            return val
+
+        if isinstance(val, basestring) or not hasattr(val, '__len__'):
+            val = [val]
+        else:
+            val = list(val)
+        item_type = converter.py_type.item_type
+        if item_type == float:
+            item_type = (float, int)
+        for i, v in enumerate(val):
+            if not isinstance(v, item_type):
+                if hasattr(v, '__index__'):
+                    val[i] = v.__index__()
+                else:
+                    throw(TypeError, 'Cannot store %s item in array of %s' %
+                          (type(v).__name__, converter.py_type.item_type.__name__))
+
+        return TrackedList(obj, converter.attr, val)
+
+    def dbval2val(converter, dbval, obj=None):
+        if obj is None:
+            return dbval
+        return TrackedList(obj, converter.attr, dbval)
+
+    def val2dbval(converter, val, obj=None):
+        return list(val)
+
+    def sql_type(converter):
+        return '%s[]' % converter.array_types[converter.py_type.item_type][0]

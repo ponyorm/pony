@@ -348,3 +348,29 @@ class Json(object):
 
     def __repr__(self):
         return '<Json %r>' % self.wrapped
+
+class Array(object):
+    def __init__(self, item_type):
+        if item_type not in(unicode, int, float):
+            throw(NotImplementedError, 'Only int, float and str types are supported. Got: `Array(%r)`' % item_type)
+        self.item_type = item_type
+
+    def __repr__(self):
+        return 'Array(%s)' % self.item_type.__name__
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __eq__(self, other):
+        return type(other) is Array and self.item_type == other.item_type
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.item_type)
+
+IntArray = Array(int)
+StrArray = Array(unicode)
+FloatArray = Array(float)
+

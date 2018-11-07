@@ -307,6 +307,9 @@ class DBIndex(Constraint):
             append(quote_name(index.name))
             append(case('ON'))
             append(quote_name(index.table.name))
+            converter = index.columns[0].converter
+            if isinstance(converter.py_type, core.Array) and converter.provider.dialect == 'PostgreSQL':
+                append(case('USING GIN'))
         else:
             if index.name:
                 append(case('CONSTRAINT'))
