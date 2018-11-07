@@ -2174,14 +2174,14 @@ class Attribute(object):
         if not attr.reverse:
             if len(offsets) > 1: throw(NotImplementedError)
             offset = offsets[0]
-            val = attr.validate(row[offset], None, attr.entity, from_db=True)
+            dbval = attr.validate(row[offset], None, attr.entity, from_db=True)
         else:
-            vals = [ row[offset] for offset in offsets ]
-            if None in vals:
-                assert len(set(vals)) == 1
-                val = None
-            else: val = attr.py_type._get_by_raw_pkval_(vals)
-        return val
+            dbvals = [ row[offset] for offset in offsets ]
+            if None in dbvals:
+                assert len(set(dbvals)) == 1
+                dbval = None
+            else: dbval = attr.py_type._get_by_raw_pkval_(dbvals)
+        return dbval
     def load(attr, obj):
         cache = obj._session_cache_
         if cache is None or not cache.is_alive: throw_db_session_is_over('load attribute', obj, attr)
