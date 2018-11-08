@@ -3202,6 +3202,17 @@ class Set(Collection):
             table_name = attr.provided_table
         elif reverse.provided_table: table_name = reverse.provided_table
         else: table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
+        obsolete_name = getattr(table_name, 'obsolete_name', table_name)
+        existing_obsolete_names = set(getattr(t, 'obsolete_name', t) for t in schema.tables)
+        # in previous versions, name collisions of m2m relations were handled
+        # by appending a number. We need to replicate that behaviour here in order
+        # to let auto upgrade work
+        if obsolete_name in existing_obsolete_names:
+          pattern = re.compile(obsolete_name + '(_[0-9]+)?')
+          matches = [n for n in existing_obsolete_names if pattern.match(n) is not None]
+          number_appendix = len(matches) + 1
+          new_obsolete_name = '%s_%i' % (obsolete_name, number_appendix)
+          setattr(table_name, 'obsolete_name', new_obsolete_name)
         attr.table = reverse.table = table_name
 
         m2m_table = schema.tables.get(table_name)
