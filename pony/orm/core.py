@@ -1852,7 +1852,7 @@ class SessionCache(object):
         if prev_vals is not None: del cache_index[prev_vals]
         undo.append((cache_index, prev_vals, new_vals))
     def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
-        assert prev_vals != new_vals
+        # assert prev_vals != new_vals
         cache_index = cache.indexes[attrs]
         if None not in new_vals:
             obj2 = cache_index.setdefault(new_vals, obj)
