@@ -3892,8 +3892,12 @@ class EntityMeta(type):
     @cut_traceback
     def get_for_update(entity, *args, **kwargs):
         nowait = kwargs.pop('nowait', False)
-        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1).for_update(nowait).get()
-        try: return entity._find_one_(kwargs, True, nowait)  # can throw MultipleObjectsFoundError
+        skip_locked = kwargs.pop('skip_locked', False)
+        if nowait and skip_locked:
+            throw(TypeError, 'nowait and skip_locked options are mutually exclusive')
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1) \
+                              .for_update(nowait, skip_locked).get()
+        try: return entity._find_one_(kwargs, True, nowait, skip_locked)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
@@ -3969,7 +3973,7 @@ class EntityMeta(type):
                     if obj in seeds: obj._load_()
         if found_in_cache: shuffle(result)
         return result
-    def _find_one_(entity, kwargs, for_update=False, nowait=False):
+    def _find_one_(entity, kwargs, for_update=False, nowait=False, skip_locked=False):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
         avdict = {}
@@ -3986,7 +3990,7 @@ class EntityMeta(type):
             if attr.is_collection:
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
         obj, unique = entity._find_in_cache_(pkval, avdict, for_update)
-        if obj is None: obj = entity._find_in_db_(avdict, unique, for_update, nowait)
+        if obj is None: obj = entity._find_in_db_(avdict, unique, for_update, nowait, skip_locked)
         if obj is None: throw(ObjectNotFound, entity, pkval)
         return obj
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
@@ -4038,11 +4042,11 @@ class EntityMeta(type):
             entity._set_rbits((obj,), avdict)
             return obj, unique
         return None, unique
-    def _find_in_db_(entity, avdict, unique=False, for_update=False, nowait=False):
+    def _find_in_db_(entity, avdict, unique=False, for_update=False, nowait=False, skip_locked=False):
         database = entity._database_
         query_attrs = {attr: value is None for attr, value in iteritems(avdict)}
         limit = 2 if not unique else None
-        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, limit, for_update, nowait)
+        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, limit, for_update, nowait, skip_locked)
         arguments = adapter(avdict)
         if for_update: database._get_cache().immediate = True
         cursor = database._exec_sql(sql, arguments)
@@ -4120,10 +4124,10 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._batchload_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _construct_sql_(entity, query_attrs, order_by_pk=False, limit=None, for_update=False, nowait=False):
-        if nowait: assert for_update
+    def _construct_sql_(entity, query_attrs, order_by_pk=False, limit=None, for_update=False, nowait=False, skip_locked=False):
+        if nowait or skip_locked: assert for_update
         sorted_query_attrs = tuple(sorted(query_attrs.items()))
-        query_key = sorted_query_attrs, order_by_pk, limit, for_update, nowait
+        query_key = sorted_query_attrs, order_by_pk, limit, for_update, nowait, skip_locked
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
         select_list, attr_offsets = entity._construct_select_clause_(query_attrs=query_attrs)
@@ -4153,7 +4157,7 @@ class EntityMeta(type):
                         where_list.append([ converter.EQ, [ 'COLUMN', None, column ], [ 'PARAM', (attr, None, j), converter ] ])
 
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
-        else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
+        else: sql_ast = [ 'SELECT_FOR_UPDATE', nowait, skip_locked, select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
         if limit is not None: sql_ast.append([ 'LIMIT', limit ])
         database = entity._database_
@@ -5551,7 +5555,7 @@ class Query(object):
         query._translator = translator
         query._filters = ()
         query._next_kwarg_id = 0
-        query._for_update = query._nowait = False
+        query._for_update = query._nowait = query._skip_locked = False
         query._distinct = None
         query._prefetch = False
         query._prefetch_context = PrefetchContext(query._database)
@@ -5607,6 +5611,7 @@ class Query(object):
             aggr_func=(aggr_func_name, aggr_func_distinct, sep),
             for_update=query._for_update,
             nowait=query._nowait,
+            skip_locked=query._skip_locked,
             inner_join_syntax=options.INNER_JOIN_SYNTAX,
             attrs_to_prefetch=attrs_to_prefetch
         )
@@ -5615,7 +5620,7 @@ class Query(object):
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
                 limit, offset, query._distinct, aggr_func_name, aggr_func_distinct, sep,
-                query._for_update, query._nowait)
+                query._for_update, query._nowait, query._skip_locked)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -6060,11 +6065,10 @@ class Query(object):
     def count(query, distinct=None):
         return query._aggregate('COUNT', distinct)
     @cut_traceback
-    def for_update(query, nowait=False):
-        provider = query._database.provider
-        if nowait and not provider.select_for_update_nowait_syntax: throw(TranslationError,
-            '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
-        return query._clone(_for_update=True, _nowait=nowait)
+    def for_update(query, nowait=False, skip_locked=False):
+        if nowait and skip_locked:
+            throw(TypeError, 'nowait and skip_locked options are mutually exclusive')
+        return query._clone(_for_update=True, _nowait=nowait, _skip_locked=skip_locked)
     def random(query, limit):
         return query.order_by('random()')[:limit]
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):

@@ -61,8 +61,8 @@ class SQLiteBuilder(SQLBuilder):
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)
-    def SELECT_FOR_UPDATE(builder, nowait, *sections):
-        assert not builder.indent and not nowait
+    def SELECT_FOR_UPDATE(builder, nowait, skip_locked, *sections):
+        assert not builder.indent
         return builder.SELECT(*sections)
     def INSERT(builder, table_name, columns, values, returning=None):
         if not values: return 'INSERT INTO %s DEFAULT VALUES' % builder.quote_name(table_name)
@@ -266,7 +266,6 @@ class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
     local_exceptions = local_exceptions
     max_name_len = 1024
-    select_for_update_nowait_syntax = False
 
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
