@@ -206,12 +206,12 @@ def normalize_type(t):
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
-    (int, float) : float,
-    (int, Decimal) : Decimal,
-    (date, datetime) : datetime,
-    (bool, int) : int,
-    (bool, float) : float,
-    (bool, Decimal) : Decimal
+    (int, float): float,
+    (int, Decimal): Decimal,
+    (date, datetime): datetime,
+    (bool, int): int,
+    (bool, float): float,
+    (bool, Decimal): Decimal
     }
 coercions.update(((t2, t1), t3) for ((t1, t2), t3) in items_list(coercions))
 
