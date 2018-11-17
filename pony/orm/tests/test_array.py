@@ -11,6 +11,8 @@ class Foo(db.Entity):
     array1 = Required(IntArray, index=True)
     array2 = Required(FloatArray)
     array3 = Required(StrArray)
+    array4 = Optional(IntArray)
+    array5 = Optional(IntArray, nullable=True)
 
 db.generate_mapping(create_tables=True)
 
@@ -74,3 +76,15 @@ class Test(unittest.TestCase):
     def test_10(self):
         foos = select(f.array1[1:-1] for f in Foo)[:]
         self.assertEqual([2, 3, 4], foos[0])
+
+    @db_session
+    def test_11(self):
+        foo = Foo.select().first()
+        foo.array4.append(1)
+        self.assertEqual([1], foo.array4)
+
+    @raises_exception(AttributeError, "'NoneType' object has no attribute 'append'")
+    @db_session
+    def test_12(self):
+        foo = Foo.select().first()
+        foo.array5.append(1)

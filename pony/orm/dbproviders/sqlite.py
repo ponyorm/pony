@@ -231,7 +231,8 @@ class SQLiteArrayConverter(dbapiprovider.ArrayConverter):
     }
 
     def dbval2val(converter, dbval, obj=None):
-        items = json.loads(dbval) if dbval else []
+        if not dbval: return None
+        items = json.loads(dbval)
         if obj is None:
             return items
         return TrackedArray(obj, converter.attr, items)

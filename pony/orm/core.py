@@ -1013,7 +1013,7 @@ class Database(object):
                     m2m_table.m2m.add(reverse)
                 else:
                     if attr.is_required: pass
-                    elif not attr.is_string:
+                    elif not attr.type_has_empty_value:
                         if attr.nullable is False:
                             throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
                         attr.nullable = True
@@ -1976,7 +1976,7 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic', 'fk_name'
+                'optimistic', 'fk_name', 'type_has_empty_value'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -2002,6 +2002,7 @@ class Attribute(object):
             throw(TypeError, 'Incorrect type of attribute: %r' % py_type)
         attr.py_type = py_type
         attr.is_string = type(py_type) is type and issubclass(py_type, basestring)
+        attr.type_has_empty_value = attr.is_string or hasattr(attr.py_type, 'default_empty_value')
         attr.is_collection = isinstance(attr, Collection)
         attr.is_relation = isinstance(attr.py_type, (EntityMeta, basestring, types.FunctionType))
         attr.is_basic = not attr.is_collection and not attr.is_relation
@@ -2074,8 +2075,8 @@ class Attribute(object):
                     'Default value for required attribute %s cannot be empty string' % attr)
             elif attr.default is None and not attr.nullable: throw(TypeError,
                 'Default value for non-nullable attribute %s cannot be set to None' % attr)
-        elif attr.is_string and not attr.is_required and not attr.nullable:
-            attr.default = ''
+        elif attr.type_has_empty_value and not attr.is_required and not attr.nullable:
+            attr.default = '' if attr.is_string else attr.py_type.default_empty_value()
         else:
             attr.default = None
 

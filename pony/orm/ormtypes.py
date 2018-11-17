@@ -370,6 +370,10 @@ class TrackedArray(TrackedList):
 class Json(object):
     """A wrapper over a dict or list
     """
+    @classmethod
+    def default_empty_value(cls):
+        return {}
+
     def __init__(self, wrapped):
         self.wrapped = wrapped
 
@@ -378,6 +382,10 @@ class Json(object):
 
 class Array(object):
     item_type = None  # Should be overridden in subclass
+
+    @classmethod
+    def default_empty_value(cls):
+        return []
 
 class IntArray(Array):
     item_type = int
