@@ -270,11 +270,11 @@ class DBAPIProvider(object):
         if isinstance(py_type, type):
             for t, converter_cls in provider.converter_classes:
                 if issubclass(py_type, t): return converter_cls
-        if isinstance(py_type, Array):
-            converter_cls = provider.array_converter_cls
-            if converter_cls is None:
-                throw(NotImplementedError, 'Array type is not supported for %r' % provider.dialect)
-            return converter_cls
+            if issubclass(py_type, Array):
+                converter_cls = provider.array_converter_cls
+                if converter_cls is None:
+                    throw(NotImplementedError, 'Array type is not supported for %r' % provider.dialect)
+                return converter_cls
         if isinstance(py_type, RawSQLType):
             return Converter  # for cases like select(raw_sql(...) for x in X)
         throw(TypeError, 'No database converter found for type %s' % py_type)
@@ -821,27 +821,29 @@ class ArrayConverter(Converter):
         converter.item_converter = converter.array_types[converter.py_type.item_type][1]
 
     def validate(converter, val, obj=None):
-        if obj is None or converter.attr is None:
-            return val
         if isinstance(val, TrackedValue) and val.obj_ref() is obj and val.attr is converter.attr:
             return val
 
         if isinstance(val, basestring) or not hasattr(val, '__len__'):
-            val = [val]
+            items = [val]
         else:
-            val = list(val)
+            items = list(val)
         item_type = converter.py_type.item_type
         if item_type == float:
             item_type = (float, int)
-        for i, v in enumerate(val):
+        for i, v in enumerate(items):
+            if PY2 and isinstance(v, str):
+                v = v.decode('ascii')
             if not isinstance(v, item_type):
                 if hasattr(v, '__index__'):
-                    val[i] = v.__index__()
+                    items[i] = v.__index__()
                 else:
                     throw(TypeError, 'Cannot store %s item in array of %s' %
                           (type(v).__name__, converter.py_type.item_type.__name__))
 
-        return TrackedArray(obj, converter.attr, val)
+        if obj is None or converter.attr is None:
+            return items
+        return TrackedArray(obj, converter.attr, items)
 
     def dbval2val(converter, dbval, obj=None):
         if obj is None:

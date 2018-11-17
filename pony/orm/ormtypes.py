@@ -203,6 +203,7 @@ def normalize_type(t):
     if t in (slice, type(Ellipsis)): return t
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
+    if issubclass(t, Array): return t
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
@@ -341,6 +342,8 @@ class TrackedList(TrackedValue, list):
         return [val.get_untracked() if isinstance(val, TrackedValue) else val for val in self]
 
 def validate_item(item_type, item):
+    if PY2 and isinstance(item, str):
+        item = item.decode('ascii')
     if not isinstance(item, item_type):
         if item_type is not unicode and hasattr(item, '__index__'):
             return item.__index__()
@@ -374,27 +377,14 @@ class Json(object):
         return '<Json %r>' % self.wrapped
 
 class Array(object):
-    def __init__(self, item_type):
-        if item_type not in (unicode, int, float):
-            throw(NotImplementedError, 'Only int, float and str types are supported. Got: `Array(%r)`' % item_type)
-        self.item_type = item_type
+    item_type = None  # Should be overridden in subclass
 
-    def __repr__(self):
-        return 'Array(%s)' % self.item_type.__name__
+class IntArray(Array):
+    item_type = int
 
-    def __deepcopy__(self, memo):
-        return self
+class StrArray(Array):
+    item_type = unicode
 
-    def __eq__(self, other):
-        return type(other) is Array and self.item_type == other.item_type
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __hash__(self):
-        return hash(self.item_type)
-
-IntArray = Array(int)
-StrArray = Array(unicode)
-FloatArray = Array(float)
+class FloatArray(Array):
+    item_type = float
 

@@ -2163,19 +2163,19 @@ class ObjectIterMonad(ObjectMixin, Monad):
 class AttrMonad(Monad):
     @staticmethod
     def new(parent, attr, *args, **kwargs):
-        type = normalize_type(attr.py_type)
-        if type in numeric_types: cls = NumericAttrMonad
-        elif type is unicode: cls = StringAttrMonad
-        elif type is date: cls = DateAttrMonad
-        elif type is time: cls = TimeAttrMonad
-        elif type is timedelta: cls = TimedeltaAttrMonad
-        elif type is datetime: cls = DatetimeAttrMonad
-        elif type is buffer: cls = BufferAttrMonad
-        elif type is UUID: cls = UuidAttrMonad
-        elif type is Json: cls = JsonAttrMonad
-        elif isinstance(type, EntityMeta): cls = ObjectAttrMonad
-        elif isinstance(type, Array): cls = ArrayAttrMonad
-        else: throw(NotImplementedError, type)  # pragma: no cover
+        t = normalize_type(attr.py_type)
+        if t in numeric_types: cls = NumericAttrMonad
+        elif t is unicode: cls = StringAttrMonad
+        elif t is date: cls = DateAttrMonad
+        elif t is time: cls = TimeAttrMonad
+        elif t is timedelta: cls = TimedeltaAttrMonad
+        elif t is datetime: cls = DatetimeAttrMonad
+        elif t is buffer: cls = BufferAttrMonad
+        elif t is UUID: cls = UuidAttrMonad
+        elif t is Json: cls = JsonAttrMonad
+        elif isinstance(t, EntityMeta): cls = ObjectAttrMonad
+        elif isinstance(t, type) and issubclass(t, Array): cls = ArrayAttrMonad
+        else: throw(NotImplementedError, t)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
         if cls is AttrMonad: assert False, 'Abstract class'  # pragma: no cover
@@ -2232,33 +2232,33 @@ class ArrayAttrMonad(ArrayMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
-    def new(type, paramkey):
-        type = normalize_type(type)
-        if type in numeric_types: cls = NumericParamMonad
-        elif type is unicode: cls = StringParamMonad
-        elif type is date: cls = DateParamMonad
-        elif type is time: cls = TimeParamMonad
-        elif type is timedelta: cls = TimedeltaParamMonad
-        elif type is datetime: cls = DatetimeParamMonad
-        elif type is buffer: cls = BufferParamMonad
-        elif type is UUID: cls = UuidParamMonad
-        elif type is Json: cls = JsonParamMonad
-        elif type is Array: cls = ArrayParamMonad
-        elif isinstance(type, EntityMeta): cls = ObjectParamMonad
-        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type,))
-        result = cls(type, paramkey)
+    def new(t, paramkey):
+        t = normalize_type(t)
+        if t in numeric_types: cls = NumericParamMonad
+        elif t is unicode: cls = StringParamMonad
+        elif t is date: cls = DateParamMonad
+        elif t is time: cls = TimeParamMonad
+        elif t is timedelta: cls = TimedeltaParamMonad
+        elif t is datetime: cls = DatetimeParamMonad
+        elif t is buffer: cls = BufferParamMonad
+        elif t is UUID: cls = UuidParamMonad
+        elif t is Json: cls = JsonParamMonad
+        elif isinstance(t, type) and issubclass(t, Array): cls = ArrayParamMonad
+        elif isinstance(t, EntityMeta): cls = ObjectParamMonad
+        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (t,))
+        result = cls(t, paramkey)
         result.aggregated = False
         return result
     def __new__(cls, *args):
         if cls is ParamMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
-    def __init__(monad, type, paramkey):
-        type = normalize_type(type)
-        Monad.__init__(monad, type, nullable=False)
+    def __init__(monad, t, paramkey):
+        t = normalize_type(t)
+        Monad.__init__(monad, t, nullable=False)
         monad.paramkey = paramkey
-        if not isinstance(type, EntityMeta):
+        if not isinstance(t, EntityMeta):
             provider = monad.translator.database.provider
-            monad.converter = provider.get_converter_by_py_type(type)
+            monad.converter = provider.get_converter_by_py_type(t)
         else: monad.converter = None
     def getsql(monad, sqlquery=None):
         return [ [ 'PARAM', monad.paramkey, monad.converter ] ]
@@ -2294,18 +2294,18 @@ class JsonParamMonad(JsonMixin, ParamMonad):
 
 class ExprMonad(Monad):
     @staticmethod
-    def new(type, sql, nullable=True):
-        if type in numeric_types: cls = NumericExprMonad
-        elif type is unicode: cls = StringExprMonad
-        elif type is date: cls = DateExprMonad
-        elif type is time: cls = TimeExprMonad
-        elif type is timedelta: cls = TimedeltaExprMonad
-        elif type is datetime: cls = DatetimeExprMonad
-        elif type is Json: cls = JsonExprMonad
-        elif isinstance(type, EntityMeta): cls = ObjectExprMonad
-        elif isinstance(type, Array): cls = ArrayExprMonad
-        else: throw(NotImplementedError, type)  # pragma: no cover
-        return cls(type, sql, nullable=nullable)
+    def new(t, sql, nullable=True):
+        if t in numeric_types: cls = NumericExprMonad
+        elif t is unicode: cls = StringExprMonad
+        elif t is date: cls = DateExprMonad
+        elif t is time: cls = TimeExprMonad
+        elif t is timedelta: cls = TimedeltaExprMonad
+        elif t is datetime: cls = DatetimeExprMonad
+        elif t is Json: cls = JsonExprMonad
+        elif isinstance(t, EntityMeta): cls = ObjectExprMonad
+        elif isinstance(t, type) and issubclass(t, Array): cls = ArrayExprMonad
+        else: throw(NotImplementedError, t)  # pragma: no cover
+        return cls(t, sql, nullable=nullable)
     def __new__(cls, *args, **kwargs):
         if cls is ExprMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
