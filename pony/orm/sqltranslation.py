@@ -18,7 +18,7 @@ from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
-    Json, QueryType, Array
+    Json, QueryType, Array, array_types
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper, \
     special_functions, const_functions, extract_vars, Query, UseAnotherTranslator
@@ -142,7 +142,7 @@ class SQLTranslator(ASTTranslator):
         elif tt is tuple:
             params = []
             is_array = False
-            if translator.database.provider.array_converter_cls is None:
+            if translator.database.provider.array_converter_cls is not None:
                 types = set(t)
                 if len(types) == 1 and unicode in types:
                     item_type = unicode
@@ -158,7 +158,7 @@ class SQLTranslator(ASTTranslator):
                         is_array = True
 
             if is_array:
-                array_type = Array(item_type)
+                array_type = array_types.get(item_type, None)
                 monad = ArrayParamMonad(array_type, (varkey, None, None))
             else:
                 for i, item_type in enumerate(t):

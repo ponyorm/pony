@@ -142,11 +142,6 @@ class QueryType(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-numeric_types = {bool, int, float, Decimal}
-comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID}
-primitive_types = comparable_types | {buffer}
-function_types = {type, types.FunctionType, types.BuiltinFunctionType}
-type_normalization_dict = { long : int } if PY2 else {}
 
 def normalize(value):
     t = type(value)
@@ -387,12 +382,28 @@ class Array(object):
     def default_empty_value(cls):
         return []
 
+
 class IntArray(Array):
     item_type = int
+
 
 class StrArray(Array):
     item_type = unicode
 
+
 class FloatArray(Array):
     item_type = float
+
+
+numeric_types = {bool, int, float, Decimal}
+comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID, IntArray, StrArray, FloatArray}
+primitive_types = comparable_types | {buffer}
+function_types = {type, types.FunctionType, types.BuiltinFunctionType}
+type_normalization_dict = { long : int } if PY2 else {}
+
+array_types = {
+    int: IntArray,
+    float: FloatArray,
+    unicode: StrArray
+}
 

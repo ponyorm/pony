@@ -88,3 +88,8 @@ class Test(unittest.TestCase):
     def test_12(self):
         foo = Foo.select().first()
         foo.array5.append(1)
+
+    @db_session
+    def test_13(self):
+        x = [1, 2, 3, 4, 5]
+        select(f for f in Foo if x == f.array1)[:]
