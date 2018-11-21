@@ -91,7 +91,6 @@ class DBAPIProvider(object):
     index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6
     uint64_support = False
-    select_for_update_nowait_syntax = True
 
     # SQLite and PostgreSQL does not limit varchar max length.
     varchar_default_max_len = None

@@ -254,10 +254,12 @@ class SQLBuilder(object):
             return result
         finally:
             builder.suppress_aliases = prev_suppress_aliases
-    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+    def SELECT_FOR_UPDATE(builder, nowait, skip_locked, *sections):
         assert not builder.indent
         result = builder.SELECT(*sections)
-        return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
+        nowait = ' NOWAIT' if nowait else ''
+        skip_locked = ' SKIP LOCKED' if skip_locked else ''
+        return result, 'FOR UPDATE', nowait, skip_locked, '\n'
     def EXISTS(builder, *sections):
         result = builder._subquery(*sections)
         indent = builder.indent_spaces * builder.indent

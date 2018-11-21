@@ -651,12 +651,12 @@ class SQLTranslator(ASTTranslator):
         return [ 'SELECT', select_ast, from_ast, where_ast ] + other_ast
     def construct_sql_ast(translator, limit=None, offset=None, distinct=None,
                           aggr_func_name=None, aggr_func_distinct=None, sep=None,
-                          for_update=False, nowait=False, is_not_null_checks=False):
+                          for_update=False, nowait=False, skip_locked=False, is_not_null_checks=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
         if for_update:
-            sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
+            sql_ast = [ 'SELECT_FOR_UPDATE', nowait, skip_locked ]
             translator.query_result_is_cacheable = False
         else: sql_ast = [ 'SELECT' ]
 
