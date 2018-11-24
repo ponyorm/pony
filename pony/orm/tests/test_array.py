@@ -209,3 +209,17 @@ class Test(unittest.TestCase):
     def test_34(self):
         array = select(f.array1[f.c:] for f in Foo).first()
         self.assertEqual(array, [40, 50])
+
+    @db_session
+    def test_35(self):
+        foo = Foo.select().first()
+        self.assertTrue(10 in foo.array1)
+        self.assertTrue(1000 not in foo.array1)
+        self.assertTrue([10, 20] in foo.array1)
+        self.assertTrue([20, 10] in foo.array1)
+        self.assertTrue([10, 1000] not in foo.array1)
+        self.assertTrue('bar' in foo.array3)
+        self.assertTrue('baz' not in foo.array3)
+        self.assertTrue(['foo', 'bar'] in foo.array3)
+        self.assertTrue(['bar', 'foo'] in foo.array3)
+        self.assertTrue(['baz', 'bar'] not in foo.array3)

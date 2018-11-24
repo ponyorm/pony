@@ -362,6 +362,12 @@ class TrackedArray(TrackedList):
         item = validate_item(self.item_type, item)
         TrackedList.__setitem__(self, index, item)
 
+    def __contains__(self, item):
+        if not isinstance(item, basestring) and hasattr(item, '__iter__'):
+            return all(it in set(self) for it in item)
+        return list.__contains__(self, item)
+
+
 class Json(object):
     """A wrapper over a dict or list
     """
