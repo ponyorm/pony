@@ -2066,56 +2066,38 @@ class ArrayMixin(MonadMixin):
     def nonzero(monad):
         return BoolExprMonad(['GT', ['ARRAY_LENGTH', monad.getsql()[0]], ['VALUE', 0]])
 
-    def __getitem__(monad, index):
+    def _index(monad, index, from_one, plus_one):
         if isinstance(index, NumericConstMonad):
             expr_sql = monad.getsql()[0]
-            index = index.getsql()[0]
-            value = index[1]
-            if not monad.translator.database.provider.dialect == 'SQLite':
+            index_sql = index.getsql()[0]
+            value = index_sql[1]
+            if from_one and plus_one:
                 if value >= 0:
-                    index = ['VALUE', value + 1]
+                    index_sql = ['VALUE', value + 1]
                 else:
-                    index = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value) + 1]]
+                    index_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value) + 1]]
 
-            sql = ['ARRAY_INDEX', expr_sql, index]
+            return index_sql
+        elif isinstance(index, NumericMixin):
+            expr_sql = monad.getsql()[0]
+            index0 = index.getsql()[0]
+            index1 = ['ADD', index0, ['VALUE', 1]] if from_one and plus_one else index0
+            index_sql = ['CASE', None, [[['GE', index0, ['VALUE', 0]], index1]],
+                     ['ADD', ['ARRAY_LENGTH', expr_sql], index1]]
+            return index_sql
+
+    def __getitem__(monad, index):
+        dialect = monad.translator.database.provider.dialect
+        expr_sql = monad.getsql()[0]
+        from_one = dialect != 'SQLite'
+        if isinstance(index, NumericMixin):
+            index_sql = monad._index(index, from_one, plus_one=True)
+            sql = ['ARRAY_INDEX', expr_sql, index_sql]
             return ExprMonad.new(monad.type.item_type, sql)
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
-            start, stop = index.start, index.stop
-            if start is None and stop is None:
-                return monad
-
-            if start is not None and start.type is not int:
-                throw(TypeError, "Invalid type of start index (expected 'int', got %r) in array slice {EXPR}"
-                      % type2str(start.type))
-            if stop is not None and stop.type is not int:
-                throw(TypeError, "Invalid type of stop index (expected 'int', got %r) in array slice {EXPR}"
-                      % type2str(stop.type))
-
-            if (start is not None and not isinstance(start, NumericConstMonad)) or \
-                    (stop is not None and not isinstance(stop, NumericConstMonad)):
-                throw(TypeError, 'Array indices should be type of int')
-
-            expr_sql = monad.getsql()[0]
-
-            if not monad.translator.database.provider.dialect == 'SQLite':
-                if start is None:
-                    start_sql = None
-                elif start.value >= 0:
-                    start_sql = ['VALUE', start.value + 1]
-                else:
-                    start_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(start.value) + 1]]
-
-                if stop is None:
-                    stop_sql = None
-                elif stop.value >= 0:
-                    stop_sql = ['VALUE', stop.value + 1]
-                else:
-                    stop_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(stop.value) + 1]]
-            else:
-                start_sql = None if start is None else ['VALUE', start.value]
-                stop_sql = None if stop is None else ['VALUE', stop.value]
-
+            start_sql = monad._index(index.start, from_one, plus_one=True)
+            stop_sql = monad._index(index.stop, from_one, plus_one=False)
             sql = ['ARRAY_SLICE', expr_sql, start_sql, stop_sql]
             return ExprMonad.new(monad.type, sql)
 
