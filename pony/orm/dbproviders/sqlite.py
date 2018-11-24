@@ -14,7 +14,7 @@ from functools import wraps
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm
-from pony.orm.ormtypes import Json, TrackedList
+from pony.orm.ormtypes import Json, TrackedArray
 from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
@@ -231,10 +231,11 @@ class SQLiteArrayConverter(dbapiprovider.ArrayConverter):
     }
 
     def dbval2val(converter, dbval, obj=None):
-        items = json.loads(dbval) if dbval else []
+        if not dbval: return None
+        items = json.loads(dbval)
         if obj is None:
             return items
-        return TrackedList(obj, converter.attr, items)
+        return TrackedArray(obj, converter.attr, items)
 
     def val2dbval(converter, val, obj=None):
         return dumps(val)

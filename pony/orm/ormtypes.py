@@ -142,11 +142,6 @@ class QueryType(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-numeric_types = {bool, int, float, Decimal}
-comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID}
-primitive_types = comparable_types | {buffer}
-function_types = {type, types.FunctionType, types.BuiltinFunctionType}
-type_normalization_dict = { long : int } if PY2 else {}
 
 def normalize(value):
     t = type(value)
@@ -203,6 +198,7 @@ def normalize_type(t):
     if t in (slice, type(Ellipsis)): return t
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
+    if issubclass(t, Array): return t
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
@@ -340,9 +336,39 @@ class TrackedList(TrackedValue, list):
     def get_untracked(self):
         return [val.get_untracked() if isinstance(val, TrackedValue) else val for val in self]
 
+def validate_item(item_type, item):
+    if PY2 and isinstance(item, str):
+        item = item.decode('ascii')
+    if not isinstance(item, item_type):
+        if item_type is not unicode and hasattr(item, '__index__'):
+            return item.__index__()
+        throw(TypeError, 'Cannot store %r item in array of %r' % (type(item).__name__, item_type.__name__))
+    return item
+
+class TrackedArray(TrackedList):
+    def __init__(self, obj, attr, value):
+        TrackedList.__init__(self, obj, attr, value)
+        self.item_type = attr.py_type.item_type
+    def extend(self, items):
+        items = [validate_item(self.item_type, item) for item in items]
+        TrackedList.extend(self, items)
+    def append(self, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.append(self, item)
+    def insert(self, index, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.insert(self, index, item)
+    def __setitem__(self, index, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.__setitem__(self, index, item)
+
 class Json(object):
     """A wrapper over a dict or list
     """
+    @classmethod
+    def default_empty_value(cls):
+        return {}
+
     def __init__(self, wrapped):
         self.wrapped = wrapped
 
@@ -350,27 +376,34 @@ class Json(object):
         return '<Json %r>' % self.wrapped
 
 class Array(object):
-    def __init__(self, item_type):
-        if item_type not in(unicode, int, float):
-            throw(NotImplementedError, 'Only int, float and str types are supported. Got: `Array(%r)`' % item_type)
-        self.item_type = item_type
+    item_type = None  # Should be overridden in subclass
 
-    def __repr__(self):
-        return 'Array(%s)' % self.item_type.__name__
+    @classmethod
+    def default_empty_value(cls):
+        return []
 
-    def __deepcopy__(self, memo):
-        return self
 
-    def __eq__(self, other):
-        return type(other) is Array and self.item_type == other.item_type
+class IntArray(Array):
+    item_type = int
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
-    def __hash__(self):
-        return hash(self.item_type)
+class StrArray(Array):
+    item_type = unicode
 
-IntArray = Array(int)
-StrArray = Array(unicode)
-FloatArray = Array(float)
+
+class FloatArray(Array):
+    item_type = float
+
+
+numeric_types = {bool, int, float, Decimal}
+comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID, IntArray, StrArray, FloatArray}
+primitive_types = comparable_types | {buffer}
+function_types = {type, types.FunctionType, types.BuiltinFunctionType}
+type_normalization_dict = { long : int } if PY2 else {}
+
+array_types = {
+    int: IntArray,
+    float: FloatArray,
+    unicode: StrArray
+}
 

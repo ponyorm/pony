@@ -18,7 +18,7 @@ from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
-    Json, QueryType, Array
+    Json, QueryType, Array, array_types
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper, \
     special_functions, const_functions, extract_vars, Query, UseAnotherTranslator
@@ -142,7 +142,7 @@ class SQLTranslator(ASTTranslator):
         elif tt is tuple:
             params = []
             is_array = False
-            if translator.database.provider.array_converter_cls is None:
+            if translator.database.provider.array_converter_cls is not None:
                 types = set(t)
                 if len(types) == 1 and unicode in types:
                     item_type = unicode
@@ -158,7 +158,7 @@ class SQLTranslator(ASTTranslator):
                         is_array = True
 
             if is_array:
-                array_type = Array(item_type)
+                array_type = array_types.get(item_type, None)
                 monad = ArrayParamMonad(array_type, (varkey, None, None))
             else:
                 for i, item_type in enumerate(t):
@@ -2066,56 +2066,38 @@ class ArrayMixin(MonadMixin):
     def nonzero(monad):
         return BoolExprMonad(['GT', ['ARRAY_LENGTH', monad.getsql()[0]], ['VALUE', 0]])
 
-    def __getitem__(monad, index):
+    def _index(monad, index, from_one, plus_one):
         if isinstance(index, NumericConstMonad):
             expr_sql = monad.getsql()[0]
-            index = index.getsql()[0]
-            value = index[1]
-            if not monad.translator.database.provider.dialect == 'SQLite':
+            index_sql = index.getsql()[0]
+            value = index_sql[1]
+            if from_one and plus_one:
                 if value >= 0:
-                    index = ['VALUE', value + 1]
+                    index_sql = ['VALUE', value + 1]
                 else:
-                    index = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value) + 1]]
+                    index_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value) + 1]]
 
-            sql = ['ARRAY_INDEX', expr_sql, index]
+            return index_sql
+        elif isinstance(index, NumericMixin):
+            expr_sql = monad.getsql()[0]
+            index0 = index.getsql()[0]
+            index1 = ['ADD', index0, ['VALUE', 1]] if from_one and plus_one else index0
+            index_sql = ['CASE', None, [[['GE', index0, ['VALUE', 0]], index1]],
+                     ['ADD', ['ARRAY_LENGTH', expr_sql], index1]]
+            return index_sql
+
+    def __getitem__(monad, index):
+        dialect = monad.translator.database.provider.dialect
+        expr_sql = monad.getsql()[0]
+        from_one = dialect != 'SQLite'
+        if isinstance(index, NumericMixin):
+            index_sql = monad._index(index, from_one, plus_one=True)
+            sql = ['ARRAY_INDEX', expr_sql, index_sql]
             return ExprMonad.new(monad.type.item_type, sql)
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
-            start, stop = index.start, index.stop
-            if start is None and stop is None:
-                return monad
-
-            if start is not None and start.type is not int:
-                throw(TypeError, "Invalid type of start index (expected 'int', got %r) in array slice {EXPR}"
-                      % type2str(start.type))
-            if stop is not None and stop.type is not int:
-                throw(TypeError, "Invalid type of stop index (expected 'int', got %r) in array slice {EXPR}"
-                      % type2str(stop.type))
-
-            if (start is not None and not isinstance(start, NumericConstMonad)) or \
-                    (stop is not None and not isinstance(stop, NumericConstMonad)):
-                throw(TypeError, 'Array indices should be type of int')
-
-            expr_sql = monad.getsql()[0]
-
-            if not monad.translator.database.provider.dialect == 'SQLite':
-                if start is None:
-                    start_sql = None
-                elif start.value >= 0:
-                    start_sql = ['VALUE', start.value + 1]
-                else:
-                    start_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(start.value) + 1]]
-
-                if stop is None:
-                    stop_sql = None
-                elif stop.value >= 0:
-                    stop_sql = ['VALUE', stop.value + 1]
-                else:
-                    stop_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(stop.value) + 1]]
-            else:
-                start_sql = None if start is None else ['VALUE', start.value]
-                stop_sql = None if stop is None else ['VALUE', stop.value]
-
+            start_sql = monad._index(index.start, from_one, plus_one=True)
+            stop_sql = monad._index(index.stop, from_one, plus_one=False)
             sql = ['ARRAY_SLICE', expr_sql, start_sql, stop_sql]
             return ExprMonad.new(monad.type, sql)
 
@@ -2163,19 +2145,19 @@ class ObjectIterMonad(ObjectMixin, Monad):
 class AttrMonad(Monad):
     @staticmethod
     def new(parent, attr, *args, **kwargs):
-        type = normalize_type(attr.py_type)
-        if type in numeric_types: cls = NumericAttrMonad
-        elif type is unicode: cls = StringAttrMonad
-        elif type is date: cls = DateAttrMonad
-        elif type is time: cls = TimeAttrMonad
-        elif type is timedelta: cls = TimedeltaAttrMonad
-        elif type is datetime: cls = DatetimeAttrMonad
-        elif type is buffer: cls = BufferAttrMonad
-        elif type is UUID: cls = UuidAttrMonad
-        elif type is Json: cls = JsonAttrMonad
-        elif isinstance(type, EntityMeta): cls = ObjectAttrMonad
-        elif isinstance(type, Array): cls = ArrayAttrMonad
-        else: throw(NotImplementedError, type)  # pragma: no cover
+        t = normalize_type(attr.py_type)
+        if t in numeric_types: cls = NumericAttrMonad
+        elif t is unicode: cls = StringAttrMonad
+        elif t is date: cls = DateAttrMonad
+        elif t is time: cls = TimeAttrMonad
+        elif t is timedelta: cls = TimedeltaAttrMonad
+        elif t is datetime: cls = DatetimeAttrMonad
+        elif t is buffer: cls = BufferAttrMonad
+        elif t is UUID: cls = UuidAttrMonad
+        elif t is Json: cls = JsonAttrMonad
+        elif isinstance(t, EntityMeta): cls = ObjectAttrMonad
+        elif isinstance(t, type) and issubclass(t, Array): cls = ArrayAttrMonad
+        else: throw(NotImplementedError, t)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
         if cls is AttrMonad: assert False, 'Abstract class'  # pragma: no cover
@@ -2232,33 +2214,33 @@ class ArrayAttrMonad(ArrayMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
-    def new(type, paramkey):
-        type = normalize_type(type)
-        if type in numeric_types: cls = NumericParamMonad
-        elif type is unicode: cls = StringParamMonad
-        elif type is date: cls = DateParamMonad
-        elif type is time: cls = TimeParamMonad
-        elif type is timedelta: cls = TimedeltaParamMonad
-        elif type is datetime: cls = DatetimeParamMonad
-        elif type is buffer: cls = BufferParamMonad
-        elif type is UUID: cls = UuidParamMonad
-        elif type is Json: cls = JsonParamMonad
-        elif type is Array: cls = ArrayParamMonad
-        elif isinstance(type, EntityMeta): cls = ObjectParamMonad
-        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type,))
-        result = cls(type, paramkey)
+    def new(t, paramkey):
+        t = normalize_type(t)
+        if t in numeric_types: cls = NumericParamMonad
+        elif t is unicode: cls = StringParamMonad
+        elif t is date: cls = DateParamMonad
+        elif t is time: cls = TimeParamMonad
+        elif t is timedelta: cls = TimedeltaParamMonad
+        elif t is datetime: cls = DatetimeParamMonad
+        elif t is buffer: cls = BufferParamMonad
+        elif t is UUID: cls = UuidParamMonad
+        elif t is Json: cls = JsonParamMonad
+        elif isinstance(t, type) and issubclass(t, Array): cls = ArrayParamMonad
+        elif isinstance(t, EntityMeta): cls = ObjectParamMonad
+        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (t,))
+        result = cls(t, paramkey)
         result.aggregated = False
         return result
     def __new__(cls, *args):
         if cls is ParamMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
-    def __init__(monad, type, paramkey):
-        type = normalize_type(type)
-        Monad.__init__(monad, type, nullable=False)
+    def __init__(monad, t, paramkey):
+        t = normalize_type(t)
+        Monad.__init__(monad, t, nullable=False)
         monad.paramkey = paramkey
-        if not isinstance(type, EntityMeta):
+        if not isinstance(t, EntityMeta):
             provider = monad.translator.database.provider
-            monad.converter = provider.get_converter_by_py_type(type)
+            monad.converter = provider.get_converter_by_py_type(t)
         else: monad.converter = None
     def getsql(monad, sqlquery=None):
         return [ [ 'PARAM', monad.paramkey, monad.converter ] ]
@@ -2294,18 +2276,18 @@ class JsonParamMonad(JsonMixin, ParamMonad):
 
 class ExprMonad(Monad):
     @staticmethod
-    def new(type, sql, nullable=True):
-        if type in numeric_types: cls = NumericExprMonad
-        elif type is unicode: cls = StringExprMonad
-        elif type is date: cls = DateExprMonad
-        elif type is time: cls = TimeExprMonad
-        elif type is timedelta: cls = TimedeltaExprMonad
-        elif type is datetime: cls = DatetimeExprMonad
-        elif type is Json: cls = JsonExprMonad
-        elif isinstance(type, EntityMeta): cls = ObjectExprMonad
-        elif isinstance(type, Array): cls = ArrayExprMonad
-        else: throw(NotImplementedError, type)  # pragma: no cover
-        return cls(type, sql, nullable=nullable)
+    def new(t, sql, nullable=True):
+        if t in numeric_types: cls = NumericExprMonad
+        elif t is unicode: cls = StringExprMonad
+        elif t is date: cls = DateExprMonad
+        elif t is time: cls = TimeExprMonad
+        elif t is timedelta: cls = TimedeltaExprMonad
+        elif t is datetime: cls = DatetimeExprMonad
+        elif t is Json: cls = JsonExprMonad
+        elif isinstance(t, EntityMeta): cls = ObjectExprMonad
+        elif isinstance(t, type) and issubclass(t, Array): cls = ArrayExprMonad
+        else: throw(NotImplementedError, t)  # pragma: no cover
+        return cls(t, sql, nullable=nullable)
     def __new__(cls, *args, **kwargs):
         if cls is ExprMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
