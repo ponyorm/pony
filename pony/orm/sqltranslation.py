@@ -238,14 +238,14 @@ class SQLTranslator(ASTTranslator):
         if parent_translator is None:
             translator.root_translator = translator
             translator.database = None
-            translator.sqlquery = SqlQuery(left_join=left_join)
+            translator.sqlquery = SqlQuery(translator, left_join=left_join)
             assert code_key is not None and filter_num is not None
             translator.code_key = translator.original_code_key = code_key
             translator.filter_num = translator.original_filter_num = filter_num
         else:
             translator.root_translator = parent_translator.root_translator
             translator.database = parent_translator.database
-            translator.sqlquery = SqlQuery(parent_translator.sqlquery, left_join=left_join)
+            translator.sqlquery = SqlQuery(translator, parent_translator.sqlquery, left_join=left_join)
             assert code_key is None and filter_num is None
             translator.code_key = parent_translator.code_key
             translator.filter_num = parent_translator.filter_num
@@ -1180,7 +1180,8 @@ def coerce_monads(m1, m2, for_comparison=False):
 max_alias_length = 30
 
 class SqlQuery(object):
-    def __init__(sqlquery, parent_sqlquery=None, left_join=False):
+    def __init__(sqlquery, translator, parent_sqlquery=None, left_join=False):
+        sqlquery.translator = translator
         sqlquery.parent_sqlquery = parent_sqlquery
         sqlquery.left_join = left_join
         sqlquery.from_ast = [ 'LEFT_JOIN' if left_join else 'FROM' ]
@@ -1382,7 +1383,12 @@ class JoinedTableRef(object):
             discr_criteria = entity._construct_discriminator_criteria_(alias)
             assert discr_criteria is not None
             join_cond.append(discr_criteria)
-        sqlquery.join_table(parent_alias, alias, entity._table_, join_cond)
+
+        translator = tableref.sqlquery.translator.root_translator
+        if translator.optimize == tableref.name_path and translator.from_optimized and tableref.sqlquery is translator.sqlquery:
+            pass
+        else:
+            sqlquery.join_table(parent_alias, alias, entity._table_, join_cond)
         tableref.alias = alias
         tableref.pk_columns = pk_columns
         tableref.optimized = False
@@ -2937,7 +2943,7 @@ class AttrSetMonad(SetMixin, Monad):
             expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in izip(expr_list, item.getsql()) ])
             return BoolExprMonad(expr_ast, nullable=False)
         else:
-            sqlquery = SqlQuery(translator.sqlquery)
+            sqlquery = SqlQuery(translator, translator.sqlquery)
             tableref = monad.make_tableref(sqlquery)
             attr = monad.attr
             alias, columns = tableref.make_join(pk_only=attr.reverse)
@@ -3190,7 +3196,7 @@ class AttrSetMonad(SetMixin, Monad):
         attr = monad.attr
         translator = monad.translator
         if sqlquery is None:
-            sqlquery = SqlQuery(translator.sqlquery)
+            sqlquery = SqlQuery(translator, translator.sqlquery)
         monad.make_tableref(sqlquery)
         sqlquery.expr_list = monad.make_expr_list()
         if not attr.reverse and not attr.is_required:
@@ -3230,7 +3236,7 @@ class NumericSetExprMonad(SetMixin, Monad):
     def aggregate(monad, func_name, distinct=None, sep=None):
         distinct = distinct_from_monad(distinct, default=monad.forced_distinct and func_name in ('SUM', 'AVG'))
         translator = monad.translator
-        sqlquery = SqlQuery(translator.sqlquery)
+        sqlquery = SqlQuery(translator, translator.sqlquery)
         expr = monad.getsql(sqlquery)[0]
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         outer_cond = sqlquery.from_ast[1].pop()
