@@ -471,7 +471,11 @@ class OraProvider(DBAPIProvider):
                 arguments['new_id'] = var
                 if arguments is None: cursor.execute(sql)
                 else: cursor.execute(sql, arguments)
-                return var.getvalue()
+                value = var.getvalue()
+                if isinstance(value, list):
+                    assert len(value) == 1
+                    value = value[0]
+                return value
             if arguments is None: cursor.execute(sql)
             else: cursor.execute(sql, arguments)
 
