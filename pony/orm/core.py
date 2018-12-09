@@ -48,7 +48,7 @@ __all__ = [
     'TransactionError', 'ConnectionClosedError', 'TransactionIntegrityError', 'IsolationError',
     'CommitException', 'RollbackException', 'UnrepeatableReadError', 'OptimisticCheckError',
     'UnresolvableCyclicDependency', 'UnexpectedError', 'DatabaseSessionIsOver',
-    'DatabaseContainsIncorrectValue', 'DatabaseContainsIncorrectEmptyValue',
+    'PonyRuntimeWarning', 'DatabaseContainsIncorrectValue', 'DatabaseContainsIncorrectEmptyValue',
     'TranslationError', 'ExprEvalError', 'PermissionError',
 
     'Database', 'sql_debug', 'set_sql_debug', 'sql_debugging', 'show',
@@ -221,7 +221,10 @@ class UseAnotherTranslator(PonyInternalException):
         Exception.__init__(self, 'This exception should be catched internally by PonyORM')
         self.translator = translator
 
-class DatabaseContainsIncorrectValue(RuntimeWarning):
+class PonyRuntimeWarning(RuntimeWarning):
+    pass
+
+class DatabaseContainsIncorrectValue(PonyRuntimeWarning):
     pass
 
 class DatabaseContainsIncorrectEmptyValue(DatabaseContainsIncorrectValue):
@@ -498,11 +501,24 @@ class DBSessionContextManager(object):
             local.user_roles_cache.clear()
     def _wrap_function(db_session, func):
         def new_func(func, *args, **kwargs):
-            if db_session.ddl and local.db_context_counter:
-                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
-                throw(TransactionError, '%s cannot be called inside of db_session' % func)
-            if db_session.sql_debug is not None:
+            if local.db_context_counter:
+                if db_session.ddl:
+                    fname = func.__name__ + '()' if isinstance(func, types.FunctionType) else func
+                    throw(TransactionError, '@db_session-decorated %s function with `ddl` option '
+                                            'cannot be called inside of another db_session' % fname)
+                if db_session.retry:
+                    fname = func.__name__ + '()' if isinstance(func, types.FunctionType) else func
+                    message = '@db_session decorator with `retry=%d` option is ignored for %s function ' \
+                              'because it is called inside another db_session' % (db_session.retry, fname)
+                    warnings.warn(message, PonyRuntimeWarning, stacklevel=3)
+                if db_session.sql_debug is None:
+                    return func(*args, **kwargs)
                 local.push_debug_state(db_session.sql_debug, db_session.show_values)
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    local.pop_debug_state()
+
             exc = tb = None
             try:
                 for i in xrange(db_session.retry+1):
@@ -520,13 +536,13 @@ class DBSessionContextManager(object):
                         else:
                             assert exc is not None  # exc can be None in Python 2.6
                             do_retry = retry_exceptions(exc)
-                        if not do_retry: raise
-                    finally: db_session.__exit__(exc_type, exc, tb)
+                        if not do_retry:
+                            raise
+                    finally:
+                        db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
             finally:
                 del exc, tb
-                if db_session.sql_debug is not None:
-                    local.pop_debug_state()
         return decorator(new_func, func)
     def _wrap_coroutine_or_generator_function(db_session, gen_func):
         for option in ('ddl', 'retry', 'serializable'):
