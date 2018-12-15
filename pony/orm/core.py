@@ -32,7 +32,7 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
      get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce, HashableDict, deref_flask_local_proxy
+     between, concat, coalesce, HashableDict, deref_proxy
 
 __all__ = [
     'pony',
@@ -55,7 +55,7 @@ __all__ = [
 
     'PrimaryKey', 'Required', 'Optional', 'Set', 'Discriminator',
     'composite_key', 'composite_index',
-    'flush', 'commit', 'rollback', 'db_session', 'with_transaction',
+    'flush', 'commit', 'rollback', 'db_session', 'with_transaction', 'make_proxy',
 
     'LongStr', 'LongUnicode', 'Json', 'IntArray', 'StrArray', 'FloatArray',
 
@@ -2144,7 +2144,7 @@ class Attribute(object):
     def __lt__(attr, other):
         return attr.id < other.id
     def validate(attr, val, obj=None, entity=None, from_db=False):
-        val = deref_flask_local_proxy(val)
+        val = deref_proxy(val)
         if val is None:
             if not attr.nullable and not from_db and not attr.is_required:
                 # for required attribute the exception will be thrown later with another message
@@ -4546,6 +4546,64 @@ def unpickle_entity(d):
 
 def safe_repr(obj):
     return Entity.__repr__(obj)
+
+def make_proxy(obj):
+    proxy = EntityProxy(obj)
+    return proxy
+
+class EntityProxy(object):
+    def __init__(self, obj):
+        entity = obj.__class__
+        object.__setattr__(self, '_entity_', entity)
+        pkval = obj.get_pk()
+        if pkval is None:
+            cache = obj._session_cache_
+            if obj._status_ in del_statuses or cache is None or not cache.is_alive:
+                throw(ValueError, 'Cannot make a proxy for %s object: primary key is not specified' % entity.__name__)
+            flush()
+            pkval = obj.get_pk()
+            assert pkval is not None
+        object.__setattr__(self, '_obj_pk_', pkval)
+
+    def __repr__(self):
+        entity = self._entity_
+        pkval = self._obj_pk_
+        pkrepr = ','.join(repr(item) for item in pkval) if isinstance(pkval, tuple) else repr(pkval)
+        return '<EntityProxy(%s[%s])>' % (entity.__name__, pkrepr)
+
+    def _get_object(self):
+        entity = self._entity_
+        pkval = self._obj_pk_
+        cache = entity._database_._get_cache()
+        attrs = entity._pk_attrs_
+        if attrs in cache.indexes and pkval in cache.indexes[attrs]:
+            obj = cache.indexes[attrs][pkval]
+        else:
+            obj = entity[pkval]
+        return obj
+
+    def __getattr__(self, name):
+        obj = self._get_object()
+        return getattr(obj, name)
+
+    def __setattr__(self, name, value):
+        obj = self._get_object()
+        setattr(obj, name, value)
+
+    def __eq__(self, other):
+        entity = self._entity_
+        pkval = self._obj_pk_
+        if isinstance(other, EntityProxy):
+            entity2 = other._entity_
+            pkval2 = other._obj_pk_
+            return entity == entity2 and pkval == pkval2
+        elif isinstance(other, entity):
+            return pkval == other._pkval_
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class Entity(with_metaclass(EntityMeta)):
     __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'

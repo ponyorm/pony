@@ -7,7 +7,7 @@ from datetime import date, time, datetime, timedelta
 from functools import wraps, WRAPPER_ASSIGNMENTS
 from uuid import UUID
 
-from pony.utils import throw, parse_expr, deref_flask_local_proxy
+from pony.utils import throw, parse_expr, deref_proxy
 
 NoneType = type(None)
 
@@ -144,7 +144,7 @@ class QueryType(object):
 
 
 def normalize(value):
-    value = deref_flask_local_proxy(value)
+    value = deref_proxy(value)
     t = type(value)
     if t is tuple:
         item_types, item_values = [], []
