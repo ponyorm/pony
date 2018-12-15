@@ -791,16 +791,27 @@ class Database(object):
         dblocal = database._dblocal
         dblocal.last_sql = sql
         stats = dblocal.stats
+        query_end_time = time()
+        duration = query_end_time - query_start_time
+
         stat = stats.get(sql)
-        if stat is not None: stat.query_executed(query_start_time)
-        else: stats[sql] = QueryStat(sql, query_start_time)
+        if stat is not None:
+            stat.query_executed(duration)
+        else:
+            stats[sql] = QueryStat(sql, duration)
+
+        total_stat = stats.get(None)
+        if total_stat is not None:
+            total_stat.query_executed(duration)
+        else:
+            stats[None] = QueryStat(None, duration)
     def merge_local_stats(database):
         setdefault = database._global_stats.setdefault
         with database._global_stats_lock:
             for sql, stat in iteritems(database._dblocal.stats):
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
-        database._dblocal.stats.clear()
+        database._dblocal.stats = {None: QueryStat(None)}
     @property
     def global_stats(database):
         with database._global_stats_lock:
@@ -1659,14 +1670,12 @@ def obj_labels_getter(cls=None):
 
 class DbLocal(localbase):
     def __init__(dblocal):
-        dblocal.stats = {}
+        dblocal.stats = {None: QueryStat(None)}
         dblocal.last_sql = None
 
 class QueryStat(object):
-    def __init__(stat, sql, query_start_time=None):
-        if query_start_time is not None:
-            query_end_time = time()
-            duration = query_end_time - query_start_time
+    def __init__(stat, sql, duration=None):
+        if duration is not None:
             stat.min_time = stat.max_time = stat.sum_time = duration
             stat.db_count = 1
             stat.cache_count = 0
@@ -1679,9 +1688,7 @@ class QueryStat(object):
         result = object.__new__(QueryStat)
         result.__dict__.update(stat.__dict__)
         return result
-    def query_executed(stat, query_start_time):
-        query_end_time = time()
-        duration = query_end_time - query_start_time
+    def query_executed(stat, duration):
         if stat.db_count:
             stat.min_time = builtins.min(stat.min_time, duration)
             stat.max_time = builtins.max(stat.max_time, duration)

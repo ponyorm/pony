@@ -120,7 +120,7 @@ LIMIT 1''')
             for g in q: # 1 query
                 for s in g.students:  # 2 query
                     b = s.biography  # 5 queries
-            query_count = sum(stat.db_count for stat in db.local_stats.values())
+            query_count = db.local_stats[None].db_count
             self.assertEqual(query_count, 8)
 
     def test_14(self):
@@ -130,7 +130,7 @@ LIMIT 1''')
             for g in q:   # 1 query
                 for s in g.students:  # 1 query
                     b = s.biography  # 5 queries
-            query_count = sum(stat.db_count for stat in db.local_stats.values())
+            query_count = db.local_stats[None].db_count
             self.assertEqual(query_count, 7)
 
     def test_15(self):
@@ -143,7 +143,7 @@ LIMIT 1''')
             for g in q:  # 1 query
                 for s in g.students:  # 1 query
                     b = s.biography  # 0 queries
-            query_count = sum(stat.db_count for stat in db.local_stats.values())
+            query_count = db.local_stats[None].db_count
             self.assertEqual(query_count, 2)
 
     def test_16(self):
@@ -153,7 +153,7 @@ LIMIT 1''')
             for c in q:  # 1 query
                 for s in c.students:  # 2 queries (as it is many-to-many relationship)
                     b = s.biography  # 0 queries
-            query_count = sum(stat.db_count for stat in db.local_stats.values())
+            query_count = db.local_stats[None].db_count
             self.assertEqual(query_count, 3)
 
     def test_17(self):
@@ -164,7 +164,7 @@ LIMIT 1''')
                 for s in c.students:  # 2 queries (as it is many-to-many relationship)
                     m = s.group.major  # 1 query
                     b = s.biography  # 0 queries
-            query_count = sum(stat.db_count for stat in db.local_stats.values())
+            query_count = db.local_stats[None].db_count
             self.assertEqual(query_count, 4)
 
 
