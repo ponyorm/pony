@@ -32,7 +32,7 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
      get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce, HashableDict
+     between, concat, coalesce, HashableDict, deref_flask_local_proxy
 
 __all__ = [
     'pony',
@@ -2144,6 +2144,7 @@ class Attribute(object):
     def __lt__(attr, other):
         return attr.id < other.id
     def validate(attr, val, obj=None, entity=None, from_db=False):
+        val = deref_flask_local_proxy(val)
         if val is None:
             if not attr.nullable and not from_db and not attr.is_required:
                 # for required attribute the exception will be thrown later with another message

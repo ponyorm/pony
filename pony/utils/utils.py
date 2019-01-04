@@ -590,3 +590,9 @@ class HashableDict(dict):
     popitem = _hashable_wrap(dict.popitem)
     setdefault = _hashable_wrap(dict.setdefault)
     update = _hashable_wrap(dict.update)
+
+def deref_flask_local_proxy(value):
+    t = type(value)
+    if t.__name__ == 'LocalProxy' and '_get_current_object' in t.__dict__:
+        value = value._get_current_object()
+    return value
