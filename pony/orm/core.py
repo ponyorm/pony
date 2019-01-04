@@ -3572,7 +3572,7 @@ class SetInstance(object):
     def load(wrapper):
         wrapper._attr_.load(wrapper._obj_)
     @cut_traceback
-    def select(wrapper, *args):
+    def select(wrapper, *args, **kwargs):
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
@@ -3581,8 +3581,10 @@ class SetInstance(object):
         s = 'lambda item: JOIN(obj in item.%s)' if reverse.is_collection else 'lambda item: item.%s == obj'
         query = query.filter(s % reverse.name, {'obj' : obj, 'JOIN': JOIN})
         if args:
-            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=cut_traceback_depth+1)
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=cut_traceback_depth+1)
             query = query.filter(func, globals, locals)
+        if kwargs:
+            query = query._apply_kwargs(kwargs)
         return query
     filter = select
     def limit(wrapper, limit=None, offset=None):
@@ -4020,8 +4022,12 @@ class EntityMeta(type):
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
-    def select(entity, *args):
-        return entity._query_from_args_(args, kwargs=None, frame_depth=cut_traceback_depth+1)
+    def select(entity, *args, **kwargs):
+        if args: query = entity._query_from_args_(args, kwargs, frame_depth=cut_traceback_depth+1)
+        else:
+            query = entity._select_all()
+            if kwargs: query = query._apply_kwargs(kwargs)
+        return query
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=cut_traceback_depth+1)
@@ -4363,7 +4369,7 @@ class EntityMeta(type):
     def _select_all(entity):
         return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
     def _query_from_args_(entity, args, kwargs, frame_depth):
-        if not args and not kwargs: return entity._select_all()
+        assert args
         func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth+1)
 
         if type(func) is types.FunctionType:

@@ -128,6 +128,34 @@ class TestQuery(unittest.TestCase):
     def test23(self):
         r = max(s.dob.year for s in Student)
         self.assertEqual(r, 2001)
+    def test_select_kwargs_1(self):
+        r = Student.select(scholarship=200)[:]
+        self.assertEqual(r, [Student[3]])
+    def test_select_kwargs_1a(self):
+        g = Group[1]
+        r = g.students.select(scholarship=200)[:]
+        self.assertEqual(r, [Student[3]])
+    def test_select_kwargs_2(self):
+        r = Student.select(scholarship=1000)[:]
+        self.assertEqual(r, [])
+    def test_select_kwargs_2a(self):
+        g = Group[1]
+        r = g.students.select(scholarship=1000)[:]
+        self.assertEqual(r, [])
+    def test_select_kwargs_3(self):
+        r = Student.select(group=Group[1])[:]
+        self.assertEqual(set(r), {Student[1], Student[2], Student[3]})
+    def test_select_kwargs_3a(self):
+        g = Group[1]
+        r = g.students.select(group=g)[:]
+        self.assertEqual(set(r), {Student[1], Student[2], Student[3]})
+    def test_select_kwargs_4(self):
+        r = Student.select(group=Group[1], scholarship=200)[:]
+        self.assertEqual(r, [Student[3]])
+    def test_select_kwargs_4a(self):
+        g = Group[1]
+        r = g.students.select(group=g, scholarship=200)[:]
+        self.assertEqual(r, [Student[3]])
     def test_first1(self):
         q = select(s for s in Student).order_by(Student.gpa)
         self.assertEqual(q.first(), Student[1])
