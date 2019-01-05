@@ -4587,6 +4587,7 @@ class Entity(with_metaclass(EntityMeta)):
         obj._save_pos_ = len(objects_to_save)
         objects_to_save.append(obj)
         cache.modified = True
+    @cut_traceback
     def get_pk(obj):
         pkval = obj._get_raw_pkval_()
         if len(pkval) == 1: return pkval[0]
