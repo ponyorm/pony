@@ -1835,17 +1835,16 @@ class SessionCache(object):
             provider.release(connection, cache)
         finally:
             db_session = cache.db_session or local.db_session
-            if db_session:
-                if db_session.strict:
-                    for obj in cache.objects:
-                        obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
-                    cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
-                else:
-                    for obj in cache.objects:
-                        obj._dbvals_ = obj._session_cache_ = None
-                        for attr, setdata in iteritems(obj._vals_):
-                            if attr.is_collection:
-                                if not setdata.is_fully_loaded: obj._vals_[attr] = None
+            if db_session and db_session.strict:
+                for obj in cache.objects:
+                    obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
+                cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
+            else:
+                for obj in cache.objects:
+                    obj._dbvals_ = obj._session_cache_ = None
+                    for attr, setdata in iteritems(obj._vals_):
+                        if attr.is_collection:
+                            if not setdata.is_fully_loaded: obj._vals_[attr] = None
 
             cache.objects = cache.objects_to_save = cache.saved_objects = cache.query_results \
                 = cache.indexes = cache.seeds = cache.for_update = cache.max_id_cache \
