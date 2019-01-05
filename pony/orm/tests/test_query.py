@@ -43,10 +43,10 @@ class TestQuery(unittest.TestCase):
     def test2(self):
         X = [1, 2, 3]
         select('x for x in X')
-    @raises_exception(TypeError, "Query can only iterate over entity or another query (not a list of objects)")
     def test3(self):
         g = Group[1]
-        select(s for s in g.students)
+        students = select(s for s in g.students)
+        self.assertEqual(set(g.students), set(students))
     @raises_exception(ExprEvalError, "`a` raises NameError: global name 'a' is not defined" if PYPY2 else
                                      "`a` raises NameError: name 'a' is not defined")
     def test4(self):

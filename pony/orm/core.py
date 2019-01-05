@@ -3218,6 +3218,35 @@ def unpickle_setwrapper(obj, attrname, items):
     setdata.count = len(setdata)
     return wrapper
 
+
+class SetIterator(object):
+    def __init__(self, wrapper):
+        self._wrapper = wrapper
+        self._query = None
+        self._iter = None
+
+    def __iter__(self):
+         return self
+
+    def next(self):
+        if self._iter is None:
+            self._iter = iter(self._wrapper.copy())
+        return next(self._iter)
+
+    __next__ = next
+
+    def _get_query(self):
+        if self._query is None:
+            self._query = self._wrapper.select()
+        return self._query
+
+    def _get_type_(self):
+        return QueryType(self._get_query())
+
+    def _normalize_var(self, query_type):
+        return query_type, self._get_query()
+
+
 class SetInstance(object):
     __slots__ = '_obj_', '_attr_', '_attrnames_'
     _parent_ = None
@@ -3340,7 +3369,7 @@ class SetInstance(object):
         return setdata.count
     @cut_traceback
     def __iter__(wrapper):
-        return iter(wrapper.copy())
+        return SetIterator(wrapper)
     @cut_traceback
     def __eq__(wrapper, other):
         if isinstance(other, SetInstance):
@@ -5486,8 +5515,8 @@ def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
         if isinstance(value, QueryResult) and value._items:
             value = tuple(value._items)
 
-        if isinstance(value, (Query, QueryResult)):
-            query = value._query if isinstance(value, QueryResult) else value
+        if isinstance(value, (Query, QueryResult, SetIterator)):
+            query = value._get_query()
             vars.update(query._vars)
             vartypes.update(query._translator.vartypes)
 
@@ -5529,6 +5558,8 @@ class Query(object):
             prev_query = origin._query
         elif isinstance(origin, QueryResultIterator):
             prev_query = origin._query_result._query
+        elif isinstance(origin, SetIterator):
+            prev_query = origin._query
         else:
             prev_query = None
             if not isinstance(origin, EntityMeta):
@@ -5583,6 +5614,8 @@ class Query(object):
         query._distinct = None
         query._prefetch = False
         query._prefetch_context = PrefetchContext(query._database)
+    def _get_query(query):
+        return query
     def _get_type_(query):
         return QueryType(query)
     def _normalize_var(query, query_type):
@@ -6140,6 +6173,8 @@ class QueryResult(object):
         self._items = None if lazy else self._query._actual_fetch(limit, offset)
         self._expr_type = translator.expr_type
         self._col_names = translator.col_names
+    def _get_query(self):
+        return self._query
     def _get_type_(self):
         if self._items is None:
             return QueryType(self._query, self._limit, self._offset)
