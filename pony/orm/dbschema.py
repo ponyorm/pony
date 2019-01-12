@@ -186,12 +186,12 @@ class Table(DBObject):
         if index and index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
             return index
         return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
-    def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns, index_name=None):
+    def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns, index_name=None, on_delete=False):
         if fk_name is None:
             provider = table.schema.provider
             child_column_names = tuple(column.name for column in child_columns)
             fk_name = provider.get_default_fk_name(table.name, parent_table.name, child_column_names)
-        return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns, index_name)
+        return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns, index_name, on_delete)
 
 class Column(object):
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
@@ -239,6 +239,8 @@ class Column(object):
                 append(case('REFERENCES'))
                 append(quote_name(parent_table.name))
                 append(schema.column_list(foreign_key.parent_columns))
+                if foreign_key.on_delete:
+                    append('ON DELETE %s' % foreign_key.on_delete)
         return ' '.join(result)
 
 class Constraint(DBObject):
@@ -322,7 +324,7 @@ class DBIndex(Constraint):
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns, index_name):
+    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns, index_name, on_delete):
         schema = parent_table.schema
         if schema is not child_table.schema: throw(DBSchemaError,
             'Parent and child tables of foreign_key cannot belong to different schemata')
@@ -348,6 +350,7 @@ class ForeignKey(Constraint):
         foreign_key.parent_columns = parent_columns
         foreign_key.child_table = child_table
         foreign_key.child_columns = child_columns
+        foreign_key.on_delete = on_delete
 
         if index_name is not False:
             child_columns_len = len(child_columns)
@@ -379,6 +382,8 @@ class ForeignKey(Constraint):
         append(case('REFERENCES'))
         append(quote_name(foreign_key.parent_table.name))
         append(schema.column_list(foreign_key.parent_columns))
+        if foreign_key.on_delete:
+            append(case('ON DELETE %s' % foreign_key.on_delete))
         return ' '.join(cmd)
 
 DBSchema.table_class = Table

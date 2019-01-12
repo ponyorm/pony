@@ -1111,7 +1111,13 @@ class Database(object):
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index)
+                    if attr.reverse.cascade_delete:
+                        on_delete = 'CASCADE'
+                    elif isinstance(attr, Optional) and attr.nullable:
+                        on_delete = 'SET NULL'
+                    else:
+                        on_delete = None
+                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index, on_delete)
                 elif attr.index and attr.columns:
                     if isinstance(attr.py_type, Array) and provider.dialect != 'PostgreSQL':
                         pass  # GIN indexes are supported only in PostgreSQL
