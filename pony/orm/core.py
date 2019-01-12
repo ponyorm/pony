@@ -2493,6 +2493,8 @@ class Attribute(object):
         options = []
         if attr.args: options.append(', '.join(imap(str, attr.args)))
         if attr.auto: options.append('auto=True')
+        for k, v in sorted(attr.kwargs.items()):
+            options.append('%s=%r' % (k, v))
         if not isinstance(attr, PrimaryKey) and attr.is_unique: options.append('unique=True')
         if attr.default is not None: options.append('default=%r' % attr.default)
         if not options: options = ''
