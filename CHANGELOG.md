@@ -1,3 +1,49 @@
+# PonyORM release 0.7.7 (2019-01-17)
+
+## Major features
+
+* Array type support for PostgreSQL and SQLite
+* isinstance() support in queries
+* Support of queries based on collections: select(x for x in y.items)
+
+## Other features
+
+* Support of Entity.select(**kwargs)
+* Support of SKIP LOCKED option in 'SELECT ... FOR UPDATE'
+* New function make_proxy(obj) to make cros-db_session proxy objects
+* Specify ON DELETE CASCADE/SET NULL in foreign keys
+* Support of LIMIT in `SELECT FROM (SELECT ...)` type of queries
+* Support for negative JSON array indexes in SQLite
+
+## Improvements
+
+* Improved query prefetching: use fewer number of SQL queries
+* Memory optimization: deduplication of values recieved from the database in the same session
+* increase DBAPIProvider.max_params_count value
+
+## Bugfixes
+
+* #405: breaking change with cx_Oracle 7.0: DML RETURNING now returns a list
+* #380: db_session should work with async functions
+* #385: test fails with python3.6
+* #386: release unlocked lock error in SQLite
+* #390: TypeError: writable buffers are not hashable
+* #398: add auto coversion of numpy numeric types
+* #404: GAE local run detection
+* Fix Flask compatibility: add support of LocalProxy object
+* db_session(sql_debug=True) should log SQL commands also during db_session.__exit__()
+* Fix duplicated table join in FROM clause
+* Fix accessing global variables from hybrid methods and properties
+* Fix m2m collection loading bug
+* Fix composite index bug: stackoverflow.com/questions/53147694
+* Fix MyEntity[obj.get_pk()] if pk is composite
+* MySQL group_concat_max_len option set to max of 32bit platforms to avoid truncation
+* Show all attribute options in show(Entity) call
+* For nested db_session retry option should be ignored
+* Fix py_json_unwrap
+* Other minor fixes
+
+
 # Pony ORM Release 0.7.6 (2018-08-10)
 
 ## Bugfixes
