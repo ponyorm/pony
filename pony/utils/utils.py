@@ -432,3 +432,14 @@ class HashableDict(dict):
     popitem = _hashable_wrap(dict.popitem)
     setdefault = _hashable_wrap(dict.setdefault)
     update = _hashable_wrap(dict.update)
+
+def deref_proxy(value):
+    t = type(value)
+    if t.__name__ == 'LocalProxy' and '_get_current_object' in t.__dict__:
+        # Flask local proxy
+        value = value._get_current_object()
+    elif t.__name__ == 'EntityProxy':
+        # Pony proxy
+        value = value._get_object()
+
+    return value

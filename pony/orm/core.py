@@ -32,7 +32,7 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
      get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce, HashableDict
+     between, concat, coalesce, HashableDict, deref_proxy
 
 __all__ = [
     'pony',
@@ -55,7 +55,7 @@ __all__ = [
 
     'PrimaryKey', 'Required', 'Optional', 'Set', 'Discriminator',
     'composite_key', 'composite_index',
-    'flush', 'commit', 'rollback', 'db_session', 'with_transaction',
+    'flush', 'commit', 'rollback', 'db_session', 'with_transaction', 'make_proxy',
 
     'LongStr', 'LongUnicode', 'Json', 'IntArray', 'StrArray', 'FloatArray',
 
@@ -791,16 +791,27 @@ class Database(object):
         dblocal = database._dblocal
         dblocal.last_sql = sql
         stats = dblocal.stats
+        query_end_time = time()
+        duration = query_end_time - query_start_time
+
         stat = stats.get(sql)
-        if stat is not None: stat.query_executed(query_start_time)
-        else: stats[sql] = QueryStat(sql, query_start_time)
+        if stat is not None:
+            stat.query_executed(duration)
+        else:
+            stats[sql] = QueryStat(sql, duration)
+
+        total_stat = stats.get(None)
+        if total_stat is not None:
+            total_stat.query_executed(duration)
+        else:
+            stats[None] = QueryStat(None, duration)
     def merge_local_stats(database):
         setdefault = database._global_stats.setdefault
         with database._global_stats_lock:
             for sql, stat in iteritems(database._dblocal.stats):
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
-        database._dblocal.stats.clear()
+        database._dblocal.stats = {None: QueryStat(None)}
     @property
     def global_stats(database):
         with database._global_stats_lock:
@@ -1100,7 +1111,13 @@ class Database(object):
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index)
+                    if attr.reverse.cascade_delete:
+                        on_delete = 'CASCADE'
+                    elif isinstance(attr, Optional) and attr.nullable:
+                        on_delete = 'SET NULL'
+                    else:
+                        on_delete = None
+                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index, on_delete)
                 elif attr.index and attr.columns:
                     if isinstance(attr.py_type, Array) and provider.dialect != 'PostgreSQL':
                         pass  # GIN indexes are supported only in PostgreSQL
@@ -1659,14 +1676,12 @@ def obj_labels_getter(cls=None):
 
 class DbLocal(localbase):
     def __init__(dblocal):
-        dblocal.stats = {}
+        dblocal.stats = {None: QueryStat(None)}
         dblocal.last_sql = None
 
 class QueryStat(object):
-    def __init__(stat, sql, query_start_time=None):
-        if query_start_time is not None:
-            query_end_time = time()
-            duration = query_end_time - query_start_time
+    def __init__(stat, sql, duration=None):
+        if duration is not None:
             stat.min_time = stat.max_time = stat.sum_time = duration
             stat.db_count = 1
             stat.cache_count = 0
@@ -1679,9 +1694,7 @@ class QueryStat(object):
         result = object.__new__(QueryStat)
         result.__dict__.update(stat.__dict__)
         return result
-    def query_executed(stat, query_start_time):
-        query_end_time = time()
-        duration = query_end_time - query_start_time
+    def query_executed(stat, duration):
         if stat.db_count:
             stat.min_time = builtins.min(stat.min_time, duration)
             stat.max_time = builtins.max(stat.max_time, duration)
@@ -1828,17 +1841,16 @@ class SessionCache(object):
             provider.release(connection, cache)
         finally:
             db_session = cache.db_session or local.db_session
-            if db_session:
-                if db_session.strict:
-                    for obj in cache.objects:
-                        obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
-                    cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
-                else:
-                    for obj in cache.objects:
-                        obj._dbvals_ = obj._session_cache_ = None
-                        for attr, setdata in iteritems(obj._vals_):
-                            if attr.is_collection:
-                                if not setdata.is_fully_loaded: obj._vals_[attr] = None
+            if db_session and db_session.strict:
+                for obj in cache.objects:
+                    obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
+                cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
+            else:
+                for obj in cache.objects:
+                    obj._dbvals_ = obj._session_cache_ = None
+                    for attr, setdata in iteritems(obj._vals_):
+                        if attr.is_collection:
+                            if not setdata.is_fully_loaded: obj._vals_[attr] = None
 
             cache.objects = cache.objects_to_save = cache.saved_objects = cache.query_results \
                 = cache.indexes = cache.seeds = cache.for_update = cache.max_id_cache \
@@ -2138,6 +2150,7 @@ class Attribute(object):
     def __lt__(attr, other):
         return attr.id < other.id
     def validate(attr, val, obj=None, entity=None, from_db=False):
+        val = deref_proxy(val)
         if val is None:
             if not attr.nullable and not from_db and not attr.is_required:
                 # for required attribute the exception will be thrown later with another message
@@ -2480,6 +2493,8 @@ class Attribute(object):
         options = []
         if attr.args: options.append(', '.join(imap(str, attr.args)))
         if attr.auto: options.append('auto=True')
+        for k, v in sorted(attr.kwargs.items()):
+            options.append('%s=%r' % (k, v))
         if not isinstance(attr, PrimaryKey) and attr.is_unique: options.append('unique=True')
         if attr.default is not None: options.append('default=%r' % attr.default)
         if not options: options = ''
@@ -3212,6 +3227,35 @@ def unpickle_setwrapper(obj, attrname, items):
     setdata.count = len(setdata)
     return wrapper
 
+
+class SetIterator(object):
+    def __init__(self, wrapper):
+        self._wrapper = wrapper
+        self._query = None
+        self._iter = None
+
+    def __iter__(self):
+         return self
+
+    def next(self):
+        if self._iter is None:
+            self._iter = iter(self._wrapper.copy())
+        return next(self._iter)
+
+    __next__ = next
+
+    def _get_query(self):
+        if self._query is None:
+            self._query = self._wrapper.select()
+        return self._query
+
+    def _get_type_(self):
+        return QueryType(self._get_query())
+
+    def _normalize_var(self, query_type):
+        return query_type, self._get_query()
+
+
 class SetInstance(object):
     __slots__ = '_obj_', '_attr_', '_attrnames_'
     _parent_ = None
@@ -3334,7 +3378,7 @@ class SetInstance(object):
         return setdata.count
     @cut_traceback
     def __iter__(wrapper):
-        return iter(wrapper.copy())
+        return SetIterator(wrapper)
     @cut_traceback
     def __eq__(wrapper, other):
         if isinstance(other, SetInstance):
@@ -4511,6 +4555,64 @@ def unpickle_entity(d):
 def safe_repr(obj):
     return Entity.__repr__(obj)
 
+def make_proxy(obj):
+    proxy = EntityProxy(obj)
+    return proxy
+
+class EntityProxy(object):
+    def __init__(self, obj):
+        entity = obj.__class__
+        object.__setattr__(self, '_entity_', entity)
+        pkval = obj.get_pk()
+        if pkval is None:
+            cache = obj._session_cache_
+            if obj._status_ in del_statuses or cache is None or not cache.is_alive:
+                throw(ValueError, 'Cannot make a proxy for %s object: primary key is not specified' % entity.__name__)
+            flush()
+            pkval = obj.get_pk()
+            assert pkval is not None
+        object.__setattr__(self, '_obj_pk_', pkval)
+
+    def __repr__(self):
+        entity = self._entity_
+        pkval = self._obj_pk_
+        pkrepr = ','.join(repr(item) for item in pkval) if isinstance(pkval, tuple) else repr(pkval)
+        return '<EntityProxy(%s[%s])>' % (entity.__name__, pkrepr)
+
+    def _get_object(self):
+        entity = self._entity_
+        pkval = self._obj_pk_
+        cache = entity._database_._get_cache()
+        attrs = entity._pk_attrs_
+        if attrs in cache.indexes and pkval in cache.indexes[attrs]:
+            obj = cache.indexes[attrs][pkval]
+        else:
+            obj = entity[pkval]
+        return obj
+
+    def __getattr__(self, name):
+        obj = self._get_object()
+        return getattr(obj, name)
+
+    def __setattr__(self, name, value):
+        obj = self._get_object()
+        setattr(obj, name, value)
+
+    def __eq__(self, other):
+        entity = self._entity_
+        pkval = self._obj_pk_
+        if isinstance(other, EntityProxy):
+            entity2 = other._entity_
+            pkval2 = other._obj_pk_
+            return entity == entity2 and pkval == pkval2
+        elif isinstance(other, entity):
+            return pkval == other._pkval_
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
 class Entity(with_metaclass(EntityMeta)):
     __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
@@ -4580,6 +4682,7 @@ class Entity(with_metaclass(EntityMeta)):
         obj._save_pos_ = len(objects_to_save)
         objects_to_save.append(obj)
         cache.modified = True
+    @cut_traceback
     def get_pk(obj):
         pkval = obj._get_raw_pkval_()
         if len(pkval) == 1: return pkval[0]
@@ -5479,8 +5582,8 @@ def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
         if isinstance(value, QueryResult) and value._items:
             value = tuple(value._items)
 
-        if isinstance(value, (Query, QueryResult)):
-            query = value._query if isinstance(value, QueryResult) else value
+        if isinstance(value, (Query, QueryResult, SetIterator)):
+            query = value._get_query()
             vars.update(query._vars)
             vartypes.update(query._translator.vartypes)
 
@@ -5522,6 +5625,8 @@ class Query(object):
             prev_query = origin._query
         elif isinstance(origin, QueryResultIterator):
             prev_query = origin._query_result._query
+        elif isinstance(origin, SetIterator):
+            prev_query = origin._query
         else:
             prev_query = None
             if not isinstance(origin, EntityMeta):
@@ -5576,6 +5681,8 @@ class Query(object):
         query._distinct = None
         query._prefetch = False
         query._prefetch_context = PrefetchContext(query._database)
+    def _get_query(query):
+        return query
     def _get_type_(query):
         return QueryType(query)
     def _normalize_var(query, query_type):
@@ -6133,6 +6240,8 @@ class QueryResult(object):
         self._items = None if lazy else self._query._actual_fetch(limit, offset)
         self._expr_type = translator.expr_type
         self._col_names = translator.col_names
+    def _get_query(self):
+        return self._query
     def _get_type_(self):
         if self._items is None:
             return QueryType(self._query, self._limit, self._offset)

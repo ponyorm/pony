@@ -7,7 +7,7 @@ from datetime import date, time, datetime, timedelta
 from functools import wraps, WRAPPER_ASSIGNMENTS
 from uuid import UUID
 
-from pony.utils import throw, parse_expr
+from pony.utils import throw, parse_expr, deref_proxy
 
 NoneType = type(None)
 
@@ -144,11 +144,8 @@ class QueryType(object):
 
 
 def normalize(value):
+    value = deref_proxy(value)
     t = type(value)
-    if t.__name__ == 'LocalProxy' and '_get_current_object' in t.__dict__:
-        value = value._get_current_object()
-        t = type(value)
-
     if t is tuple:
         item_types, item_values = [], []
         for item in value:

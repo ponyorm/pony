@@ -882,7 +882,7 @@ class SQLTranslator(ASTTranslator):
         translator.code_key = func_id
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
-        translator.vars = vars.copy() if vars is not None else None
+        translator.vars = vars
         translator.vartypes = translator.vartypes.copy()  # make HashableDict mutable again
         translator.vartypes.update(vartypes)
 

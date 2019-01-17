@@ -227,6 +227,7 @@ class MySQLProvider(DBAPIProvider):
             provider.max_time_precision = 6
         cursor.execute('select database()')
         provider.default_schema_name = cursor.fetchone()[0]
+        cursor.execute('set session group_concat_max_len = 4294967295')
 
     def should_reconnect(provider, exc):
         return isinstance(exc, mysql_module.OperationalError) and exc.args[0] == 2006
