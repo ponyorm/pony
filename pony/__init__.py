@@ -4,7 +4,7 @@ import os, sys, time, threading, random
 from os.path import dirname
 from itertools import count
 
-__version__ = '0.7.7'
+__version__ = '0.7.8-dev'
 
 uid = str(random.randint(1, 1000000))
 
