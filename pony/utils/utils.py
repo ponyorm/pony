@@ -443,3 +443,10 @@ def deref_proxy(value):
         value = value._get_object()
 
     return value
+
+def deduplicate(value, deduplication_cache):
+    t = type(value)
+    try:
+        return deduplication_cache.setdefault(t, t).setdefault(value, value)
+    except:
+        return value
