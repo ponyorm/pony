@@ -32,7 +32,7 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
      get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce, HashableDict, deref_proxy
+     between, concat, coalesce, HashableDict, deref_proxy, deduplicate
 
 __all__ = [
     'pony',
@@ -2206,8 +2206,7 @@ class Attribute(object):
             if len(offsets) > 1: throw(NotImplementedError)
             offset = offsets[0]
             dbval = attr.validate(row[offset], None, attr.entity, from_db=True)
-            try: dbval = dbvals_deduplication_cache.setdefault(dbval, dbval)
-            except: pass
+            dbval = deduplicate(dbval, dbvals_deduplication_cache)
         else:
             dbvals = [ row[offset] for offset in offsets ]
             if None in dbvals:
