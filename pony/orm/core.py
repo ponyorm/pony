@@ -5868,8 +5868,8 @@ class Query(object):
 
             objects_to_process = next_objects_to_process
     @cut_traceback
-    def show(query, width=None):
-        query._fetch().show(width)
+    def show(query, width=None, stream=None):
+        query._fetch().show(width, stream)
     @cut_traceback
     def get(query):
         objects = query[:2]
@@ -6305,7 +6305,13 @@ class QueryResult(object):
     def shuffle(self):
         shuffle(self._get_items())
     @cut_traceback
-    def show(self, width=None):
+    def show(self, width=None, stream=None):
+        if stream is None:
+            stream = sys.stdout
+        def writeln(s):
+            stream.write(s)
+            stream.write('\n')
+
         if self._items is None:
             self._items = self._query._actual_fetch(self._limit, self._offset)
 
@@ -6353,10 +6359,11 @@ class QueryResult(object):
             for col_num, max_len in remaining_columns.items():
                 width_dict[col_num] = base_len
 
-        print(strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(col_names))))
-        print(strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names)))))
+        writeln(strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(col_names))))
+        writeln(strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names)))))
         for row in rows:
-            print(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
+            writeln(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
+        stream.flush()
     def to_json(self, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return self._query._database.to_json(self, include, exclude, converter, with_schema, schema_hash)
 
