@@ -5843,7 +5843,7 @@ class Query(object):
                         collection_prefetch_dict[attr].add(obj)
                     else:
                         obj2 = attr.get(obj)
-                        if obj2 not in all_objects:
+                        if obj2 is not None and obj2 not in all_objects:
                             all_objects.add(obj2)
                             objects_to_prefetch.add(obj2)
 

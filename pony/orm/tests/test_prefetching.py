@@ -14,6 +14,7 @@ class Student(db.Entity):
     dob = Optional(date)
     group = Required('Group')
     courses = Set('Course')
+    mentor = Optional('Teacher')
     biography = Optional(LongStr)
 
 class Group(db.Entity):
@@ -25,6 +26,10 @@ class Course(db.Entity):
     name = Required(str, unique=True)
     students = Set(Student)
 
+class Teacher(db.Entity):
+    name = Required(str)
+    students = Set(Student)
+
 db.generate_mapping(create_tables=True)
 
 with db_session:
@@ -33,10 +38,12 @@ with db_session:
     c1 = Course(name='Math')
     c2 = Course(name='Physics')
     c3 = Course(name='Computer Science')
-    Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='S1 bio')
+    t1 = Teacher(name='T1')
+    t2 = Teacher(name='T2')
+    Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='S1 bio', mentor=t1)
     Student(id=2, name='S2', group=g1, gpa=4.2, scholarship=100, dob=date(2000, 1, 1), biography='S2 bio')
     Student(id=3, name='S3', group=g1, gpa=4.7, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
-    Student(id=4, name='S4', group=g2, gpa=3.2, biography='S4 bio', courses=[c1, c3])
+    Student(id=4, name='S4', group=g2, gpa=3.2, biography='S4 bio', courses=[c1, c3], mentor=t2)
     Student(id=5, name='S5', group=g2, gpa=4.5, biography='S5 bio', courses=[c1, c3])
 
 class TestPrefetching(unittest.TestCase):
@@ -108,7 +115,8 @@ class TestPrefetching(unittest.TestCase):
         with db_session:
             s1 = Student.select().prefetch(Student.biography).first()
         self.assertEqual(s1.biography, 'S1 bio')
-        self.assertEqual(db.last_sql, '''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."biography"
+        self.assertEqual(db.last_sql,
+'''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."mentor", "s"."biography"
 FROM "Student" "s"
 ORDER BY 1
 LIMIT 1''')
@@ -167,6 +175,35 @@ LIMIT 1''')
             query_count = db.local_stats[None].db_count
             self.assertEqual(query_count, 4)
 
+    def test_18(self):
+        db.merge_local_stats()
+        with db_session:
+            q = Group.select().prefetch(Group.students, Student.biography)
+            for g in q:  # 2 queries
+                for s in g.students:
+                    m = s.mentor  # 0 queries
+                    b = s.biography  # 0 queries
+            query_count = db.local_stats[None].db_count
+            self.assertEqual(query_count, 2)
+
+    def test_19(self):
+        db.merge_local_stats()
+        with db_session:
+            q = Group.select().prefetch(Group.students, Student.biography, Student.mentor)
+            mentors = set()
+            for g in q:  # 3 queries
+                for s in g.students:
+                    m = s.mentor  # 0 queries
+                    if m is not None:
+                        mentors.add(m)
+                    b = s.biography  # 0 queries
+            query_count = db.local_stats[None].db_count
+            self.assertEqual(query_count, 3)
+
+            for m in mentors:
+                n = m.name  # 0 queries
+            query_count = db.local_stats[None].db_count
+            self.assertEqual(query_count, 3)
 
 
 if __name__ == '__main__':
