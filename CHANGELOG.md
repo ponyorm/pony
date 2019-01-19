@@ -1,3 +1,11 @@
+# PonyORM release 0.7.8 (2019-01-19)
+
+## Bugfixes
+
+* #414: prefetching Optional relationships fails on 0.7.7
+* Fix a bug caused by incorrect deduplication of column values
+
+
 # PonyORM release 0.7.7 (2019-01-17)
 
 ## Major features
