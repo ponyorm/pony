@@ -142,7 +142,7 @@ class SQLTranslator(ASTTranslator):
         elif tt is tuple:
             params = []
             is_array = False
-            if translator.database.provider.array_converter_cls is not None:
+            if t and translator.database.provider.array_converter_cls is not None:
                 types = set(t)
                 if len(types) == 1 and unicode in types:
                     item_type = unicode

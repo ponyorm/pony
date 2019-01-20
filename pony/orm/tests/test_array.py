@@ -223,3 +223,28 @@ class Test(unittest.TestCase):
         self.assertTrue(['foo', 'bar'] in foo.array3)
         self.assertTrue(['bar', 'foo'] in foo.array3)
         self.assertTrue(['baz', 'bar'] not in foo.array3)
+
+    @db_session(sql_debug=True)
+    def test_36(self):
+        items = []
+        result = select(foo for foo in Foo if foo.id in items)[:]
+        self.assertEqual(result, [])
+
+    @db_session(sql_debug=True)
+    def test_37(self):
+        items = [1]
+        result = select(foo.id for foo in Foo if foo.id in items)[:]
+        self.assertEqual(result, [1])
+
+    @db_session(sql_debug=True)
+    def test_38(self):
+        f1 = Foo[1]
+        items = [f1]
+        result = select(foo for foo in Foo if foo in items)[:]
+        self.assertEqual(result, [f1])
+
+    @db_session(sql_debug=True)
+    def test_39(self):
+        items = []
+        result = select(foo for foo in Foo if foo in items)[:]
+        self.assertEqual(result, [])
