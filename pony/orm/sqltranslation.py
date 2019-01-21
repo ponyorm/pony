@@ -157,16 +157,15 @@ class SQLTranslator(ASTTranslator):
                     else:
                         is_array = True
 
+            for i, item_type in enumerate(t):
+                if item_type is NoneType:
+                    throw(TypeError, 'Expression `%s` should not contain None values' % node.src)
+                param = ParamMonad.new(item_type, (varkey, i, None))
+                params.append(param)
+            monad = ListMonad(params)
             if is_array:
                 array_type = array_types.get(item_type, None)
-                monad = ArrayParamMonad(array_type, (varkey, None, None))
-            else:
-                for i, item_type in enumerate(t):
-                    if item_type is NoneType:
-                        throw(TypeError, 'Expression `%s` should not contain None values' % node.src)
-                    param = ParamMonad.new(item_type, (varkey, i, None))
-                    params.append(param)
-                monad = ListMonad(params)
+                monad = ArrayParamMonad(array_type, (varkey, None, None), list_monad=monad)
         elif isinstance(t, RawSQLType):
             monad = RawSQLMonad(t, varkey)
         else:
@@ -2049,6 +2048,11 @@ class ArrayMixin(MonadMixin):
             sql = 'ARRAY_CONTAINS', key.getsql()[0], not_in, monad.getsql()[0]
             return BoolExprMonad(sql)
         if isinstance(key, ListMonad):
+            if not key.items:
+                if not_in:
+                    return BoolExprMonad(['EQ', ['VALUE', 0], ['VALUE', 1]], nullable=False)
+                else:
+                    return BoolExprMonad(['EQ', ['VALUE', 1], ['VALUE', 1]], nullable=False)
             sql = [ 'MAKE_ARRAY' ]
             sql.extend(item.getsql()[0] for item in key.items)
             sql = 'ARRAY_SUBSET', sql, not_in, monad.getsql()[0]
@@ -2231,7 +2235,7 @@ class ParamMonad(Monad):
         result = cls(t, paramkey)
         result.aggregated = False
         return result
-    def __new__(cls, *args):
+    def __new__(cls, *args, **kwargs):
         if cls is ParamMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
     def __init__(monad, t, paramkey):
@@ -2268,7 +2272,15 @@ class TimedeltaParamMonad(TimedeltaMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
-class ArrayParamMonad(ArrayMixin, ParamMonad): pass
+
+class ArrayParamMonad(ArrayMixin, ParamMonad):
+    def __init__(monad, t, paramkey, list_monad=None):
+        ParamMonad.__init__(monad, t, paramkey)
+        monad.list_monad = list_monad
+    def contains(monad, key, not_in=False):
+        if key.type is monad.type.item_type:
+            return monad.list_monad.contains(key, not_in)
+        return ArrayMixin.contains(monad, key, not_in)
 
 class JsonParamMonad(JsonMixin, ParamMonad):
     def getsql(monad, sqlquery=None):
