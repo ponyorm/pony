@@ -1,3 +1,11 @@
+# PonyORM release 0.7.9 (2019-01-21)
+
+## Bugfixes
+
+* Fix handling of empty arrays and empty lists in queries
+* Fix reading optional nullable array columns from database
+
+
 # PonyORM release 0.7.8 (2019-01-19)
 
 ## Bugfixes
