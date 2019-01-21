@@ -36,6 +36,11 @@ class Test(unittest.TestCase):
         self.assertEqual([Foo[1]], foo)
 
     @db_session
+    def test_2a(self):
+        foo = select(f for f in Foo if [] in f.array1)[:]
+        self.assertEqual([Foo[1]], foo)
+
+    @db_session
     def test_3(self):
         x = [10, 20, 50]
         foo = select(f for f in Foo if x in f.array1)[:]
@@ -218,33 +223,35 @@ class Test(unittest.TestCase):
         self.assertTrue([10, 20] in foo.array1)
         self.assertTrue([20, 10] in foo.array1)
         self.assertTrue([10, 1000] not in foo.array1)
+        self.assertTrue([] in foo.array1)
         self.assertTrue('bar' in foo.array3)
         self.assertTrue('baz' not in foo.array3)
         self.assertTrue(['foo', 'bar'] in foo.array3)
         self.assertTrue(['bar', 'foo'] in foo.array3)
         self.assertTrue(['baz', 'bar'] not in foo.array3)
+        self.assertTrue([] in foo.array3)
 
-    @db_session(sql_debug=True)
+    @db_session
     def test_36(self):
         items = []
-        result = select(foo for foo in Foo if foo.id in items)[:]
+        result = select(foo for foo in Foo if foo in items)[:]
         self.assertEqual(result, [])
 
-    @db_session(sql_debug=True)
+    @db_session
     def test_37(self):
-        items = [1]
-        result = select(foo.id for foo in Foo if foo.id in items)[:]
-        self.assertEqual(result, [1])
-
-    @db_session(sql_debug=True)
-    def test_38(self):
         f1 = Foo[1]
         items = [f1]
         result = select(foo for foo in Foo if foo in items)[:]
         self.assertEqual(result, [f1])
 
-    @db_session(sql_debug=True)
-    def test_39(self):
+    @db_session
+    def test_38(self):
         items = []
-        result = select(foo for foo in Foo if foo in items)[:]
+        result = select(foo for foo in Foo if foo.id in items)[:]
         self.assertEqual(result, [])
+
+    @db_session
+    def test_39(self):
+        items = [1]
+        result = select(foo.id for foo in Foo if foo.id in items)[:]
+        self.assertEqual(result, [1])

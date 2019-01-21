@@ -846,7 +846,7 @@ class ArrayConverter(Converter):
         return TrackedArray(obj, converter.attr, items)
 
     def dbval2val(converter, dbval, obj=None):
-        if obj is None:
+        if obj is None or dbval is None:
             return dbval
         return TrackedArray(obj, converter.attr, dbval)
 
