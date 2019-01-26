@@ -215,7 +215,7 @@ class Table(DBObject):
                 drops.extend(prev_fkey.get_drop_ops())
                 ops.append(Op(sql, obj=fkey, type='create'))
         for cols, index in table.indexes.items():
-            if index.is_pk: continue
+            if index.is_pk or index.is_unique: continue
             sql = index.get_create_command()
             prev_index = table.prev.indexes.get(cols)
             if prev_index is None:
