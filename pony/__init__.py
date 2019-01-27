@@ -1,6 +1,6 @@
 from __future__ import absolute_import, print_function
 
-import sys, time, threading, random
+import os, sys, time, threading, random
 from os.path import dirname
 from itertools import count
 
@@ -12,9 +12,9 @@ def detect_mode():
     try: import google.appengine
     except ImportError: pass
     else:
-        try: import dev_appserver
-        except ImportError: return 'GAE-SERVER'
-        return 'GAE-LOCAL'
+        if os.environ.get('SERVER_SOFTWARE', '').startswith('Development'):
+            return 'GAE-LOCAL'
+        return 'GAE-SERVER'
 
     try: from mod_wsgi import version
     except: pass

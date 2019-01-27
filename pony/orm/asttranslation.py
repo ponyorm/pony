@@ -28,8 +28,8 @@ class ASTTranslator(object):
         except KeyError:
             pre_method = getattr(translator_cls, 'pre' + node_cls.__name__, translator_cls.default_pre)
             pre_methods[node_cls] = pre_method
-        stop = translator.call(pre_method, node)
 
+        stop = translator.call(pre_method, node)
         if stop: return
 
         for child in node.getChildNodes():
@@ -61,6 +61,9 @@ def binop_src(op, node):
     return op.join((node.left.src, node.right.src))
 
 def ast2src(tree):
+    src = getattr(tree, 'src', None)
+    if src is not None:
+        return src
     PythonTranslator(tree)
     return tree.src
 
@@ -71,6 +74,9 @@ class PythonTranslator(ASTTranslator):
         translator.dispatch(tree)
     def call(translator, method, node):
         node.src = method(translator, node)
+    def default_pre(translator, node):
+        if getattr(node, 'src', None) is not None:
+            return True  # node.src is already calculated, stop dispatching
     def default_post(translator, node):
         throw(NotImplementedError, node)
     def postGenExpr(translator, node):

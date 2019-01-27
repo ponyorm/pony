@@ -22,9 +22,6 @@ with db_session:
         )
     """)
 
-warnings.simplefilter('error', )
-
-
 class TestValidate(unittest.TestCase):
 
     @db_session

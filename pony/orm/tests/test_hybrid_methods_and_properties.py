@@ -5,7 +5,10 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+sep = ' '
+
 class Person(db.Entity):
+    id = PrimaryKey(int)
     first_name = Required(str)
     last_name = Required(str)
     favorite_color = Optional(str)
@@ -13,11 +16,11 @@ class Person(db.Entity):
 
     @property
     def full_name(self):
-        return self.first_name + ' ' + self.last_name
+        return self.first_name + sep + self.last_name
 
     @property
     def full_name_2(self):
-        return concat(self.first_name, ' ', self.last_name)  # tests using of function `concat` from external scope
+        return concat(self.first_name, sep, self.last_name)  # tests using of function `concat` from external scope
 
     @property
     def has_car(self):
@@ -60,10 +63,10 @@ class Car(db.Entity):
 db.generate_mapping(create_tables=True)
 
 with db_session:
-    p1 = Person(first_name='Alexander', last_name='Kozlovsky', favorite_color='white')
-    p2 = Person(first_name='Alexei', last_name='Malashkevich', favorite_color='green')
-    p3 = Person(first_name='Vitaliy', last_name='Abetkin')
-    p4 = Person(first_name='Alexander', last_name='Tischenko', favorite_color='blue')
+    p1 = Person(id=1, first_name='Alexander', last_name='Kozlovsky', favorite_color='white')
+    p2 = Person(id=2, first_name='Alexei', last_name='Malashkevich', favorite_color='green')
+    p3 = Person(id=3, first_name='Vitaliy', last_name='Abetkin')
+    p4 = Person(id=4, first_name='Alexander', last_name='Tischenko', favorite_color='blue')
 
     c1 = Car(brand='Peugeot', model='306', owner=p1, year=2006, price=14000, color='red')
     c2 = Car(brand='Honda', model='Accord', owner=p1, year=2007, price=13850, color='white')
@@ -157,6 +160,35 @@ class TestHybridsAndProperties(unittest.TestCase):
         result = Person.find_by_full_name('Alexander Tischenko')
         self.assertEqual(set(obj.last_name for obj in result), {'Tischenko'})
 
+    @db_session
+    def test16(self):
+        result = Person.select(lambda p: p.full_name == 'Alexander Kozlovsky')
+        self.assertEqual(set(p.id for p in result), {1})
+
+    @db_session
+    def test17(self):
+        global sep
+        sep = '.'
+        try:
+            result = Person.select(lambda p: p.full_name == 'Alexander.Kozlovsky')
+            self.assertEqual(set(p.id for p in result), {1})
+        finally:
+            sep = ' '
+
+    @db_session
+    def test18(self):
+        result = Person.select().filter(lambda p: p.full_name == 'Alexander Kozlovsky')
+        self.assertEqual(set(p.id for p in result), {1})
+
+    @db_session
+    def test19(self):
+        global sep
+        sep = '.'
+        try:
+            result = Person.select().filter(lambda p: p.full_name == 'Alexander.Kozlovsky')
+            self.assertEqual(set(p.id for p in result), {1})
+        finally:
+            sep = ' '
 
 if __name__ == '__main__':
     unittest.main()

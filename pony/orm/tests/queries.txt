@@ -146,6 +146,22 @@ SELECT "s"."group", MIN("s"."gpa"), MAX("s"."gpa")
 FROM "Student" "s"
 GROUP BY "s"."group"
 
+>>> select((g, min(g.students.gpa), max(g.students.gpa)) for g in Group)
+
+SELECT "g"."number", MIN("student"."gpa"), MAX("student"."gpa")
+FROM "Group" "g"
+  LEFT JOIN "Student" "student"
+    ON "g"."number" = "student"."group"
+GROUP BY "g"."number"
+
+>>> select((g, g.students.name, min(g.students.gpa), max(g.students.gpa)) for g in Group)
+
+SELECT "g"."number", "student"."name", MIN("student"."gpa"), MAX("student"."gpa")
+FROM "Group" "g"
+  LEFT JOIN "Student" "student"
+    ON "g"."number" = "student"."group"
+GROUP BY "g"."number", "student"."name"
+
 >>> count(s for s in Student if s.group.number == 101)
 
 SELECT COUNT(*)

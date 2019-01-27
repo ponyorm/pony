@@ -256,10 +256,12 @@ class SQLBuilder(object):
             return result
         finally:
             builder.suppress_aliases = prev_suppress_aliases
-    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+    def SELECT_FOR_UPDATE(builder, nowait, skip_locked, *sections):
         assert not builder.indent
         result = builder.SELECT(*sections)
-        return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
+        nowait = ' NOWAIT' if nowait else ''
+        skip_locked = ' SKIP LOCKED' if skip_locked else ''
+        return result, 'FOR UPDATE', nowait, skip_locked, '\n'
     def EXISTS(builder, *sections):
         result = builder._subquery(*sections)
         indent = builder.indent_spaces * builder.indent
@@ -607,3 +609,15 @@ class SQLBuilder(object):
         throw(NotImplementedError)
     def JSON_PARAM(builder, expr):
         return builder(expr)
+    def ARRAY_INDEX(builder, col, index):
+        throw(NotImplementedError)
+    def ARRAY_CONTAINS(builder, key, not_in, col):
+        throw(NotImplementedError)
+    def ARRAY_SUBSET(builder, array1, not_in, array2):
+        throw(NotImplementedError)
+    def ARRAY_LENGTH(builder, array):
+        throw(NotImplementedError)
+    def ARRAY_SLICE(builder, array, start, stop):
+        throw(NotImplementedError)
+    def MAKE_ARRAY(builder, *items):
+        throw(NotImplementedError)
