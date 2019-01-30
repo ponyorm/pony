@@ -834,7 +834,7 @@ class Database(object):
     def disconnect(database):
         provider = database.provider
         if provider is None: return
-        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
+        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_session')
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
         provider.disconnect()
