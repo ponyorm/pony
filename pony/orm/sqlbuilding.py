@@ -480,7 +480,10 @@ class SQLBuilder(object):
         assert distinct in (None, True, False)
         result = distinct and 'GROUP_CONCAT(DISTINCT ' or 'GROUP_CONCAT(', builder(expr)
         if sep is not None:
-            result = result, ', ', builder(sep)
+            if builder.provider.dialect == 'MySQL':
+                result = result, ' SEPARATOR ', builder(sep)
+            else:
+                result = result, ', ', builder(sep)
         return result, ')'
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
