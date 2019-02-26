@@ -482,7 +482,7 @@ class SQLBuilder(object):
         if sep is not None:
             if builder.provider.dialect == 'MySQL':
                 result = result, ' SEPARATOR ', builder(sep)
-            else:
+            elif builder.provider.dialect != 'SQLite' or not distinct:
                 result = result, ', ', builder(sep)
         return result, ')'
     UPPER = make_unary_func('upper')
