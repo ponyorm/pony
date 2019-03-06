@@ -834,7 +834,7 @@ class Database(object):
     def disconnect(database):
         provider = database.provider
         if provider is None: return
-        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
+        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_session')
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
         provider.disconnect()
@@ -974,7 +974,8 @@ class Database(object):
 
             is_subclass = entity._root_ is not entity
             if is_subclass:
-                if table_name is not None: throw(NotImplementedError)
+                if table_name is not None: throw(NotImplementedError,
+                    'Cannot specify table name for entity %r which is subclass of %r' % (entity.__name__, entity._root_.__name__))
                 table_name = entity._root_._table_
                 entity._table_ = table_name
             elif table_name is None:
