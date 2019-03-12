@@ -11,12 +11,6 @@ def create_app():
     app = Flask(__name__)
     app.config.update(dict(
         DEBUG = False,
-        SECRET_KEY = '0xDEADBEEF',
-        PONY = {
-            'provider': 'sqlite',
-            'filename': ':memory:',
-            'create_db': True
-            }
         ))
 
     Pony(app)
