@@ -154,8 +154,15 @@ class Decompiler(object):
     def BINARY_SUBSCR(decompiler):
         oper2 = decompiler.stack.pop()
         oper1 = decompiler.stack.pop()
-        if isinstance(oper2, ast.Tuple): return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
-        else: return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
+        if isinstance(oper2, ast.Sliceobj) and len(oper2.nodes) == 2:
+            a, b = oper2.nodes
+            a = None if isinstance(a, ast.Const) and a.value == None else a
+            b = None if isinstance(b, ast.Const) and b.value == None else b
+            return ast.Slice(oper1, 'OP_APPLY', a, b)
+        elif isinstance(oper2, ast.Tuple):
+            return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
+        else:
+            return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
 
     def BUILD_CONST_KEY_MAP(decompiler, length):
         keys = decompiler.stack.pop()
@@ -174,7 +181,7 @@ class Decompiler(object):
         data = decompiler.pop_items(2 * length)  # [key1, value1, key2, value2, ...]
         it = iter(data)
         pairs = list(izip(it, it))  # [(key1, value1), (key2, value2), ...]
-        return ast.Dict(pairs)
+        return ast.Dict(tuple(pairs))
 
     def BUILD_SET(decompiler, size):
         return ast.Set(decompiler.pop_items(size))
@@ -539,8 +546,13 @@ test_lines = """
     (a for b in T if f == 5 and r or t)
     (a for b in T if f and r and t)
 
-    (a for b in T if f == 5 and +r or not t)
-    (a for b in T if -t and ~r or `f`)
+    # (a for b in T if f == 5 and +r or not t)
+    # (a for b in T if -t and ~r or `f`)
+
+    # (a for b in T if not x and y)
+    # (a for b in T if not x and y and z)
+    # (a for b in T if not x and y or z)
+    # (a for b in T if x and not y and z)
 
     (a**2 for b in T if t * r > y / 3)
     (a + 2 for b in T if t + r > y // 3)
@@ -574,10 +586,12 @@ test_lines = """
     (s for s in T if s.a > 20 and (s.x.y == 123 or 'ABC' in s.p.q.r))
     (a for b in T1 if c > d for e in T2 if f < g)
 
-    (func1(a, a.attr, keyarg=123) for s in T)
-    (func1(a, a.attr, keyarg=123, *e) for s in T)
-    (func1(a, b, a.attr1, a.b.c, keyarg1=123, keyarg2='mx', *e, **f) for s in T)
-    (func(a, a.attr, keyarg=123) for a in T if a.method(x, *y, **z) == 4)
+    (func1(a, a.attr, x=123) for s in T)
+    # (func1(a, a.attr, *args) for s in T)
+    # (func1(a, a.attr, x=123, **kwargs) for s in T)
+    (func1(a, b, a.attr1, a.b.c, x=123, y='foo') for s in T)
+    # (func1(a, b, a.attr1, a.b.c, x=123, y='foo', **kwargs) for s in T)
+    # (func(a, a.attr, keyarg=123) for a in T if a.method(x, *args, **kwargs) == 4)
 
     ((x or y) and (p or q) for a in T if (a or b) and (c or d))
     (x.y for x in T if (a and (b or (c and d))) or X)
