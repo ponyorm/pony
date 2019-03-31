@@ -1,9 +1,10 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, izip, xrange
+from pony.py23compat import PY2, izip, xrange, PY37
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
+from collections import defaultdict
 
 from pony.thirdparty.compiler import ast, parse
 
@@ -47,8 +48,6 @@ def simplify(clause):
 
 class InvalidQuery(Exception): pass
 
-class AstGenerated(Exception): pass
-
 def binop(node_type, args_holder=tuple):
     def method(decompiler):
         oper2 = decompiler.stack.pop()
@@ -65,61 +64,99 @@ class Decompiler(object):
         if end is None: end = len(code.co_code)
         decompiler.end = end
         decompiler.stack = []
+        decompiler.jump_map = defaultdict(list)
         decompiler.targets = {}
         decompiler.ast = None
         decompiler.names = set()
         decompiler.assnames = set()
+        decompiler.conditions_end = 0
+        decompiler.instructions = []
+        decompiler.instructions_map = {}
+        decompiler.or_jumps = set()
+        decompiler.get_instructions()
+        decompiler.analyze_jumps()
         decompiler.decompile()
         decompiler.ast = decompiler.stack.pop()
         decompiler.external_names = decompiler.names - decompiler.assnames
         assert not decompiler.stack, decompiler.stack
-    def decompile(decompiler):
+    def get_instructions(decompiler):
         PY36 = sys.version_info >= (3, 6)
         code = decompiler.code
         co_code = code.co_code
         free = code.co_cellvars + code.co_freevars
-        try:
-            while decompiler.pos < decompiler.end:
-                i = decompiler.pos
-                if i in decompiler.targets: decompiler.process_target(i)
-                op = ord(code.co_code[i])
-                if PY36:
-                    extended_arg = 0
-                    oparg = ord(code.co_code[i+1])
-                    while op == EXTENDED_ARG:
-                        extended_arg = (extended_arg | oparg) << 8
-                        i += 2
-                        op = ord(code.co_code[i])
-                        oparg = ord(code.co_code[i+1])
-                    oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
+        while decompiler.pos < decompiler.end:
+            i = decompiler.pos
+            op = ord(code.co_code[i])
+            if PY36:
+                extended_arg = 0
+                oparg = ord(code.co_code[i+1])
+                while op == EXTENDED_ARG:
+                    extended_arg = (extended_arg | oparg) << 8
                     i += 2
-                else:
-                    i += 1
-                    if op >= HAVE_ARGUMENT:
-                        oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256
-                        i += 2
-                        if op == EXTENDED_ARG:
-                            op = ord(code.co_code[i])
-                            i += 1
-                            oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256 + oparg * 65536
-                            i += 2
+                    op = ord(code.co_code[i])
+                    oparg = ord(code.co_code[i+1])
+                oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
+                i += 2
+            else:
+                i += 1
                 if op >= HAVE_ARGUMENT:
-                    if op in hasconst: arg = [code.co_consts[oparg]]
-                    elif op in hasname: arg = [code.co_names[oparg]]
-                    elif op in hasjrel: arg = [i + oparg]
-                    elif op in haslocal: arg = [code.co_varnames[oparg]]
-                    elif op in hascompare: arg = [cmp_op[oparg]]
-                    elif op in hasfree: arg = [free[oparg]]
-                    else: arg = [oparg]
-                else: arg = []
-                opname = opnames[op].replace('+', '_')
-                # print(opname, arg, decompiler.stack)
-                method = getattr(decompiler, opname, None)
-                if method is None: throw(NotImplementedError('Unsupported operation: %s' % opname))
-                decompiler.pos = i
-                x = method(*arg)
-                if x is not None: decompiler.stack.append(x)
-        except AstGenerated: pass
+                    oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256
+                    i += 2
+                    if op == EXTENDED_ARG:
+                        op = ord(code.co_code[i])
+                        i += 1
+                        oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256 + oparg * 65536
+                        i += 2
+            if op >= HAVE_ARGUMENT:
+                if op in hasconst: arg = [code.co_consts[oparg]]
+                elif op in hasname: arg = [code.co_names[oparg]]
+                elif op in hasjrel: arg = [i + oparg]
+                elif op in haslocal: arg = [code.co_varnames[oparg]]
+                elif op in hascompare: arg = [cmp_op[oparg]]
+                elif op in hasfree: arg = [free[oparg]]
+                else: arg = [oparg]
+            else: arg = []
+            opname = opnames[op].replace('+', '_')
+            if 'JUMP' in opname:
+                endpos = arg[0]
+                if endpos < decompiler.pos:
+                    decompiler.conditions_end = i
+                decompiler.jump_map[endpos].append(decompiler.pos)
+            decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
+            decompiler.instructions.append((decompiler.pos, i, opname, arg))
+            if opname == 'YIELD_VALUE':
+                return
+            decompiler.pos = i
+    def analyze_jumps(decompiler):
+        i = decompiler.instructions_map[decompiler.conditions_end]
+        while i > 0:
+            pos, next_pos, opname, arg = decompiler.instructions[i]
+            if pos in decompiler.jump_map:
+                for jump_start_pos in decompiler.jump_map[pos]:
+                    if jump_start_pos > pos:
+                        continue
+                    for or_jump_start_pos in decompiler.or_jumps:
+                        if pos > or_jump_start_pos > jump_start_pos:
+                            break  # And jump
+                    else:
+                        decompiler.or_jumps.add(jump_start_pos)
+            i -= 1
+    def decompile(decompiler):
+        # print(decompiler.conditions_end)
+        for pos, next_pos, opname, arg in decompiler.instructions:
+            # print(i, opname, *arg)
+            if pos in decompiler.targets:
+                decompiler.process_target(pos)
+            method = getattr(decompiler, opname, None)
+            if method is None:
+                throw(NotImplementedError('Unsupported operation: %s' % opname))
+            decompiler.pos = pos
+            decompiler.next_pos = next_pos
+            x = method(*arg)
+            if x is not None:
+                decompiler.stack.append(x)
+                # print(decompiler.stack)
+
     def pop_items(decompiler, size):
         if not size: return ()
         result = decompiler.stack[-size:]
@@ -154,8 +191,15 @@ class Decompiler(object):
     def BINARY_SUBSCR(decompiler):
         oper2 = decompiler.stack.pop()
         oper1 = decompiler.stack.pop()
-        if isinstance(oper2, ast.Tuple): return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
-        else: return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
+        if isinstance(oper2, ast.Sliceobj) and len(oper2.nodes) == 2:
+            a, b = oper2.nodes
+            a = None if isinstance(a, ast.Const) and a.value == None else a
+            b = None if isinstance(b, ast.Const) and b.value == None else b
+            return ast.Slice(oper1, 'OP_APPLY', a, b)
+        elif isinstance(oper2, ast.Tuple):
+            return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
+        else:
+            return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
 
     def BUILD_CONST_KEY_MAP(decompiler, length):
         keys = decompiler.stack.pop()
@@ -174,7 +218,7 @@ class Decompiler(object):
         data = decompiler.pop_items(2 * length)  # [key1, value1, key2, value2, ...]
         it = iter(data)
         pairs = list(izip(it, it))  # [(key1, value1), (key2, value2), ...]
-        return ast.Dict(pairs)
+        return ast.Dict(tuple(pairs))
 
     def BUILD_SET(decompiler, size):
         return ast.Set(decompiler.pop_items(size))
@@ -278,18 +322,47 @@ class Decompiler(object):
         pass
 
     def JUMP_IF_FALSE(decompiler, endpos):
-        return decompiler.conditional_jump(endpos, ast.And)
+        return decompiler.conditional_jump(endpos, False)
 
     JUMP_IF_FALSE_OR_POP = JUMP_IF_FALSE
 
     def JUMP_IF_TRUE(decompiler, endpos):
-        return decompiler.conditional_jump(endpos, ast.Or)
+        return decompiler.conditional_jump(endpos, True)
 
     JUMP_IF_TRUE_OR_POP = JUMP_IF_TRUE
 
-    def conditional_jump(decompiler, endpos, clausetype):
-        i = decompiler.pos  # next instruction
-        if i in decompiler.targets: decompiler.process_target(i)
+    def conditional_jump(decompiler, endpos, if_true):
+        if PY37: return decompiler.conditional_jump_new(endpos, if_true)
+        return decompiler.conditional_jump_old(endpos, if_true)
+
+    def conditional_jump_old(decompiler, endpos, if_true):
+        i = decompiler.next_pos
+        if i in decompiler.targets:
+            decompiler.process_target(i)
+        expr = decompiler.stack.pop()
+        clausetype = ast.Or if if_true else ast.And
+        clause = clausetype([expr])
+        clause.endpos = endpos
+        decompiler.targets.setdefault(endpos, clause)
+        return clause
+
+    def conditional_jump_new(decompiler, endpos, if_true):
+        expr = decompiler.stack.pop()
+        if decompiler.pos >= decompiler.conditions_end:
+            clausetype = ast.Or if if_true else ast.And
+        elif decompiler.pos in decompiler.or_jumps:
+            clausetype = ast.Or
+            if not if_true:
+                expr = ast.Not(expr)
+        else:
+            clausetype = ast.And
+            if if_true:
+                expr = ast.Not(expr)
+        decompiler.stack.append(expr)
+
+        if decompiler.next_pos in decompiler.targets:
+            decompiler.process_target(decompiler.next_pos)
+
         expr = decompiler.stack.pop()
         clause = clausetype([ expr ])
         clause.endpos = endpos
@@ -324,7 +397,7 @@ class Decompiler(object):
         decompiler.stack.append(top)
 
     def JUMP_FORWARD(decompiler, endpos):
-        i = decompiler.pos  # next instruction
+        i = decompiler.next_pos  # next instruction
         decompiler.process_target(i, True)
         then = decompiler.stack.pop()
         decompiler.process_target(i, False)
@@ -418,10 +491,9 @@ class Decompiler(object):
         pass
 
     def RETURN_VALUE(decompiler):
-        if decompiler.pos != decompiler.end: throw(NotImplementedError)
+        if decompiler.next_pos != decompiler.end: throw(NotImplementedError)
         expr = decompiler.stack.pop()
-        decompiler.stack.append(simplify(expr))
-        raise AstGenerated()
+        return simplify(expr)
 
     def ROT_TWO(decompiler):
         tos = decompiler.stack.pop()
@@ -523,8 +595,7 @@ class Decompiler(object):
                 fors.append(top)
             else: fors.append(top)
         fors.reverse()
-        decompiler.stack.append(ast.GenExpr(ast.GenExprInner(simplify(expr), fors)))
-        raise AstGenerated()
+        return ast.GenExpr(ast.GenExprInner(simplify(expr), fors))
 
 test_lines = """
     (a and b if c and d else e and f for i in T if (A and B if C and D else E and F))
@@ -539,8 +610,13 @@ test_lines = """
     (a for b in T if f == 5 and r or t)
     (a for b in T if f and r and t)
 
-    (a for b in T if f == 5 and +r or not t)
-    (a for b in T if -t and ~r or `f`)
+    # (a for b in T if f == 5 and +r or not t)
+    # (a for b in T if -t and ~r or `f`)
+
+    (a for b in T if x and not y and z)
+    (a for b in T if not x and y)
+    (a for b in T if not x and y and z)
+    (a for b in T if not x and y or z) #FIXME!
 
     (a**2 for b in T if t * r > y / 3)
     (a + 2 for b in T if t + r > y // 3)
@@ -574,10 +650,12 @@ test_lines = """
     (s for s in T if s.a > 20 and (s.x.y == 123 or 'ABC' in s.p.q.r))
     (a for b in T1 if c > d for e in T2 if f < g)
 
-    (func1(a, a.attr, keyarg=123) for s in T)
-    (func1(a, a.attr, keyarg=123, *e) for s in T)
-    (func1(a, b, a.attr1, a.b.c, keyarg1=123, keyarg2='mx', *e, **f) for s in T)
-    (func(a, a.attr, keyarg=123) for a in T if a.method(x, *y, **z) == 4)
+    (func1(a, a.attr, x=123) for s in T)
+    # (func1(a, a.attr, *args) for s in T)
+    # (func1(a, a.attr, x=123, **kwargs) for s in T)
+    (func1(a, b, a.attr1, a.b.c, x=123, y='foo') for s in T)
+    # (func1(a, b, a.attr1, a.b.c, x=123, y='foo', **kwargs) for s in T)
+    # (func(a, a.attr, keyarg=123) for a in T if a.method(x, *args, **kwargs) == 4)
 
     ((x or y) and (p or q) for a in T if (a or b) and (c or d))
     (x.y for x in T if (a and (b or (c and d))) or X)

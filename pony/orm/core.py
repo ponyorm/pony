@@ -767,13 +767,17 @@ class Database(object):
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
             throw(BindingError, 'Database object was already bound to %s provider' % self.provider.dialect)
+        if len(args) == 1 and not kwargs and hasattr(args[0], 'keys'):
+            args, kwargs = (), args[0]
+        provider = None
         if args: provider, args = args[0], args[1:]
         elif 'provider' not in kwargs: throw(TypeError, 'Database provider is not specified')
         else: provider = kwargs.pop('provider')
         if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
             provider_cls = provider
         else:
-            if not isinstance(provider, basestring): throw(TypeError)
+            if not isinstance(provider, basestring):
+                throw(TypeError, 'Provider name should be string. Got: %r' % type(provider).__name__)
             if provider == 'pygresql': throw(TypeError,
                 'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
             self.provider_name = provider
