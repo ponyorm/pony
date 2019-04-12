@@ -2513,7 +2513,7 @@ class Required(Attribute):
     __slots__ = []
     def validate(attr, val, obj=None, entity=None, from_db=False):
         val = Attribute.validate(attr, val, obj, entity, from_db)
-        if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
+        if val == '' or (val is None and not (attr.nullable or attr.auto or attr.is_volatile or attr.sql_default)):
             if not from_db:
                 throw(ValueError, 'Attribute %s is required' % (
                       attr if obj is None or obj._status_ is None else '%r.%s' % (obj, attr.name)))
