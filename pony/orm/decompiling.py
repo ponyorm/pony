@@ -142,9 +142,7 @@ class Decompiler(object):
                         decompiler.or_jumps.add(jump_start_pos)
             i -= 1
     def decompile(decompiler):
-        # print(decompiler.conditions_end)
         for pos, next_pos, opname, arg in decompiler.instructions:
-            # print(i, opname, *arg)
             if pos in decompiler.targets:
                 decompiler.process_target(pos)
             method = getattr(decompiler, opname, None)
@@ -155,7 +153,6 @@ class Decompiler(object):
             x = method(*arg)
             if x is not None:
                 decompiler.stack.append(x)
-                # print(decompiler.stack)
 
     def pop_items(decompiler, size):
         if not size: return ()
@@ -378,7 +375,7 @@ class Decompiler(object):
             top = simplify(top)
             if top is limit: break
             if isinstance(top, ast.GenExprFor): break
-
+            if not decompiler.stack: break
             top2 = decompiler.stack[-1]
             if isinstance(top2, ast.GenExprFor): break
             if partial and hasattr(top2, 'endpos') and top2.endpos == pos: break
