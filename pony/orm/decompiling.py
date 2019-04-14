@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, izip, xrange, PY37
+from pony.py23compat import PY2, izip, xrange, PY37, PYPY
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -81,9 +81,11 @@ class Decompiler(object):
         assert not decompiler.stack, decompiler.stack
     def get_instructions(decompiler):
         PY36 = sys.version_info >= (3, 6)
+        before_yield = True
         code = decompiler.code
         co_code = code.co_code
         free = code.co_cellvars + code.co_freevars
+        decompiler.abs_jump_to_top = decompiler.for_iter_pos = -1
         while decompiler.pos < decompiler.end:
             i = decompiler.pos
             op = ord(code.co_code[i])
@@ -117,17 +119,33 @@ class Decompiler(object):
                 else: arg = [oparg]
             else: arg = []
             opname = opnames[op].replace('+', '_')
-            if 'JUMP' in opname:
-                endpos = arg[0]
-                if endpos < decompiler.pos:
-                    decompiler.conditions_end = i
-                decompiler.jump_map[endpos].append(decompiler.pos)
-            decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
-            decompiler.instructions.append((decompiler.pos, i, opname, arg))
+            if opname == 'FOR_ITER':
+                decompiler.for_iter_pos = decompiler.pos
+            if opname == 'JUMP_ABSOLUTE' and arg[0] == decompiler.for_iter_pos:
+                decompiler.abs_jump_to_top = decompiler.pos
+
+            if before_yield:
+                if 'JUMP' in opname:
+                    endpos = arg[0]
+                    if endpos < decompiler.pos:
+                        decompiler.conditions_end = i
+                    decompiler.jump_map[endpos].append(decompiler.pos)
+                decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
+                decompiler.instructions.append((decompiler.pos, i, opname, arg))
             if opname == 'YIELD_VALUE':
-                return
+                before_yield = False
             decompiler.pos = i
     def analyze_jumps(decompiler):
+        if PYPY:
+            targets = decompiler.jump_map.pop(decompiler.abs_jump_to_top, [])
+            decompiler.jump_map[decompiler.for_iter_pos] = targets
+            for i, (x, y, opname, arg) in enumerate(decompiler.instructions):
+                if 'JUMP' in opname:
+                    target = arg[0]
+                    if target == decompiler.abs_jump_to_top:
+                        decompiler.instructions[i] = (x, y, opname, [decompiler.for_iter_pos])
+                        decompiler.conditions_end = y
+
         i = decompiler.instructions_map[decompiler.conditions_end]
         while i > 0:
             pos, next_pos, opname, arg = decompiler.instructions[i]
@@ -329,7 +347,8 @@ class Decompiler(object):
     JUMP_IF_TRUE_OR_POP = JUMP_IF_TRUE
 
     def conditional_jump(decompiler, endpos, if_true):
-        if PY37: return decompiler.conditional_jump_new(endpos, if_true)
+        if PY37 or PYPY:
+            return decompiler.conditional_jump_new(endpos, if_true)
         return decompiler.conditional_jump_old(endpos, if_true)
 
     def conditional_jump_old(decompiler, endpos, if_true):
