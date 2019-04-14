@@ -304,6 +304,15 @@ class Decompiler(object):
     def CALL_METHOD(decompiler, argc):
         pop = decompiler.stack.pop
         args = []
+        if argc >= 256:
+            kwargc = argc // 256
+            argc = argc % 256
+            for i in range(kwargc):
+                v = pop()
+                k = pop()
+                assert isinstance(k, ast.Const)
+                k = k.value # ast.Name(k.value)
+                args.append(ast.Keyword(k, v))
         for i in range(argc):
             args.append(pop())
         args.reverse()
