@@ -68,22 +68,27 @@ def create_test(gen):
 
         code1 = compile(src1, '<?>', 'eval').co_consts[0]
         ast1 = Decompiler(code1).ast
-        src1 = ast2src(ast1).replace('.0', '[]')
-        src1 = src1[src1.find('if')+2:-1]
+        res1 = ast2src(ast1).replace('.0', '[]')
+        res1 = res1[res1.find('if')+2:-1]
 
         code2 = compile(src2, '<?>', 'eval').co_consts[0]
         ast2 = Decompiler(code2).ast
-        src2 = ast2src(ast2).replace('.0', '[]')
-        src2 = src2[src2.find(':')+1:]
+        res2 = ast2src(ast2).replace('.0', '[]')
+        res2 = res2[res2.find(':')+1:]
 
         code3 = compile(src3, '<?>', 'eval').co_consts[0]
         ast3 = Decompiler(code3).ast
-        src3 = ast2src(ast3).replace('.0', '[]')
-        src3 = src3[src3.find('if')+2: src3.rfind('for')-1]
+        res3 = ast2src(ast3).replace('.0', '[]')
+        res3 = res3[res3.find('if')+2: res3.rfind('for')-1]
 
-        self.assertEqual(get_condition_values(gen), get_condition_values(src1))
-        self.assertEqual(get_condition_values(gen), get_condition_values(src2))
-        self.assertEqual(get_condition_values(gen), get_condition_values(src3))
+        if get_condition_values(gen) != get_condition_values(res1):
+            self.fail("Incorrect generator decompilation: %s -> %s" % (gen, res1))
+
+        if get_condition_values(gen) != get_condition_values(res2):
+            self.fail("Incorrect lambda decompilation: %s -> %s" % (gen, res2))
+
+        if get_condition_values(gen) != get_condition_values(res3):
+            self.fail("Incorrect multi-for generator decompilation: %s -> %s" % (gen, res3))
 
     return wrapped_test
 
