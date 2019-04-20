@@ -22,6 +22,14 @@ All this helps the developer to focus on implementing the business logic of an a
 See the example [here](https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/estore.py)
 
 
+Support Pony ORM Development
+----------------------------
+
+Pony ORM is Apache 2.0 licensed open source project. If you would like to support Pony ORM development, please consider:
+
+[Become a backer or sponsor](https://ponyorm.org/donation.html)
+
+
 Online tool for database design
 -------------------------------
 
