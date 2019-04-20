@@ -276,7 +276,11 @@ class OraBuilder(SQLBuilder):
         throw(TranslationError, 'Oracle does not provide `length` function for JSON arrays')
     def GROUP_CONCAT(builder, distinct, expr, sep=None):
         assert distinct in (None, True, False)
-        result = 'LISTAGG(', builder(expr)
+        if distinct and builder.provider.server_version >= (19,):
+            distinct = 'DISTINCT '
+        else:
+            distinct = ''
+        result = 'LISTAGG(', distinct, builder(expr)
         if sep is not None:
             result = result, ', ', builder(sep)
         else:
