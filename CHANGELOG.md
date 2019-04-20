@@ -1,3 +1,15 @@
+# PonyORM release 0.7.10 (2019-04-20)
+
+## Bugfixes
+
+* Python3.7 and PyPy decompiling fixes
+* Fix reading NULL from Optional nullable array column
+* Fix handling of empty arrays in queries
+* #415: error message typo
+* #432: PonyFlask - request object can trigger teardown_request without real request
+* Fix GROUP CONCAT separator for MySQL
+
+
 # PonyORM release 0.7.9 (2019-01-21)
 
 ## Bugfixes
