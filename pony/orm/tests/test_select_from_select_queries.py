@@ -379,7 +379,7 @@ class TestSelectFromSelect(unittest.TestCase):
 
     @db_session
     def test_45(self):
-        q = select(s for s in Student).order_by(Student.first_name).limit(3, offset=1)
+        q = select(s for s in Student).order_by(Student.first_name, Student.id).limit(3, offset=1)
         q2 = select(s for s in q if s.age > 18).limit(2, offset=1)
         q3 = select(s.last_name for s in q2).limit(2, offset=1)
         self.assertEqual(set(q3), {'Brown'})
