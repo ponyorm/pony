@@ -173,6 +173,9 @@ class SQLiteIntConverter(dbapiprovider.IntConverter):
         return dbapiprovider.IntConverter.sql_type(converter)
 
 class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
+    inf = Decimal('infinity')
+    neg_inf = Decimal('-infinity')
+    NaN = Decimal('NaN')
     def sql2py(converter, val):
         try: val = Decimal(str(val))
         except: return val
@@ -182,7 +185,10 @@ class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
     def py2sql(converter, val):
         if type(val) is not Decimal: val = Decimal(val)
         exp = converter.exp
-        if exp is not None: val = val.quantize(exp)
+        if exp is not None:
+            if val in (converter.inf, converter.neg_inf, converter.NaN):
+                throw(ValueError, 'Cannot store %s Decimal value in database' % val)
+            val = val.quantize(exp)
         return str(val)
 
 class SQLiteDateConverter(dbapiprovider.DateConverter):
