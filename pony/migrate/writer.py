@@ -248,7 +248,7 @@ class MigrationWriter(object):
                 attr = None
                 if entity:
                     attr = entity._adict_.get(prev_attr.reverse.name)
-                    if attr.entity is not entity: assert False, 'Not implemented'
+                    if attr and attr.entity is not entity: assert False, 'Not implemented'
                     if attr and not attr.reverse:
                         attr = None
                 if attr:
