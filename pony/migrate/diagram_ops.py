@@ -100,6 +100,8 @@ class ModifyAttr(Operation):
         op.entity_name = entity_name
         op.attr_name = attr_name
         op.new_attr = new_attr
+        op.old_name = attr_name
+        op.new_name = attr_name
     def apply(op, db):
         entity = db.entities[op.entity_name]
         entity._modify_attr_(op.attr_name, _clone_attr(op.new_attr))

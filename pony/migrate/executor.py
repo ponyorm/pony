@@ -43,7 +43,7 @@ class Executor(object):
             if isinstance(op, RenameEntity):
                 prev_entity = entities.pop(op.old_name)
                 entities[op.new_name] = prev_entity
-            elif isinstance(op, RenameAttr):
+            elif isinstance(op, (RenameAttr, ModifyAttr)):
                 prev_entity = entities[op.entity_name]
                 new_entity = new_entities[op.entity_name]  # fixme
                 assert prev_entity._table_object_.new is new_entity._table_object_
