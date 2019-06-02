@@ -1107,10 +1107,13 @@ class Database(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns, attr.index)
+                    on_delete = 'CASCADE'
+                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns,
+                                              attr.index, on_delete)
                     if attr.symmetric:
-                        child_columns = get_columns(m2m_table, attr.reverse_columns)
-                        m2m_table.add_foreign_key(attr.reverse_fk_name, child_columns, table, parent_columns)
+                        reverse_child_columns = get_columns(m2m_table, attr.reverse_columns)
+                        m2m_table.add_foreign_key(attr.reverse_fk_name, reverse_child_columns, table, parent_columns,
+                                                  attr.reverse_index, on_delete)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
@@ -2008,7 +2011,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
+                'cascade_delete', 'index', 'reverse_index', 'original_default', 'sql_default', 'py_check', 'hidden', \
                 'optimistic', 'fk_name', 'type_has_empty_value'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
@@ -2069,6 +2072,7 @@ class Attribute(object):
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
         attr.index = kwargs.pop('index', None)
+        attr.reverse_index = kwargs.pop('reverse_index', None)
         attr.fk_name = kwargs.pop('fk_name', None)
         attr.col_paths = []
         attr._columns_checked = False
@@ -2714,8 +2718,11 @@ class Collection(Attribute):
         if attr.default is not None:
             throw(TypeError, 'Default value could not be set for collection attribute')
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
-        if not attr.symmetric and attr.reverse_columns: throw(TypeError,
-            "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+        if not attr.symmetric:
+            if attr.reverse_columns:
+                throw(TypeError, "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+            if attr.reverse_index:
+                throw(TypeError, "'reverse_index' option can be set for symmetric relations only")
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def load(attr, obj):
