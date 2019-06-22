@@ -352,6 +352,16 @@ class TestQuerySetMonad(unittest.TestCase):
         result = select(n for n, a in query if n.endswith('2') and a > 20)
         self.assertEqual(set(x for x in result), {'S2'})
 
+    def test_aggregations_1(self):
+        query = select((min(s.age), max(s.scholarship)) for s in Student)
+        result = query[:]
+        self.assertEqual(result, [(20, 500)])
+
+    def test_aggregations_2(self):
+        query = select((min(s.age), max(s.scholarship)) for s in Student for g in Group)
+        result = query[:]
+        self.assertEqual(result, [(20, 500)])
+
 
 if __name__ == "__main__":
     unittest.main()
