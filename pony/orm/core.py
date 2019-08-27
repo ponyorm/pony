@@ -2158,6 +2158,12 @@ class Attribute(object):
         return '%s.%s' % (owner_name, attr.name or '?')
     def __lt__(attr, other):
         return attr.id < other.id
+    def _get_entity(attr, obj, entity):
+        if entity is not None:
+            return entity
+        if obj is not None:
+            return obj.__class__
+        return attr.entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
         val = deref_proxy(val)
         if val is None:
@@ -2172,10 +2178,7 @@ class Attribute(object):
             if callable(default): val = default()
             else: val = default
 
-        if entity is not None: pass
-        elif obj is not None: entity = obj.__class__
-        else: entity = attr.entity
-
+        entity = attr._get_entity(obj, entity)
         reverse = attr.reverse
         if not reverse:
             if isinstance(val, Entity): throw(TypeError, 'Attribute %s must be of %s type. Got: %s'
@@ -2555,7 +2558,7 @@ class Discriminator(Required):
             entity._discriminator_ = entity.__name__
         discr_value = entity._discriminator_
         if discr_value is not None:
-            try: entity._discriminator_ = discr_value = attr.validate(discr_value)
+            try: entity._discriminator_ = discr_value = attr.validate(discr_value, None, entity)
             except ValueError: throw(TypeError,
                 "Incorrect discriminator value is set for %s attribute '%s' of '%s' type: %r"
                 % (entity.__name__, attr.name, attr.py_type.__name__, discr_value))
@@ -2566,10 +2569,18 @@ class Discriminator(Required):
                                % (entity.__name__, attr.name, attr.py_type.__name__))
         attr.code2cls[discr_value] = entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
-        if from_db: return val
-        elif val is DEFAULT:
+        if from_db:
+            return val
+        entity = attr._get_entity(obj, entity)
+        if val is DEFAULT:
             assert entity is not None
             return entity._discriminator_
+        if val != entity._discriminator_:
+            for cls in entity._subclasses_:
+                if val == cls._discriminator_:
+                    break
+            else: throw(TypeError, 'Invalid discriminator attribute value for %s. Expected: %r, got: %r'
+                                   % (entity.__name__, entity._discriminator_, val))
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
         assert False  # pragma: no cover
@@ -4655,7 +4666,7 @@ class Entity(with_metaclass(EntityMeta)):
             if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
         for attr in entity._attrs_:
             val = kwargs.get(attr.name, DEFAULT)
-            avdict[attr] = attr.validate(val, obj, entity, from_db=False)
+            avdict[attr] = attr.validate(val, obj, from_db=False)
         if entity._pk_is_composite_:
             pkval = tuple(imap(avdict.get, entity._pk_attrs_))
             if None in pkval: pkval = None
