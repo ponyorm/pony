@@ -4288,10 +4288,14 @@ class EntityMeta(type):
         avdict = {}
         for attr in real_entity_subclass._attrs_:
             offsets = attr_offsets.get(attr)
-            if offsets is None or attr.is_discriminator: continue
-            avdict[attr] = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
+            if offsets is None:
+                continue
+            if attr.is_discriminator:
+                avdict[attr] = discr_value
+            else:
+                avdict[attr] = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
 
-        pkval = tuple(avdict.pop(attr, discr_value) for attr in entity._pk_attrs_)
+        pkval = tuple(avdict.pop(attr) for attr in entity._pk_attrs_)
         assert None not in pkval
         if not entity._pk_is_composite_: pkval = pkval[0]
         return real_entity_subclass, pkval, avdict
