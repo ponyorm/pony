@@ -504,6 +504,8 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
+        if translator.aggregated:
+            translator.distinct = False
         translator.vars = None
         if translator is not this:
             raise UseAnotherTranslator(translator)

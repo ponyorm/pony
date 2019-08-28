@@ -255,7 +255,7 @@ HAVING "order"."total_price" < coalesce(SUM(("item"."price" * "item"."quantity")
 
 >>> select(c for c in Customer for p in c.orders.items.product if 'Tablets' in p.categories.name and count(p) > 1)
 
-SELECT DISTINCT "c"."id"
+SELECT "c"."id"
 FROM "Customer" "c", "Order" "order", "OrderItem" "orderitem"
 WHERE 'Tablets' IN (
     SELECT "category"."name"
@@ -516,7 +516,7 @@ GROUP BY "g"."number"
 
 >>> select((s, count(c)) for s in Student for c in s.courses)
 
-SELECT DISTINCT "s"."id", COUNT(DISTINCT "c"."ROWID")
+SELECT "s"."id", COUNT(DISTINCT "c"."ROWID")
 FROM "Student" "s", "Course_Student" "t-1", "Course" "c"
 WHERE "s"."id" = "t-1"."student"
   AND "t-1"."course_name" = "c"."name"
@@ -525,7 +525,7 @@ GROUP BY "s"."id"
 
 Oracle:
 
-SELECT DISTINCT "s"."ID", COUNT(DISTINCT "c"."ROWID")
+SELECT "s"."ID", COUNT(DISTINCT "c"."ROWID")
 FROM "STUDENT" "s", "COURSE_STUDENT" "t-1", "COURSE" "c"
 WHERE "s"."ID" = "t-1"."STUDENT"
   AND "t-1"."COURSE_NAME" = "c"."NAME"
@@ -534,7 +534,7 @@ GROUP BY "s"."ID"
 
 PostgreSQL:
 
-SELECT DISTINCT "s"."id", COUNT(DISTINCT case when ("t-1"."course_name", "t-1"."course_semester") IS NULL then null else ("t-1"."course_name", "t-1"."course_semester") end)
+SELECT "s"."id", COUNT(DISTINCT case when ("t-1"."course_name", "t-1"."course_semester") IS NULL then null else ("t-1"."course_name", "t-1"."course_semester") end)
 FROM "student" "s", "course_student" "t-1"
 WHERE "s"."id" = "t-1"."student"
 GROUP BY "s"."id"
