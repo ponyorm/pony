@@ -949,7 +949,7 @@ GROUP BY "g"."number"
 
 MySQL:
 
-SELECT `g`.`number`, GROUP_CONCAT(`s`.`name`, '+')
+SELECT `g`.`number`, GROUP_CONCAT(`s`.`name` SEPARATOR '+')
 FROM `group` `g`, `student` `s`
 WHERE `g`.`number` = `s`.`group`
 GROUP BY `g`.`number`
