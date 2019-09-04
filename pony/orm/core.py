@@ -4869,7 +4869,7 @@ class Entity(with_metaclass(EntityMeta)):
             bit = obj._bits_except_volatile_[attr]
             if rbits & bit:
                 errormsg = 'Please contact PonyORM developers so they can ' \
-                           'reproduce your error and fix a bug: support@ponyorm.com'
+                           'reproduce your error and fix a bug: support@ponyorm.org'
                 assert old_dbval is not NOT_LOADED, errormsg
                 throw(UnrepeatableReadError,
                       'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
