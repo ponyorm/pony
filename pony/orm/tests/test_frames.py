@@ -3,6 +3,8 @@ from __future__ import absolute_import, print_function, division
 import unittest
 
 from pony.orm.core import *
+import pony.orm.decompiling
+from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
@@ -166,6 +168,20 @@ class TestFrames(unittest.TestCase):
         x = 18
         result = db.exists('name from Person where age = $x')
         self.assertEqual(result, True)
+
+    @raises_exception(pony.orm.decompiling.InvalidQuery,
+                      'Use generator expression (... for ... in ...) '
+                      'instead of list comprehension [... for ... in ...] inside query')
+    @db_session
+    def test_inner_list_comprehension(self):
+        result = select(p.id for p in Person if p.age not in [
+            p2.age for p2 in Person if p2.name.startswith('M')])[:]
+
+    @db_session
+    def test_outer_list_comprehension(self):
+        names = ['John', 'Mary', 'Mike']
+        persons = [ Person.select(lambda p: p.name == name).first() for name in names ]
+        self.assertEqual(set(p.name for p in persons), {'John', 'Mary', 'Mike'})
 
 if __name__ == '__main__':
     unittest.main()

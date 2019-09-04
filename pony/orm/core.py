@@ -1107,10 +1107,13 @@ class Database(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns, attr.index)
+                    on_delete = 'CASCADE'
+                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns,
+                                              attr.index, on_delete)
                     if attr.symmetric:
-                        child_columns = get_columns(m2m_table, attr.reverse_columns)
-                        m2m_table.add_foreign_key(attr.reverse_fk_name, child_columns, table, parent_columns)
+                        reverse_child_columns = get_columns(m2m_table, attr.reverse_columns)
+                        m2m_table.add_foreign_key(attr.reverse_fk_name, reverse_child_columns, table, parent_columns,
+                                                  attr.reverse_index, on_delete)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
@@ -2008,7 +2011,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
+                'cascade_delete', 'index', 'reverse_index', 'original_default', 'sql_default', 'py_check', 'hidden', \
                 'optimistic', 'fk_name', 'type_has_empty_value'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
@@ -2069,6 +2072,7 @@ class Attribute(object):
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
         attr.index = kwargs.pop('index', None)
+        attr.reverse_index = kwargs.pop('reverse_index', None)
         attr.fk_name = kwargs.pop('fk_name', None)
         attr.col_paths = []
         attr._columns_checked = False
@@ -2154,6 +2158,12 @@ class Attribute(object):
         return '%s.%s' % (owner_name, attr.name or '?')
     def __lt__(attr, other):
         return attr.id < other.id
+    def _get_entity(attr, obj, entity):
+        if entity is not None:
+            return entity
+        if obj is not None:
+            return obj.__class__
+        return attr.entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
         val = deref_proxy(val)
         if val is None:
@@ -2168,10 +2178,7 @@ class Attribute(object):
             if callable(default): val = default()
             else: val = default
 
-        if entity is not None: pass
-        elif obj is not None: entity = obj.__class__
-        else: entity = attr.entity
-
+        entity = attr._get_entity(obj, entity)
         reverse = attr.reverse
         if not reverse:
             if isinstance(val, Entity): throw(TypeError, 'Attribute %s must be of %s type. Got: %s'
@@ -2551,7 +2558,7 @@ class Discriminator(Required):
             entity._discriminator_ = entity.__name__
         discr_value = entity._discriminator_
         if discr_value is not None:
-            try: entity._discriminator_ = discr_value = attr.validate(discr_value)
+            try: entity._discriminator_ = discr_value = attr.validate(discr_value, None, entity)
             except ValueError: throw(TypeError,
                 "Incorrect discriminator value is set for %s attribute '%s' of '%s' type: %r"
                 % (entity.__name__, attr.name, attr.py_type.__name__, discr_value))
@@ -2562,10 +2569,18 @@ class Discriminator(Required):
                                % (entity.__name__, attr.name, attr.py_type.__name__))
         attr.code2cls[discr_value] = entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
-        if from_db: return val
-        elif val is DEFAULT:
+        if from_db:
+            return val
+        entity = attr._get_entity(obj, entity)
+        if val is DEFAULT:
             assert entity is not None
             return entity._discriminator_
+        if val != entity._discriminator_:
+            for cls in entity._subclasses_:
+                if val == cls._discriminator_:
+                    break
+            else: throw(TypeError, 'Invalid discriminator attribute value for %s. Expected: %r, got: %r'
+                                   % (entity.__name__, entity._discriminator_, val))
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
         assert False  # pragma: no cover
@@ -2714,8 +2729,11 @@ class Collection(Attribute):
         if attr.default is not None:
             throw(TypeError, 'Default value could not be set for collection attribute')
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
-        if not attr.symmetric and attr.reverse_columns: throw(TypeError,
-            "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+        if not attr.symmetric:
+            if attr.reverse_columns:
+                throw(TypeError, "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+            if attr.reverse_index:
+                throw(TypeError, "'reverse_index' option can be set for symmetric relations only")
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def load(attr, obj):
@@ -4281,10 +4299,14 @@ class EntityMeta(type):
         avdict = {}
         for attr in real_entity_subclass._attrs_:
             offsets = attr_offsets.get(attr)
-            if offsets is None or attr.is_discriminator: continue
-            avdict[attr] = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
+            if offsets is None:
+                continue
+            if attr.is_discriminator:
+                avdict[attr] = discr_value
+            else:
+                avdict[attr] = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
 
-        pkval = tuple(avdict.pop(attr, discr_value) for attr in entity._pk_attrs_)
+        pkval = tuple(avdict.pop(attr) for attr in entity._pk_attrs_)
         assert None not in pkval
         if not entity._pk_is_composite_: pkval = pkval[0]
         return real_entity_subclass, pkval, avdict
@@ -4336,7 +4358,6 @@ class EntityMeta(type):
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
         locals = locals.copy() if locals is not None else {}
-        assert '.0' not in locals
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals, cells)
     def _get_from_identity_map_(entity, pkval, status, for_update=False, undo_funcs=None, obj_to_init=None):
@@ -4644,7 +4665,7 @@ class Entity(with_metaclass(EntityMeta)):
             if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
         for attr in entity._attrs_:
             val = kwargs.get(attr.name, DEFAULT)
-            avdict[attr] = attr.validate(val, obj, entity, from_db=False)
+            avdict[attr] = attr.validate(val, obj, from_db=False)
         if entity._pk_is_composite_:
             pkval = tuple(imap(avdict.get, entity._pk_attrs_))
             if None in pkval: pkval = None
@@ -4869,7 +4890,7 @@ class Entity(with_metaclass(EntityMeta)):
             bit = obj._bits_except_volatile_[attr]
             if rbits & bit:
                 errormsg = 'Please contact PonyORM developers so they can ' \
-                           'reproduce your error and fix a bug: support@ponyorm.com'
+                           'reproduce your error and fix a bug: support@ponyorm.org'
                 assert old_dbval is not NOT_LOADED, errormsg
                 throw(UnrepeatableReadError,
                       'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'

@@ -504,6 +504,8 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
+        if translator.aggregated:
+            translator.distinct = False
         translator.vars = None
         if translator is not this:
             raise UseAnotherTranslator(translator)
@@ -659,11 +661,6 @@ class SQLTranslator(ASTTranslator):
             translator.query_result_is_cacheable = False
         else: sql_ast = [ 'SELECT' ]
 
-        groupby_monads = translator.groupby_monads
-        if distinct and translator.aggregated and not groupby_monads:
-            distinct = False
-            groupby_monads = translator.expr_monads
-
         select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         if aggr_func_name:
             expr_type = translator.expr_type
@@ -681,9 +678,10 @@ class SQLTranslator(ASTTranslator):
                     throw(TypeError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
             aggr_ast = None
-            if groupby_monads or (aggr_func_name == 'COUNT' and distinct
-                                  and isinstance(translator.expr_type, EntityMeta)
-                                  and len(translator.expr_columns) > 1):
+            if translator.groupby_monads or (
+                    aggr_func_name == 'COUNT' and distinct
+                    and isinstance(translator.expr_type, EntityMeta)
+                    and len(translator.expr_columns) > 1):
                 outer_alias = 't'
                 if aggr_func_name == 'COUNT' and not aggr_func_distinct:
                     outer_aggr_ast = [ 'COUNT', None ]
@@ -736,9 +734,9 @@ class SQLTranslator(ASTTranslator):
         if conditions:
             sql_ast.append([ 'WHERE' ] + conditions)
 
-        if groupby_monads:
+        if translator.groupby_monads:
             group_by = [ 'GROUP_BY' ]
-            for m in groupby_monads: group_by.extend(m.getsql())
+            for m in translator.groupby_monads: group_by.extend(m.getsql())
             sql_ast.append(group_by)
         else: group_by = None
 

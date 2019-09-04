@@ -1,7 +1,7 @@
 Pony Object-Relational Mapper
 =============================
 
-Pony is an advanced object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using Python generator expressions. Pony analyzes the abstract syntax tree of the generator expression and translates it into a SQL query.
+Pony is an advanced object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using Python generator expressions and lambdas. Pony analyzes the abstract syntax tree of the expression and translates it into a SQL query.
 
 Here is an example query in Pony:
 
@@ -22,6 +22,14 @@ All this helps the developer to focus on implementing the business logic of an a
 See the example [here](https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/estore.py)
 
 
+Support Pony ORM Development
+----------------------------
+
+Pony ORM is Apache 2.0 licensed open source project. If you would like to support Pony ORM development, please consider:
+
+[Become a backer or sponsor](https://ponyorm.org/donation.html)
+
+
 Online tool for database design
 -------------------------------
 
@@ -31,7 +39,7 @@ Pony ORM also has the Entity-Relationship Diagram Editor which is a great tool f
 Documentation
 -------------
 
-Documenation is available at [https://docs.ponyorm.com](https://docs.ponyorm.com)
+Documenation is available at [https://docs.ponyorm.org](https://docs.ponyorm.org)
 The documentation source is avaliable at [https://github.com/ponyorm/pony-doc](https://github.com/ponyorm/pony-doc).
 Please create new documentation related issues [here](https://github.com/ponyorm/pony-doc/issues) or make a pull request with your improvements.
 
@@ -46,8 +54,8 @@ PonyORM community
 -----------------
 
 Please post your questions on [Stack Overflow](http://stackoverflow.com/questions/tagged/ponyorm).
-Meet the PonyORM team, chat with the community members, and get your questions answered on our community [Telegram group](https://telegram.me/ponyorm).
-Join our newsletter at [ponyorm.com](https://ponyorm.com).
+Meet the PonyORM team, chat with the community members, and get your questions answered on our community [Telegram group](https://t.me/ponyorm).
+Join our newsletter at [ponyorm.org](https://ponyorm.org).
 Reach us on [Twitter](https://twitter.com/ponyorm).
 
-Copyright (c) 2018 Pony ORM, LLC. All rights reserved. team (at) ponyorm.com
+Copyright (c) 2013-2019 Pony ORM. All rights reserved. info (at) ponyorm.org
