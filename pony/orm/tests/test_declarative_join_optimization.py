@@ -75,13 +75,15 @@ class TestM2MOptimization(unittest.TestCase):
         objects = q[:]
         student_table_name = 'Student'
         group_table_name = 'Group'
+        col_name = 'group'
         if not (db.provider.dialect == 'SQLite' and pony.__version__ < '0.9'):
             student_table_name = student_table_name.lower()
             group_table_name = group_table_name.lower()
+            col_name = 'group_number'
         self.assertEqual(q._translator.sqlquery.from_ast, [
             'FROM', ['s', 'TABLE', student_table_name],
                     ['group', 'TABLE', group_table_name,
-                           ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group', 'number']]
+                           ['EQ', ['COLUMN', 's', col_name], ['COLUMN', 'group', 'number']]
                     ]
         ])
 

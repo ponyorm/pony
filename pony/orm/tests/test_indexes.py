@@ -12,7 +12,10 @@ class TestIndexes(unittest.TestCase):
         
     def tearDown(self):
         teardown_database(self.db)
-    
+
+    def q(self, s):
+        return s.replace('`', '"') if self.db.provider.dialect in ('PostgreSQL', 'Oracle') else s
+
     def test_1(self):
         db = self.db
         class Person(db.Entity):
@@ -31,10 +34,12 @@ class TestIndexes(unittest.TestCase):
 
         table_name = 'Person' if db.provider.dialect == 'SQLite' and pony.__version__ < '0.9' else 'person'
         table = db.schema.tables[table_name]
-        name_column = table.column_dict['name']
-        age_column = table.column_dict['age']
-        self.assertEqual(len(table.indexes), 2)
-        db_index = table.indexes[name_column, age_column]
+        name_column = table.columns['name']
+        age_column = table.columns['age']
+        indexes = [table.primary_key] + table.keys + table.indexes
+        self.assertEqual(len(indexes), 2)
+        # db_index = table.indexes[name_column, age_column]
+        db_index = table.keys[0]
         self.assertEqual(db_index.is_pk, False)
         self.assertEqual(db_index.is_unique, True)
 
@@ -56,14 +61,23 @@ class TestIndexes(unittest.TestCase):
 
         table_name = 'Person' if db.provider.dialect == 'SQLite' and pony.__version__ < '0.9' else 'person'
         table = db.schema.tables[table_name]
-        name_column = table.column_dict['name']
-        age_column = table.column_dict['age']
-        self.assertEqual(len(table.indexes), 2)
-        db_index = table.indexes[name_column, age_column]
+        name_column = table.columns['name']
+        age_column = table.columns['age']
+
+        indexes = [table.primary_key] + table.indexes + table.keys
+        self.assertEqual(len(indexes), 2)
+        # db_index = table.indexes[name_column, age_column]
+        db_index = None
+        for index in indexes:
+            if index.cols == [name_column, age_column]:
+                db_index = index
+                break
         self.assertEqual(db_index.is_pk, False)
         self.assertEqual(db_index.is_unique, False)
 
-        create_script = db.schema.generate_create_script()
+        create_script = db.schema.get_create_sql()
+        index_sql = self.q('CREATE INDEX `idx_person__name__age` ON `person` (`name`, `age`)')
+        self.assertTrue(index_sql in create_script)
 
 
         dialect = self.db.provider.dialect

@@ -6,6 +6,7 @@ import sqlite3 as sqlite
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from random import random
+from collections import defaultdict
 from time import strptime
 from threading import Lock
 from uuid import UUID
@@ -13,11 +14,13 @@ from binascii import hexlify
 from functools import wraps
 
 from pony.orm import core, dbschema, dbapiprovider
-from pony.orm.core import log_orm
+from pony.orm.core import log_orm, MigrationException, MigrationError, MappingError
 from pony.orm.ormtypes import Json, TrackedArray
 from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
 from pony.orm.sqlbuilding import SQLBuilder, Value, join, make_unary_func
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions, Name, obsolete
+from pony.orm.migrations import dbschema as vdbschema, Optional
+from pony.orm.migrations.dbschema import provided_name
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, \
     cut_traceback_depth
 
@@ -34,6 +37,739 @@ class SQLiteSchema(dbschema.DBSchema):
     dialect = 'SQLite'
     named_foreign_keys = False
     fk_class = SQLiteForeignKey
+
+
+class SQLiteVirtualForeignKey(vdbschema.ForeignKey):
+    @vdbschema.sql_op
+    def get_create_sql(self, using_obsolete_names=False):
+        quotate = self.provider.quote_name
+        result = []
+        result.append('FOREIGN KEY')
+        if using_obsolete_names:
+            result.append('(%s)' % (', '.join(quotate(obsolete(col.name)) for col in self.cols_from)))
+        else:
+            result.append('(%s)' % (', '.join(quotate(col.name) for col in self.cols_from)))
+        result.append('REFERENCES')
+        result.append(quotate(self.table_to.name))
+        if using_obsolete_names:
+            result.append('(%s)' % (', '.join(quotate(obsolete(col.name)) for col in self.cols_to)))
+        else:
+            result.append('(%s)' % (', '.join(quotate(col.name) for col in self.cols_to)))
+        if self.on_delete:
+            result.append('ON DELETE')
+            result.append(self.on_delete)
+        return ' '.join(result)
+
+    @vdbschema.sql_op
+    def get_inline_sql(self, using_obsolete_names=False):
+        quotate = self.provider.quote_name
+        assert len(self.cols_from) == 1
+        result = ['REFERENCES']
+        result.append(quotate(self.table_to.name))
+        if using_obsolete_names:
+            result.append('(%s)' % (', '.join(quotate(col.name) for col in self.cols_to)))
+        else:
+            result.append('(%s)' % (', '.join(quotate(obsolete(col.name)) for col in self.cols_to)))
+        if self.on_delete:
+            result.append('ON DELETE')
+            result.append(self.on_delete)
+        return ' '.join(result)
+
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        if self.table.name != other.table.name:
+            return False
+        if self.table_to.name != other.table_to.name:
+            return False
+        if self.cols_from != other.cols_from:
+            return False
+        if self.cols_to != other.cols_to:
+            return False
+        if self.on_delete != other.on_delete:
+            return False
+        return True
+
+
+class SQLiteVirtualIndex(vdbschema.Index):
+    def __init__(self, table, cols, index_name=None):
+        super(SQLiteVirtualIndex, self).__init__(table, cols, index_name)
+        self.old_name = None
+
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        if self.name != other.name:  # SQLite rename saves new_name instead of instant rename
+            return False
+        if self.table.name != other.table.name:
+            return False
+        if self.cols != other.cols:
+            return False
+        if self.is_unique != other.is_unique:
+            return False
+        return True
+
+    @vdbschema.sql_op
+    def get_drop_sql(self, using_obsolete_names=False):
+        quote = self.provider.quote_name
+        obs_if = lambda n: obsolete(n) if using_obsolete_names else n
+        return 'DROP INDEX ' + quote(obs_if(self.old_name or self.name))
+
+
+class SQLiteVirtualTable(vdbschema.Table):
+    @vdbschema.sql_op
+    def get_create_sql(self, using_obsolete_names=False):
+        quote = self.provider.quote_name
+        if using_obsolete_names:
+            header = 'CREATE TABLE %s (\n  ' % quote(obsolete(self.name))
+        else:
+            header = 'CREATE TABLE %s (\n  ' % quote(self.name)
+        body = []
+        for col in self.columns.values():
+            body.extend([op.sql for op in col.get_inline_sql(using_obsolete_names)])
+        if len(self.primary_key.cols) > 1:
+            body.extend([op.sql for op in self.primary_key.get_inline_sql(using_obsolete_names)])
+        for ck in self.keys:
+            if ck.is_pk:
+                body.extend([op.sql for op in ck.get_inline_sql(using_obsolete_names)])
+        for fk in self.foreign_keys:
+            if len(fk.cols_from) > 1:
+                body.extend([op.sql for op in fk.get_create_sql(using_obsolete_names)])
+        body = ',\n  '.join(body)
+
+        return header + body + '\n)'
+
+
+class SQLiteVirtualColumn(vdbschema.Column):
+    def __init__(self, table, name, converter, sql_type=None):
+        super(SQLiteVirtualColumn, self).__init__(table, name, converter, sql_type)
+        self.old_name = None
+        self.cast = None
+
+    @vdbschema.sql_op
+    def get_inline_sql(self, using_obsolete_names=False, ignore_pk=False, without_name=False):
+        line = super(SQLiteVirtualColumn, self).get_inline_sql(using_obsolete_names, ignore_pk, without_name)[0].sql
+        if self.check_constraint:
+            line += ' CHECK (%s)' % self.check_constraint.check
+        return line
+
+
+class SQLiteVirtualUniqueConstraint(vdbschema.UniqueConstraint):
+    inline_syntax = False
+
+    @vdbschema.sql_op
+    def get_create_sql(self, using_obsolete_names=False):
+        quote = self.provider.quote_name
+        result = ['CREATE UNIQUE INDEX']
+        result.append(quote(self.name))
+        result.append('ON')
+        result.append(quote(self.table.name))
+        result.append('(%s)' % ', '.join(quote(col.name) for col in self.cols))
+        return ' '.join(result)
+
+    @vdbschema.sql_op
+    def get_drop_sql(self):
+        return 'DROP INDEX %s' % self.provider.quote_name(self.name)
+
+    def exists(self, provider, connection, case_sensitive=True):
+        return provider.index_exists(connection, self.table.name, self.name, case_sensitive)
+
+
+class SQLiteVirtualSchema(vdbschema.Schema):
+    dialect = 'SQLite'
+    named_foreign_keys = False
+    inline_reference = True
+    fk_cls = SQLiteVirtualForeignKey
+    table_cls = SQLiteVirtualTable
+    column_cls = SQLiteVirtualColumn
+    index_cls = SQLiteVirtualIndex
+    unique_cls = SQLiteVirtualUniqueConstraint
+
+    def __init__(self, vdb, provider):
+        super(SQLiteVirtualSchema, self).__init__(vdb, provider)
+        self.affected_tables = defaultdict(TableAffection)
+        self.subordinates = []
+        self.legacy = False
+
+    def get_create_sql_commands(self, using_obsolete_names=False):
+        result = []
+        for table in self.tables.values():
+            result.extend([op.sql for op in table.get_create_sql(using_obsolete_names)])
+            for index in table.indexes:
+                result.extend([op.sql for op in index.get_create_sql()])
+            for ck in table.keys:
+                if not ck.is_pk:
+                    result.extend([op.sql for op in ck.get_create_sql()])
+
+        return result
+
+    def get_default_table_name(self, e_name):
+        obsolete_name = e_name
+        new_name = e_name.lower()
+        return Name(new_name, obsolete_name=obsolete_name)
+
+    def get_default_m2m_table_name(self, attr1, attr2):
+        e1_name, e2_name = attr1.entity.name, attr2.entity.name
+        if e1_name < e2_name:
+            name = '%s_%s' % (e1_name.lower(), attr1.name)
+        else:
+            name = '%s_%s' % (e2_name.lower(), attr2.name)
+
+        if attr1.symmetric:
+            obsolete_name = attr1.entity.name.lower() + '_' + attr1.name
+        else:
+            obsolete_name = "%s_%s" % (min(e1_name, e2_name), max(e1_name, e2_name))
+        return Name(name, obsolete_name=obsolete_name)
+
+    def create_migration_table_sql(self):
+        query = 'create table "migration"'\
+                '("name" text primary key, "applied" datetime not null)'
+        return query
+
+    def get_applied_sql(self):
+        return 'select "name" from "migration"'
+
+    def get_migration_insert_sql(self):
+        return 'insert into migration("name", "applied") values(?, ?)'
+
+    @vdbschema.sql_op
+    def get_update_move_column_sql(self, table_to, table_to_pk, cols_to, table_from, table_from_pk, cols_from):
+        quote = self.provider.quote_name
+        result = ['UPDATE %s' % quote(table_to.name)]
+        set_section = ', '.join(quote(col.name) for col in cols_to)
+        result.append('SET (%s) = ' % set_section)
+        select_section = ', '.join(quote(col.name) for col in table_from_pk)
+        result.append('(SELECT %s' % select_section)
+        result.append(' FROM %s' % quote(table_from.name))
+        where_section = ' AND \n      '.join('%s.%s = %s.%s' %
+             (quote(table_from.name), quote(col_from.name), quote(table_to.name), quote(pk_col.name))
+             for col_from, pk_col in zip(cols_from, table_to_pk)
+        )
+        result.append(' WHERE %s)' % where_section)
+        return '\n'.join(result)
+
+    def find_subordinate_fks(schema, col):
+        result = []
+        for table in schema.tables.values():
+            for fk in table.foreign_keys:
+                if col in fk.cols_to:
+                    result.append(fk)
+        return result
+
+    # migrations methods
+
+    def add_columns(schema, columns):
+        if not columns:
+            return
+        table = columns[0].table
+        schema.affected_tables[table.name].added_columns.extend(columns)
+
+    def drop_initial(schema, columns):
+        pass
+
+    def add_fk(schema, fk):
+        table = fk.table
+        schema.affected_tables[table.name].added_fks.append(fk)
+
+    def drop_fk(schema, fk):
+        table = fk.table
+        table.foreign_keys.remove(fk)
+        schema.affected_tables[table.name].removed_fks.append(fk)
+
+    def add_index(schema, index):
+        table = index.table
+        schema.affected_tables[table.name].added_indexes.append(index)
+
+    def drop_columns(schema, columns):
+        for column in columns:
+            table = column.table
+            new_fk_list = []
+            for fk in table.foreign_keys:
+                if column not in fk.cols_from:
+                    new_fk_list.append(fk)
+            table.foreign_keys = new_fk_list
+            new_indexes_list = []
+            for index in table.indexes:
+                if column not in index.cols:
+                    new_indexes_list.append(index)
+                else:
+                    schema.affected_tables[table.name].disappeared_indexes.append(index)
+            table.indexes = new_indexes_list
+            table.columns.pop(column.name)
+            schema.affected_tables[table.name].removed_columns.append(column)
+
+    def rename_table(schema, table, new_name):
+        del schema.tables[table.name]
+        schema.ops.extend(table.get_rename_sql(new_name))
+        table.name = new_name
+        schema.tables[new_name] = table
+        for index in table.indexes:
+            index_new_name = schema.get_default_index_name(table, index.cols)
+            if index.name == index_new_name:
+                continue
+            schema.affected_tables[table.name].changed_indexes.append(index)
+            if not index.old_name:
+                index.old_name = index.name
+            index.name = index_new_name
+        for col in table.columns.values():
+            unq = col.unique_constraint
+            if unq:
+                new_name = schema.get_default_key_name(table, [col])
+                if new_name != unq.name:
+                    schema.rename_key(unq, new_name)
+            chk = col.check_constraint
+            if chk:
+                chk.name = new_name = schema.get_default_check_name(table, col)
+                # if new_name != chk.name:
+                #     schema.rename_constraint(chk, new_name)
+
+    def rename_constraint(schema, obj, new_name):
+        schema.ops.extend(obj.get_drop_sql())
+        obj.name = new_name
+        schema.ops.extend(obj.get_create_sql())
+
+    def rename_column(schema, column, new_name):
+        return schema.rename_columns([column], [new_name])
+
+    def rename_columns(schema, columns, new_names):
+        assert len(columns) == len(new_names)
+        table = columns[0].table
+        for i, new_name in enumerate(new_names):
+            column = columns[i]
+            if new_name and new_name != column.name:
+                column.old_name = column.name
+                column.name = new_name
+                schema.affected_tables[column.table.name].renamed_columns.append(column)
+        for column in columns:
+            for fk in schema.find_subordinate_fks(column):
+                schema.affected_tables[column.table.name].changed_fks.append(fk)
+            for index in schema.find_subordinate_index(column):
+                if not getattr(index.name, 'provided', True):
+                    new_index_name = schema.get_default_index_name(table, index.cols)
+                    if index.name != new_index_name:
+                        if not index.old_name:
+                            index.old_name = index.name
+                        index.name = new_index_name
+                    schema.affected_tables[column.table.name].changed_indexes.append(index)
+
+        for fk in table.foreign_keys:
+            if provided_name(fk):
+                continue
+            new_fk_name = schema.get_default_fk_name(table, fk.cols_from)
+            if new_fk_name != fk.name:
+                schema.affected_tables[table.name].changed_fks.append(fk)
+
+        for index in table.indexes:
+            if provided_name(index):
+                continue
+            new_index_name = schema.get_default_index_name(table, index.cols)
+            if new_index_name != index.name:
+                schema.affected_tables[table.name].changed_indexes.append(index)
+
+        for col in table.columns.values():
+            unq = col.unique_constraint
+            if unq:
+                new_name = schema.get_default_key_name(table, [col])
+                if new_name != unq.name:
+                    schema.affected_tables[table.name].changed_constraints.append(unq)
+                    unq.name = new_name
+                    # schema.rename_key(unq, new_name)
+            chk = col.check_constraint
+            if chk:
+                new_name = schema.get_default_check_name(table, col)
+                chk.name = new_name # We don't use check name in SQLite
+
+    def add_composite_key(schema, table, cols):
+        key = schema.key_cls(table, cols)
+        schema.ops.extend(key.get_create_sql())
+
+    def change_attribute_class(schema, *args):
+        throw(NotImplementedError)
+
+    def drop_composite_key(schema, table, columns):
+        for key in table.keys:
+            if not key.is_pk:
+                if key.cols == columns:
+                    break
+        else:
+            raise MigrationError
+
+        schema.affected_tables[table.name].removed_cks.append(key)
+        table.keys.remove(key)
+
+    def add_composite_key(schema, table, cols):
+        key = schema.key_cls(table, cols)
+        schema.affected_tables[table.name].added_cks.append(key)
+
+    def rename_columns_by_attr(schema, attr, new_name):
+        # is being used by RenameAttribute operation
+        if 'column' in attr.provided.kwargs or 'columns' in attr.provided.kwargs:
+            return
+        entity = attr.entity
+        if attr.reverse:
+            resolved_pk = schema.resolve_pk(attr.reverse.entity, attr)
+        for i, column in enumerate(attr.columns):
+            table = column.table
+            if attr.reverse:
+                new_column_name = resolved_pk[i][0]
+            else:
+                assert i == 0
+                new_column_name = schema.get_default_column_name(new_name)
+            if column.name == new_column_name:
+                continue
+            column.old_name = column.name
+            column.name = new_column_name
+            schema.affected_tables[table.name].renamed_columns.append(column)
+            # foreign keys and indexes handling
+            assert table
+            for index in table.indexes:
+                if any(col in attr.columns for col in index.cols):
+                    index_new_name = schema.get_default_index_name(table, index.cols)
+                    if index_new_name != index.name:
+                        schema.affected_tables[table.name].changed_indexes.append(index)
+                        if not index.old_name:
+                            index.old_name = index.name
+                        index.name = index_new_name
+
+        for a in entity.new_attrs.values():
+            reverse = a.reverse
+            if a.name not in entity.primary_key and reverse:
+                if reverse.name in reverse.entity.primary_key:
+                    schema.rename_columns_by_attr(reverse, None)  # we're not passing name for reverse attrs
+
+    def move_column_with_data(schema, attr):
+        cols_from = attr.reverse.columns
+        table_from = cols_from[0].table
+        table_from_pk = table_from.primary_key.cols
+        for fk in table_from.foreign_keys:
+            if fk.cols_from == cols_from:
+                break
+        else:
+            throw(MigrationError, 'Foreign key was not found')
+            return  # for pycharm
+
+        for index in table_from.indexes:
+            if index.cols == cols_from:
+                break
+        else:
+            throw(MigrationError, 'Index was not found')
+            return
+
+        table_to = fk.table_to
+        table_to_pk = table_to.primary_key.cols
+        cols_to = []
+        resolved_pk = schema.resolve_pk(attr.reverse.entity, attr)
+        for colname, _, pk_attr, _ in resolved_pk:
+            pk_conv = pk_attr.converters[0]
+            new_conv = pk_conv.make_fk_converter(attr)
+            new_col = schema.column_cls(table_to, colname, new_conv)
+            new_col.nullable = True
+            cols_to.append(new_col)
+            schema.ops.extend(new_col.get_add_sql())
+        transfer_data_sql = schema.get_update_move_column_sql(table_to, table_to_pk, cols_to,
+                                                              table_from, table_from_pk, cols_from)
+        schema.ops.extend(transfer_data_sql)
+        schema.affected_tables[fk.table.name].removed_fks.append(fk)
+        table_from.foreign_keys.remove(fk)
+        schema.affected_tables[index.table.name].removed_indexes.append(index)
+        table_from.indexes.remove(index)
+
+        for col in cols_from:
+            schema.affected_tables[col.table.name].renamed_columns.append(col)
+            table_from.columns.pop(col.name)
+
+        new_fk_name = schema.get_fk_name(attr, table_to, cols_to)
+        new_fk = schema.fk_cls(table_to, table_from, cols_to, table_from_pk, new_fk_name)
+        if attr.reverse.cascade_delete:
+            new_fk.on_delete = 'CASCADE'
+        elif isinstance(attr, Optional) and attr.nullable:
+            new_fk.on_delete = 'SET NULL'
+
+        index_name = schema.get_index_name(attr, table_to, cols_to)
+        new_index = schema.index_cls(table_to, cols_to, index_name)
+        schema.affected_tables[index.table.name].added_indexes.append(new_index)
+
+    def change_column_type(schema, column, new_sql_type, cast):
+        if column.sql_type != new_sql_type:
+            column.sql_type = new_sql_type
+            schema.affected_tables[column.table.name].changed_columns.append(column)
+            column.cast = cast
+
+    def change_sql_default(schema, column, new_sql_default):
+        schema.affected_tables[column.table.name].changed_columns.append(column)
+        column.sql_default = new_sql_default
+
+    def change_nullable(schema, column, new_value):
+        old_value = column.nullable
+        if old_value == new_value:
+            return
+        column.nullable = new_value
+        schema.affected_tables[column.table.name].changed_columns.append(column)
+
+    def update_col_value(schema, col, old_value, new_value):
+        # schema.ops.append(SQLOperation(col, col.get_update_value_sql(old_value, new_value)))
+        schema.affected_tables[col.table.name].change_col_values.append((col, old_value, new_value))
+
+    def add_unique_constraint(schema, cols):
+        unq = schema.unique_cls(cols)
+        schema.affected_tables[cols[0].table.name].changed_columns.extend(cols)  # TODO check it
+
+    def drop_unique_constraint(schema, cols):
+        table = cols[0].table
+        unq = cols[0].unique_constraint
+        assert unq in table.constraints
+        for col in cols:
+            col.unique_constraint = None
+        table.constraints.remove(unq)
+        schema.affected_tables[table.name].changed_columns.extend(unq.cols)
+
+    def add_check_constraint(schema, col, check):
+        if col.check_constraint:
+            raise MigrationError
+        chk = schema.check_cls(col, check)
+        schema.affected_tables[col.table.name].changed_columns.append(col)
+
+    def drop_check_constraint(schema, col):
+        table = col.table
+        chk = col.check_constraint
+        if chk is None:
+            raise MigrationError
+        assert chk in table.constraints
+        table.constraints.remove(chk)
+        col.check_constraint = None
+        schema.affected_tables[col.table.name].changed_columns.append(col)
+
+    def rename_index(schema, index, new_name):
+        table = index.table
+        cols = index.cols
+        if new_name is True:
+            new_index_name = schema.get_default_index_name(table, cols)
+            if new_index_name != index.name:
+                schema.affected_tables[table.name].changed_indexes.append(index)
+                if not index.old_name:
+                    index.old_name = index.name
+                index.name = new_index_name
+        else:
+            if new_name != index.name:
+                new_index_name = schema.provider.normalize_name(new_name)
+                schema.affected_tables[table.name].changed_indexes.append(index)
+                if not index.old_name:
+                    index.old_name = index.name
+                index.name = new_index_name
+
+    def drop_index(schema, index):
+        table = schema.tables[index.table.name]
+        table.indexes.remove(index)
+        schema.affected_tables[table.name].removed_indexes.append(index)
+
+    def rename_foreign_key(schema, fk, new_fk_name):
+        throw(NotImplementedError, 'Renaming foreign key is not implemented for SQLite')
+
+    def table_recreation_sql(schema, table, affection):
+        quote = schema.provider.quote_name
+        old_colnames, new_colnames = [], []
+        for fk in table.foreign_keys:
+            if fk in affection.changed_fks:
+                fk.name = schema.get_default_fk_name(fk.table, fk.cols_from)  # to make schema consistent
+        for col in table.columns.values():
+            if col in affection.removed_columns:
+                continue
+            if col not in affection.added_columns:
+                if col in affection.changed_columns and col.cast:
+                    old_colnames.append(col.cast.format(colname=quote(col.name), sql_type=col.sql_type))
+                    col.cast = None
+                else:
+                    if col.old_name:
+                        old_colnames.append(quote(col.old_name))
+                    else:
+                        old_colnames.append(quote(col.name))
+            else:
+                if col.initial is None:
+                    continue
+                if col in affection.added_columns:
+                    old_colnames.append('%r' % col.initial)
+                    col.initial = None
+
+            # if col in affection.renamed_columns:
+            #     col.name = col.new_name
+            #     col.new_name = None
+            new_colnames.append(quote(col.name))
+
+        # for removed_col in affection.removed_columns:
+        #     table.columns.pop(removed_col.name)
+
+        name = table.name
+        tmp_name = '_tmp_%s' % table.name
+        table.name = tmp_name
+        table.created = False
+        sql_ops = [''.join(table.create())]
+        insert_sql = ['INSERT INTO %s' % quote(table.name)]
+        insert_sql.append('(%s)' % ', '.join(new_colnames))
+        insert_sql.append('SELECT')
+        insert_sql.append(', '.join(old_colnames))
+        insert_sql.append('FROM %s' % quote(name))
+        sql_ops.append(' '.join(insert_sql))
+        sql_ops.append('DROP TABLE %s' % quote(name))
+        sql_ops.extend([op.sql for op in table.get_rename_sql(name)])
+        table.name = name
+        return sql_ops
+
+    def prepare_sql(schema, connection):
+        sql_ops = []
+        # for op in schema.ops:
+        #     sql_ops.append(op.sql)
+
+        not_resolved_attrs = {}
+        for attr, table in schema.attrs_to_create.items():
+            if table not in schema.tables_to_create:
+                not_resolved_attrs[attr] = table
+                continue
+            columns, fk, index = schema.make_column(attr, table)
+            # if attr.unique:
+            #     schema.unique_cls(columns)
+
+        schema.attrs_to_create = not_resolved_attrs
+
+        for table in schema.tables_to_create:
+            sql_ops.extend(table.create())
+            sql_ops.extend(table.create_indexes())
+
+        for op in schema.ops:
+            sql_ops.append(op.sql)
+
+        for table_name, affection in schema.affected_tables.items():
+            for index in affection.removed_indexes:
+                sql_ops.extend([op.sql for op in index.get_drop_sql()])
+                # if index.new_name:
+                #     index.name = index.new_name
+                #     index.new_name = None
+
+            for index in affection.changed_indexes:
+                sql_ops.extend([op.sql for op in index.get_drop_sql()])
+                affection.added_indexes.append(index)
+
+            table = schema.tables[table_name]
+            if not affection.should_recreate():
+                for col in affection.added_columns:
+                    sql_ops.extend([op.sql for op in col.get_add_sql()])
+            else:
+                schema.legacy = schema.provider.server_version[:2] >= (3, 25)
+                sql = "select name, type, sql " \
+                      "from sqlite_master " \
+                      "where (type='index' or type='trigger') and tbl_name=? and sql is not null"
+                cursor = connection.cursor()
+                cursor.execute(sql, (table.name,))
+                res = cursor.fetchall()
+                index_names = set()
+                for index in table.indexes + affection.changed_indexes + affection.removed_indexes +\
+                             affection.disappeared_indexes:
+                    index_names.add(index.name)
+                    if index.old_name:
+                        index_names.add(index.old_name)
+                for unq in table.constraints:
+                    if unq.typename == 'Unique constraint':
+                        index_names.add(unq.name)
+
+                sql_ops.extend(schema.table_recreation_sql(table, affection))
+                for col, old_val, new_val in affection.change_col_values:
+                    sql_ops.extend([op.sql for op in col.get_update_value_sql(old_val, new_val)])
+
+                for name, obj_type, sql in res:
+                    if obj_type == 'index' and name in index_names:
+                        continue
+                    schema.subordinates.append((name, obj_type, table.name, sql))
+
+            for index in affection.added_indexes:
+                if table_name not in [table.name for table in schema.tables_to_create]:
+                    sql_ops.extend([op.sql for op in index.get_create_sql()])
+
+        schema.affected_tables = defaultdict(TableAffection)
+        schema.tables_to_create = []
+        schema.ops = []
+        return sql_ops
+
+    def apply(schema, connection, verbose, sql_only):
+        sql_ops = schema.prepare_sql(connection)
+
+        if sql_only:
+            for op in sql_ops:
+                print(op)
+            for _, _, sql in schema.subordinates:
+                print(sql)
+            return
+
+        last_sql = None
+        try:
+            cursor = connection.cursor()
+            schema.provider.execute(cursor, 'PRAGMA foreign_key = false')
+            if schema.legacy:
+                schema.provider.execute(cursor, 'PRAGMA legacy_alter_table = true')
+
+            for op in sql_ops:
+                last_sql = op
+                schema.provider.execute(cursor, op)
+                if verbose:
+                    print(op, end='\n')
+        except Exception as e:
+            schema.errors += 1
+            if last_sql:
+                print('Last SQL: %r' % last_sql, file=sys.stderr)
+            raise
+
+        for name, obj_type, table_name, sql in schema.subordinates:
+            try:
+                last_sql = sql
+                schema.provider.execute(cursor, sql)
+                if verbose:
+                    print(sql)
+            except Exception as e:
+                schema.errors += 1
+                quote = schema.provider.quote_name
+                print("Pony tried to recreate the subordinate %s %s of table %s but failed with exception %s: %s"
+                      % (obj_type, quote(name), quote(table_name), e.__class__.__name__, e), file=sys.stderr
+                )
+                if last_sql:
+                    print('Last SQL: %r' % last_sql, file=sys.stderr)
+
+        if schema.legacy:
+            schema.provider.execute(cursor, 'PRAGMA legacy_alter_table = false')
+        schema.provider.execute(cursor, 'PRAGMA foreign_key = true')
+
+
+class UniqueList(list):
+    def append(self, obj):
+        if obj not in self:
+            super(UniqueList, self).append(obj)
+
+    def extend(self, objects):
+        for obj in objects:
+            self.append(obj)
+
+
+class TableAffection(object):
+    def __init__(self):
+        self.added_columns = UniqueList()
+        self.removed_columns = UniqueList()
+        self.renamed_columns = UniqueList()
+        self.changed_columns = UniqueList()
+        self.added_fks = UniqueList()
+        self.removed_fks = UniqueList()
+        self.changed_fks = UniqueList()
+        self.added_cks = UniqueList()
+        self.removed_cks = UniqueList()
+        self.added_indexes = UniqueList()
+        self.removed_indexes = UniqueList()
+        self.disappeared_indexes = []  # used in drop_columns and prepare_sql (dont add idx to subordinate)
+        self.changed_indexes = UniqueList()
+        self.changed_constraints = UniqueList()
+        self.change_col_values = []
+
+    def should_recreate(self):
+        sign1 = bool(self.removed_columns or self.changed_columns or self.renamed_columns or self.changed_constraints or
+                    self.added_fks or self.removed_fks or self.added_fks or self.removed_cks or self.changed_fks)
+        sign2 = any(col.initial for col in self.added_columns)
+        return sign1 or sign2
+
 
 def make_overriden_string_func(sqlop):
     def func(translator, monad):
@@ -296,13 +1032,17 @@ def keep_exception(func):
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
     local_exceptions = local_exceptions
+    quote_char = "`"
     max_name_len = 1024
 
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
+    vdbschema_cls = SQLiteVirtualSchema
     translator_cls = SQLiteTranslator
     sqlbuilder_cls = SQLiteBuilder
     array_converter_cls = SQLiteArrayConverter
+
+    cast_sql = 'CAST({colname} AS {sql_type})'
 
     name_before_table = 'db_name'
 
@@ -442,6 +1182,16 @@ class SQLiteProvider(DBAPIProvider):
     def table_exists(provider, connection, table_name, case_sensitive=True):
         return provider._exists(connection, table_name, None, case_sensitive)
 
+    def column_exists(provider, connection, table_name, column_name, case_sensitive=True):
+        db_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        sql = 'SELECT name FROM pragma_table_info(?) WHERE name=?'
+        if not case_sensitive:
+            sql += ' COLLATE NOCASE'
+        cursor.execute(sql, [table_name, column_name])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         return provider._exists(connection, table_name, index_name, case_sensitive)
 
@@ -464,7 +1214,7 @@ class SQLiteProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name):
+    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
         assert False  # pragma: no cover
 
     def check_json1(provider, connection):
@@ -476,6 +1226,15 @@ class SQLiteProvider(DBAPIProvider):
             return True
         except sqlite.OperationalError:
             return False
+
+    def purge(provider, connection):
+        cursor = connection.cursor()
+        fetch_objects_sql = "select 'drop ' || type || ' ' ||  name || ';' from sqlite_master where name != 'sqlite_sequence';"
+        cursor.execute(fetch_objects_sql)
+        for row in cursor.fetchall():
+            sql = row[0]
+            cursor.execute(sql)
+
 
 provider_cls = SQLiteProvider
 

@@ -240,6 +240,7 @@ class TestAttribute(unittest.TestCase):
             d = Optional('Entity1', reverse='a')
         db.generate_mapping(check_tables=False)
 
+    @raises_exception(TypeError, 'Attribute Entity1.a provides option `auto` that can only be specified for int attributes')
     def test_attribute24(self):
         db = self.db
         class Entity1(db.Entity):
@@ -409,7 +410,8 @@ class TestAttribute(unittest.TestCase):
             stats = Required('Stat')
         db.generate_mapping(check_tables=False)
         self.assertEqual(Stat.webinarshow.column, None)
-        self.assertEqual(WebinarShow.stats.column, 'stats')
+        # self.assertEqual(WebinarShow.stats.column, 'stats')  # NEW_NAME
+        self.assertEqual(WebinarShow.stats.column, 'stats_id')
 
     def test_columns_22(self):
         db = self.db
@@ -419,7 +421,8 @@ class TestAttribute(unittest.TestCase):
             stats = Required('ZStat')
         db.generate_mapping(check_tables=False)
         self.assertEqual(ZStat.webinarshow.column, None)
-        self.assertEqual(WebinarShow.stats.column, 'stats')
+        # self.assertEqual(WebinarShow.stats.column, 'stats')  # NEW_NAME
+        self.assertEqual(WebinarShow.stats.column, 'stats_id')
 
     def test_nullable1(self):
         db = self.db
@@ -578,7 +581,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
-        sql_type = table.column_list[1].sql_type
+        sql_type = table.columns['foo_id'].sql_type
         self.assertEqual(sql_type, 'SOME_TYPE')
 
     @only_for('sqlite')
@@ -592,7 +595,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
-        sql_type = table.column_list[1].sql_type
+        sql_type = table.columns['foo_id'].sql_type
         self.assertEqual(sql_type, 'ANOTHER_TYPE')
 
     @only_for('sqlite')
@@ -606,20 +609,20 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
-        sql_type = table.column_list[1].sql_type
+        sql_type = table.columns['foo_id'].sql_type
         self.assertEqual(sql_type, 'ANOTHER_TYPE')
 
     def test_foreign_key_sql_type_4(self):
         db = self.db
         class Foo(db.Entity):
-            id = PrimaryKey(unicode, sql_type='SERIAL')
+            id = PrimaryKey(int, sql_type='SERIAL')
             bars = Set('Bar')
         class Bar(db.Entity):
             foo = Required(Foo)
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
-        sql_type = table.column_list[1].sql_type
+        sql_type = table.columns['foo_id'].sql_type
         required_type = 'INT8' if db.provider_name == 'cockroach' else 'INTEGER'
         self.assertEqual(required_type, sql_type)
 
@@ -633,7 +636,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
-        sql_type = table.column_list[1].sql_type
+        sql_type = table.columns['foo_id'].sql_type
         required_type = 'int8' if db.provider_name == 'cockroach' else 'integer'
         self.assertEqual(required_type, sql_type)
 

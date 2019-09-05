@@ -23,7 +23,7 @@ class Test(unittest.TestCase):
 
     def test_1(self):
         table = db.schema.tables[Person._table_]
-        pk_column = table.column_dict[Person.id.column]
+        pk_column = table.columns[Person.id.column]
         self.assertTrue(pk_column.is_pk)
 
         with orm.db_session:

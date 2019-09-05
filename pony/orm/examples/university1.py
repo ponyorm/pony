@@ -31,7 +31,7 @@ class Course(db.Entity):
 
 class Student(db.Entity):
     # _table_ = "public", "Students"  # Schema support
-    id = PrimaryKey(int, auto=True)
+    # id = PrimaryKey(int, auto=True)
     name = Required(str)
     dob = Required(date)
     tel = Optional(str)
@@ -39,6 +39,8 @@ class Student(db.Entity):
     gpa = Required(float, default=0)
     group = Required(Group)
     courses = Set(Course)
+    composite_key(name, dob)
+
 
 sql_debug(True)  # Output all SQL queries to stdout
 
@@ -180,6 +182,6 @@ def test_queries():
     print_students(students)
 
 
-##if __name__ == '__main__':
-##    populate_database()
-##    test_queries()
+if __name__ == '__main__':
+    populate_database()
+    test_queries()

@@ -5,11 +5,13 @@ import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
+from hashlib import md5
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
 from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedArray, Json, QueryType, Array
+# from pony.orm.migrations.operations import *
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -97,6 +99,32 @@ def get_version_tuple(s):
         return tuple(int(component) for component in components)
     return None
 
+class Name(unicode):
+    __slots__ = ['obsolete_name', 'provided']
+
+    def __new__(cls, name, obsolete_name=None, provided=False):
+        result = unicode.__new__(cls, name)
+        result.obsolete_name = obsolete_name
+        result.provided = provided
+        return result
+
+    def lower(self):
+        obs_name = self.obsolete_name.lower()
+        name = str(self).lower()
+        return Name(name, obs_name)
+
+    def upper(self):
+        obs_name = self.obsolete_name.upper()
+        name = str(self).upper()
+        return Name(name, obs_name)
+
+
+def obsolete(name):
+    if isinstance(name, tuple):
+        return name[0], getattr(name[1], 'obsolete_name', name[1])
+    return getattr(name, 'obsolete_name', name)
+
+
 class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
@@ -116,6 +144,10 @@ class DBAPIProvider(object):
     translator_cls = None
     sqlbuilder_cls = None
     array_converter_cls = None
+
+    purge_template = None
+
+    cast_sql = None
 
     name_before_table = 'schema_name'
     default_schema_name = None
@@ -137,8 +169,23 @@ class DBAPIProvider(object):
     def inspect_connection(provider, connection):
         pass
 
+    # def normalize_name(provider, name):
+    #     return name[:provider.max_name_len]
+
+    def normalize_case_name(provider, name):
+        return name
+
     def normalize_name(provider, name):
-        return name[:provider.max_name_len]
+        name = provider.normalize_case_name(name)
+        obsolete_name = obsolete(name)
+        max_len = provider.max_name_len
+        if len(name) > max_len:
+            hash = md5(name.encode('utf-8')).hexdigest()[:8]
+            normalized_name = '%s_%s' % (name[:max_len - 9], hash)
+        else:
+            normalized_name = name
+        normalized_obsolete_name = obsolete_name[:max_len]
+        return Name(normalized_name, obsolete_name=normalized_obsolete_name)
 
     def get_default_entity_table_name(provider, entity):
         return provider.normalize_name(entity.__name__)
@@ -207,6 +254,8 @@ class DBAPIProvider(object):
         if isinstance(name, basestring):
             name = name.replace(quote_char, quote_char+quote_char)
             return quote_char + name + quote_char
+        if name is None:
+            assert False
         return '.'.join(provider.quote_name(item) for item in name)
 
     def format_table_name(provider, name):
@@ -331,6 +380,9 @@ class DBAPIProvider(object):
         sql = 'DROP TABLE %s' % provider.quote_name(table_name)
         cursor.execute(sql)
 
+    def purge(provider, connection, schemas):
+        raise NotImplementedError
+
 class Pool(localbase):
     forked_connections = []
     def __init__(pool, dbapi_module, *args, **kwargs): # called separately in each thread
@@ -387,6 +439,13 @@ class Converter(object):
     def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
+    def make_fk_converter(converter, attr):
+        if not attr.sql_type and converter.attr.sql_type:
+            attr.sql_type = converter.get_fk_type(converter.attr.sql_type)
+        new_converter = converter.__class__(converter.provider, converter.py_type)
+        new_converter.__dict__.update(converter.__dict__)
+        new_converter.attr = attr
+        return new_converter
     def validate(converter, val, obj=None):
         return val
     def py2sql(converter, val):
@@ -399,6 +458,8 @@ class Converter(object):
         return dbval
     def dbvals_equal(self, x, y):
         return x == y
+    def sql_type(converter):
+        return None
     def get_sql_type(converter, attr=None):
         if attr is not None and attr.sql_type is not None:
             return attr.sql_type
@@ -455,7 +516,11 @@ class StrConverter(Converter):
         elif max_len is None: max_len = converter.provider.varchar_default_max_len
         elif not isinstance(max_len, int_types):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
+
         converter.max_len = max_len
+        if converter.attr.provided.args:
+            converter.attr.provided.kwargs['max_len'] = max_len
+            converter.attr.provided.args = []
         converter.db_encoding = kwargs.pop('db_encoding', None)
         converter.autostrip = kwargs.pop('autostrip', True)
     def validate(converter, val, obj=None):
@@ -514,7 +579,7 @@ class IntConverter(Converter):
         if unsigned is not None and size is None: size = 32
         lowest = highest = None
         if size:
-            highest = highest = 2 ** size - 1 if unsigned else 2 ** (size - 1) - 1
+            highest = 2 ** size - 1 if unsigned else 2 ** (size - 1) - 1
             lowest = 0 if unsigned else -(2 ** (size - 1))
 
         if highest is not None and max_val is not None and max_val > highest:
@@ -524,6 +589,7 @@ class IntConverter(Converter):
         if lowest is not None and min_val is not None and min_val < lowest:
             throw(ValueError, "'min' argument should be greater or equal to %d because of size=%d and unsigned=%s. "
                               "Got: %d" % (lowest, size, min_val, unsigned))
+
 
         converter.min_val = min_val or lowest
         converter.max_val = max_val or highest
@@ -625,8 +691,16 @@ class DecimalConverter(Converter):
             "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))
 
         if scale > precision: throw(ValueError, "'scale' must be less or equal 'precision'")
+        attr_kwargs = converter.attr.provided.kwargs
+        attr_args = converter.attr.provided.args
         converter.precision = precision
         converter.scale = scale
+        if len(attr_args) >= 1:
+            attr_kwargs['precision'] = precision
+            if len(attr_args) == 2:
+                attr_kwargs['scale'] = scale
+            converter.attr.provided.args = []
+        converter.attr.provided.args = []
         converter.exp = Decimal(10) ** -scale
 
         min_val = kwargs.pop('min', None)
@@ -702,7 +776,8 @@ class ConverterWithMicroseconds(Converter):
         args = attr.args
         if len(args) > 1: throw(TypeError, 'Too many positional parameters for attribute %s. '
                                            'Expected: precision, got: %r' % (attr, args))
-        provider = attr.entity._database_.provider
+        provider = attr.entity.db.provider
+
         if args:
             precision = args[0]
             if 'precision' in kwargs: throw(TypeError,
@@ -714,6 +789,9 @@ class ConverterWithMicroseconds(Converter):
             'Precision value (%d) of attribute %s exceeds max datetime precision (%d) of %s %s'
             % (precision, attr, provider.max_time_precision, provider.dialect, provider.server_version))
         converter.precision = precision
+        if converter.attr.provided.args:
+            converter.attr.provided.kwargs['precision'] = precision
+            converter.attr.provided.args = []
     def round_microseconds_to_precision(converter, microseconds, precision):
         # returns None if no change is required
         if not precision: result = 0
@@ -725,7 +803,7 @@ class ConverterWithMicroseconds(Converter):
     def sql_type(converter):
         attr = converter.attr
         precision = converter.precision
-        if not attr or precision == attr.entity._database_.provider.default_time_precision:
+        if not attr or precision == attr.entity.db.schema.provider.default_time_precision:
             return converter.sql_type_name
         return converter.sql_type_name + '(%d)' % precision
 
