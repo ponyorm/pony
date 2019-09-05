@@ -25,20 +25,38 @@ psycopg2.extras.register_default_jsonb(loads=lambda x: x)
 
 from pony.orm import core, dbschema, dbapiprovider, sqltranslation, ormtypes
 from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
+from pony.orm.migrations import dbschema as vdbschema
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions, Name, obsolete
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder, join
 from pony.converting import timedelta2str
-from pony.utils import is_ident
+from pony.utils import is_ident, throw
 
 NoneType = type(None)
 
 class PGColumn(dbschema.Column):
-    auto_template = 'SERIAL PRIMARY KEY'
+    auto_template = '%(type)s PRIMARY KEY'
 
 class PGSchema(dbschema.DBSchema):
     dialect = 'PostgreSQL'
     column_class = PGColumn
+
+class PGVirtualColumn(vdbschema.Column):
+    auto_template = '%(type)s PRIMARY KEY'
+
+
+class PGVirutalUniqueConstraint(vdbschema.UniqueConstraint):
+    def dbms_name(self, connection):
+        assert len(self.cols) == 1
+        return '%s_%s_key' % (self.table.name, self.cols[0].name)
+
+
+class PGVirtualSchema(vdbschema.Schema):
+    dialect = 'PostgreSQL'
+    inline_reference = False
+    column_cls = PGVirtualColumn
+    unique_cls = PGVirutalUniqueConstraint
+
 
 class PGTranslator(SQLTranslator):
     dialect = 'PostgreSQL'
@@ -150,6 +168,13 @@ class PGIntConverter(dbapiprovider.IntConverter):
     signed_types = {None: 'INTEGER', 8: 'SMALLINT', 16: 'SMALLINT', 24: 'INTEGER', 32: 'INTEGER', 64: 'BIGINT'}
     unsigned_types = {None: 'INTEGER', 8: 'SMALLINT', 16: 'INTEGER', 24: 'INTEGER', 32: 'BIGINT'}
 
+    def sql_type(converter):
+        if converter.attr.auto:
+            if converter.size >= 64:
+                return 'BIGSERIAL'
+            return 'SERIAL'
+        return dbapiprovider.IntConverter.sql_type(converter)
+
 class PGRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
         return 'DOUBLE PRECISION'
@@ -200,6 +225,17 @@ class PGPool(Pool):
 ADMIN_SHUTDOWN = '57P01'
 
 
+
+purge_template = """
+DO $$ DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname%s) LOOP
+        EXECUTE 'DROP TABLE IF EXISTS '     || quote_ident(r.tablename) || ' CASCADE';
+    END LOOP;
+END $$;"""
+
+
 class PGProvider(DBAPIProvider):
     dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
@@ -209,16 +245,19 @@ class PGProvider(DBAPIProvider):
 
     dbapi_module = psycopg2
     dbschema_cls = PGSchema
+    vdbschema_cls = PGVirtualSchema
     translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder
     array_converter_cls = PGArrayConverter
+
+    cast_sql = '{colname}::{sql_type}'
 
     default_schema_name = 'public'
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len].lower()
+    def normalize_case_name(provider, name):
+        return name.lower()
 
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
@@ -272,6 +311,19 @@ class PGProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
+    def column_exists(provider, connection, table_name, column_name, case_sensivite=True):
+        schema_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        if case_sensivite:
+            sql = 'SELECT column_name FROM information_schema.columns ' \
+                  'WHERE table_schema = %s AND table_name = %s and column_name = %s'
+        else:
+            sql = 'SELECT column_name FROM information_schema.columns '\
+                  'WHERE table_schema = %s AND lower(table_name) = lower(%s) and lower(column_name) = lower(%s)'
+        cursor.execute(sql, (schema_name, table_name, column_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
@@ -300,10 +352,56 @@ class PGProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
+    def chk_exists(provider, connection, table_name, chk_name, case_sensitive=True):
+        schema_name, table_name = provider.split_table_name(table_name)
+        if case_sensitive: sql = 'SELECT con.conname FROM pg_class cls ' \
+                                 'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
+                                 'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
+                                 'WHERE ns.nspname = %s AND cls.relname = %s ' \
+                                 "AND con.contype = 'c' AND con.conname = %s"
+        else: sql = 'SELECT con.conname FROM pg_class cls ' \
+                    'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
+                    'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
+                    'WHERE ns.nspname = %s AND cls.relname = %s ' \
+                    "AND con.contype = 'c' AND lower(con.conname) = lower(%s)"
+        cursor = connection.cursor()
+        cursor.execute(sql, [ schema_name, table_name, chk_name ])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
+    def unq_exists(provider, connection, table_name, unq_name, case_sensitive=True):
+        schema_name, table_name = provider.split_table_name(table_name)
+        if case_sensitive:
+            sql = 'SELECT con.conname FROM pg_class cls ' \
+                  'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
+                  'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
+                  'WHERE ns.nspname = %s AND cls.relname = %s ' \
+                  "AND con.contype = 'u' AND con.conname = %s"
+        else:
+            sql = 'SELECT con.conname FROM pg_class cls ' \
+                  'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
+                  'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
+                  'WHERE ns.nspname = %s AND cls.relname = %s ' \
+                  "AND con.contype = 'u' AND lower(con.conname) = lower(%s)"
+        cursor = connection.cursor()
+        cursor.execute(sql, [schema_name, table_name, unq_name])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
     def drop_table(provider, connection, table_name):
         cursor = connection.cursor()
         sql = 'DROP TABLE %s CASCADE' % provider.quote_name(table_name)
         cursor.execute(sql)
+
+    def purge(provider, connection, schemas):
+        if schemas is not None:
+            schemas_cond = 'in (%s)' % ', '.join(schemas)
+        else:
+            schemas_cond = '= current_schema()'
+
+        purge_sql = purge_template % schemas_cond
+        cursor = connection.cursor()
+        cursor.execute(purge_sql)
 
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),

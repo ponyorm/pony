@@ -44,7 +44,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Male[3]._vals_[Male.wife], Female[3])
         self.assertEqual(Female[3]._vals_[Female.husband], Male[3])
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([1, 2, 3], wives)
 
     @db_session
@@ -54,7 +54,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Male[3]._vals_[Male.wife], Female[3])
         self.assertEqual(Female[3]._vals_[Female.husband], Male[3])
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([1, 2, 3], wives)
 
     @db_session
@@ -64,7 +64,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Male[1]._vals_[Male.wife], None)
         self.assertEqual(Female[1]._vals_[Female.husband], None)
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([None, 2, None], wives)
 
     @db_session
@@ -74,7 +74,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Male[1]._vals_[Male.wife], None)
         self.assertEqual(Female[1]._vals_[Female.husband], None)
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([None, 2, None], wives)
 
     @db_session
@@ -85,7 +85,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Female[1]._vals_[Female.husband], None)
         self.assertEqual(Female[3]._vals_[Female.husband], Male[1])
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([3, 2, None], wives)
 
     @db_session
@@ -96,7 +96,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Female[1]._vals_[Female.husband], None)
         self.assertEqual(Female[3]._vals_[Female.husband], Male[1])
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([3, 2, None], wives)
 
     @db_session
@@ -108,7 +108,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Female[1]._vals_[Female.husband], None)
         self.assertEqual(Female[2]._vals_[Female.husband], Male[1])
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([2, None, None], wives)
 
     @db_session
@@ -120,7 +120,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual(Female[1]._vals_[Female.husband], None)
         self.assertEqual(Female[2]._vals_[Female.husband], Male[1])
         commit()
-        wives = db.select('wife from Male order by Male.id')
+        wives = db.select('wife from male order by male.id')
         self.assertEqual([2, None, None], wives)
 
     @db_session

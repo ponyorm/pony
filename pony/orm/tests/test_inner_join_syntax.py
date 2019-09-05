@@ -49,23 +49,23 @@ class TestJoin(unittest.TestCase):
     def test_join_1(self):
         result = select(g.id for g in db.Genre for a in g.artists if a.name.startswith('S'))[:]
         self.assertEqual(db.last_sql, """SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
-    ON "g"."id" = "t-1"."genre"
-  INNER JOIN "Artist" "a"
-    ON "t-1"."artist" = "a"."id"
-WHERE "a"."name" LIKE 'S%'""")
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
+    ON "g"."id" = "t-1"."genre_id"
+  INNER JOIN "artist" "a"
+    ON "t-1"."artist_id" = "a"."id"
+WHERE "a"."name" LIKE 'S%'""".replace('"', '`'))
 
     @db_session
     def test_join_2(self):
         result = select(g.id for g in db.Genre for a in db.Artist
                         if JOIN(a in g.artists) and a.name.startswith('S'))[:]
         self.assertEqual(db.last_sql, """SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
-    ON "g"."id" = "t-1"."genre", "Artist" "a"
-WHERE "t-1"."artist" = "a"."id"
-  AND "a"."name" LIKE 'S%'""")
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
+    ON "g"."id" = "t-1"."genre_id", "artist" "a"
+WHERE "t-1"."artist_id" = "a"."id"
+  AND "a"."name" LIKE 'S%'""".replace('"', '`'))
 
 
     @db_session
@@ -73,24 +73,24 @@ WHERE "t-1"."artist" = "a"."id"
         result = select(g.id for g in db.Genre for x in db.Artist for a in db.Artist
                         if JOIN(a in g.artists) and a.name.startswith('S') and g.id == x.id)[:]
         self.assertEqual(db.last_sql, '''SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
-    ON "g"."id" = "t-1"."genre", "Artist" "x", "Artist" "a"
-WHERE "t-1"."artist" = "a"."id"
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
+    ON "g"."id" = "t-1"."genre_id", "artist" "x", "artist" "a"
+WHERE "t-1"."artist_id" = "a"."id"
   AND "a"."name" LIKE 'S%'
-  AND "g"."id" = "x"."id"''')
+  AND "g"."id" = "x"."id"'''.replace('"', '`'))
 
     @db_session
     def test_join_4(self):
         result = select(g.id for g in db.Genre for a in db.Artist for x in db.Artist
                         if JOIN(a in g.artists) and a.name.startswith('S') and g.id == x.id)[:]
         self.assertEqual(db.last_sql, '''SELECT DISTINCT "g"."id"
-FROM "Genre" "g"
-  INNER JOIN "Artist_Genre" "t-1"
-    ON "g"."id" = "t-1"."genre", "Artist" "a", "Artist" "x"
-WHERE "t-1"."artist" = "a"."id"
+FROM "genre" "g"
+  INNER JOIN "artist_genres" "t-1"
+    ON "g"."id" = "t-1"."genre_id", "artist" "a", "artist" "x"
+WHERE "t-1"."artist_id" = "a"."id"
   AND "a"."name" LIKE 'S%'
-  AND "g"."id" = "x"."id"''')
+  AND "g"."id" = "x"."id"'''.replace('"', '`'))
 
 if __name__ == '__main__':
     unittest.main()

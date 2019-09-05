@@ -127,7 +127,7 @@ class TestPrefetching(unittest.TestCase):
             s1 = Student.select().prefetch(Student.biography).first()
         self.assertEqual(s1.biography, 'S1 bio')
         table_name = 'Student' if db.provider.dialect == 'SQLite' and pony.__version__ < '0.9' else 'student'
-        expected_sql = '''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."mentor", "s"."biography"
+        expected_sql = '''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group_number", "s"."mentor_id", "s"."biography"
 FROM "%s" "s"
 ORDER BY 1
 LIMIT 1''' % table_name

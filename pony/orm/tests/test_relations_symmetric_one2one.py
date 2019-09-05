@@ -25,15 +25,15 @@ class TestSymmetricOne2One(unittest.TestCase):
 
     def setUp(self):
         with db_session:
-            db.execute('update person set spouse=null')
+            db.execute('update person set spouse_id=null')
             db.execute('delete from person')
             db.insert(Person, id=1, name='A')
-            db.insert(Person, id=2, name='B', spouse=1)
-            db.execute('update person set spouse=2 where id=1')
+            db.insert(Person, id=2, name='B', spouse_id=1)
+            db.execute('update person set spouse_id=2 where id=1')
             db.insert(Person, id=3, name='C')
-            db.insert(Person, id=4, name='D', spouse=3)
-            db.execute('update person set spouse=4 where id=3')
-            db.insert(Person, id=5, name='E', spouse=None)
+            db.insert(Person, id=4, name='D', spouse_id=3)
+            db.execute('update person set spouse_id=4 where id=3')
+            db.insert(Person, id=5, name='E', spouse_id=None)
         db_session.__enter__()
     def tearDown(self):
         db_session.__exit__()
@@ -46,7 +46,7 @@ class TestSymmetricOne2One(unittest.TestCase):
         self.assertEqual(p1._vals_.get(Person.spouse), p5)
         self.assertEqual(p5._vals_.get(Person.spouse), p1)
         self.assertEqual(p2._vals_.get(Person.spouse), None)
-        data = db.select('spouse from person order by id')
+        data = db.select('spouse_id from person order by id')
         self.assertEqual([5, None, 4, 3, 1], data)
     def test2(self):
         p1 = Person[1]
@@ -55,7 +55,7 @@ class TestSymmetricOne2One(unittest.TestCase):
         commit()
         self.assertEqual(p1._vals_.get(Person.spouse), None)
         self.assertEqual(p2._vals_.get(Person.spouse), None)
-        data = db.select('spouse from person order by id')
+        data = db.select('spouse_id from person order by id')
         self.assertEqual([None, None, 4, 3, None], data)
     def test3(self):
         p1 = Person[1]
@@ -68,7 +68,7 @@ class TestSymmetricOne2One(unittest.TestCase):
         self.assertEqual(p2._vals_.get(Person.spouse), None)
         self.assertEqual(p3._vals_.get(Person.spouse), p1)
         self.assertEqual(p4._vals_.get(Person.spouse), None)
-        data = db.select('spouse from person order by id')
+        data = db.select('spouse_id from person order by id')
         self.assertEqual([3, None, 1, None, None], data)
     def test4(self):
         persons = set(select(p for p in Person if p.spouse.name in ('B', 'D')))
@@ -76,13 +76,13 @@ class TestSymmetricOne2One(unittest.TestCase):
     @raises_exception(UnrepeatableReadError, 'Multiple Person objects linked with the same Person[2] object. '
                                              'Maybe Person.spouse attribute should be Set instead of Optional')
     def test5(self):
-        db.execute('update person set spouse = 3 where id = 2')
+        db.execute('update person set spouse_id = 3 where id = 2')
         p1 = Person[1]
         p1.spouse
         p2 = Person[2]
         p2.name
     def test6(self):
-        db.execute('update person set spouse = 3 where id = 2')
+        db.execute('update person set spouse_id = 3 where id = 2')
         p1 = Person[1]
         p2 = Person[2]
         p2.name
