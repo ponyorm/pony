@@ -2787,6 +2787,7 @@ def construct_batchload_criteria_list(alias, columns, converters, batch_size, ro
 class Set(Collection):
     __slots__ = []
     def validate(attr, val, obj=None, entity=None, from_db=False):
+        val = deref_proxy(val)
         assert val is not NOT_LOADED
         if val is DEFAULT: return set()
         reverse = attr.reverse
@@ -2803,6 +2804,7 @@ class Set(Collection):
             except TypeError: throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                               % (entity.__name__, attr.name, rentity.__name__, val))
             for item in items:
+                item = deref_proxy(item)
                 if not isinstance(item, rentity):
                     throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                     % (entity.__name__, attr.name, rentity.__name__, item))
