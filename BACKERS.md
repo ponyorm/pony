@@ -10,4 +10,6 @@ Pony ORM is Apache 2.0 licensed open source project. If you would like to suppor
 - David ROUBLOT
 - Elijas Dapšauskas
 - Dan Swain
-
+- Christian Macht
+- Johnathan Nader
+- Andrei Rachalouski
