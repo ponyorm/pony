@@ -230,7 +230,7 @@ class MySQLProvider(DBAPIProvider):
         cursor.execute('set session group_concat_max_len = 4294967295')
 
     def should_reconnect(provider, exc):
-        return isinstance(exc, mysql_module.OperationalError) and exc.args[0] == 2006
+        return isinstance(exc, mysql_module.OperationalError) and (exc.args[0] == 2006 or exc.args[0]==2013)
 
     def get_pool(provider, *args, **kwargs):
         if 'conv' not in kwargs:
