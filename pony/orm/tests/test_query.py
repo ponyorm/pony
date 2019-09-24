@@ -119,26 +119,21 @@ class TestQuery(unittest.TestCase):
     def test23(self):
         r = max(s.dob.year for s in Student)
         self.assertEqual(r, 2001)
-    @db_session
     def test_first1(self):
         q = select(s for s in Student).order_by(Student.gpa)
         self.assertEqual(q.first(), Student[1])
-    @db_session
     def test_first2(self):
         q = select((s.name, s.group) for s in Student)
         self.assertEqual(q.first(), ('S1', Group[1]))
-    @db_session
     def test_first3(self):
         q = select(s for s in Student)
         self.assertEqual(q.first(), Student[1])
-    @db_session
     def test_closures_1(self):
         def find_by_gpa(gpa):
             return lambda s: s.gpa > gpa
         fn = find_by_gpa(Decimal('3.1'))
         students = list(Student.select(fn))
         self.assertEqual(students, [ Student[2], Student[3] ])
-    @db_session
     def test_closures_2(self):
         def find_by_gpa(gpa):
             return lambda s: s.gpa > gpa
