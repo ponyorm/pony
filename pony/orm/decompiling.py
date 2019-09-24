@@ -13,6 +13,9 @@ from pony.utils import throw, get_codeobject_id
 ##ast.And.__repr__ = lambda self: "And(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 ##ast.Or.__repr__ = lambda self: "Or(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 
+class DecompileError(NotImplementedError):
+    pass
+
 ast_cache = {}
 
 def decompile(x):
@@ -165,7 +168,7 @@ class Decompiler(object):
                 decompiler.process_target(pos)
             method = getattr(decompiler, opname, None)
             if method is None:
-                throw(NotImplementedError('Unsupported operation: %s' % opname))
+                throw(DecompileError('Unsupported operation: %s' % opname))
             decompiler.pos = pos
             decompiler.next_pos = next_pos
             x = method(*arg)
@@ -296,7 +299,7 @@ class Decompiler(object):
     def CALL_FUNCTION_EX(decompiler, argc):
         star2 = None
         if argc:
-            if argc != 1: throw(NotImplementedError)
+            if argc != 1: throw(DecompileError)
             star2 = decompiler.stack.pop()
         star = decompiler.stack.pop()
         return decompiler._call_function([], star, star2)
@@ -416,7 +419,7 @@ class Decompiler(object):
                 if hasattr(top, 'endpos'):
                     top2.endpos = top.endpos
                     if decompiler.targets.get(top.endpos) is top: decompiler.targets[top.endpos] = top2
-            else: throw(NotImplementedError('Expression is too complex to decompile, try to pass query as string, e.g. select("x for x in Something")'))
+            else: throw(DecompileError('Expression is too complex to decompile, try to pass query as string, e.g. select("x for x in Something")'))
             top2.endpos = max(top2.endpos, getattr(top, 'endpos', 0))
             top = decompiler.stack.pop()
         decompiler.stack.append(top)
@@ -487,7 +490,7 @@ class Decompiler(object):
                 kwonly_defaults = decompiler.stack.pop()
             if argc & 0x01:
                 defaults = decompiler.stack.pop()
-                throw(NotImplementedError)
+                throw(DecompileError)
         else:
             if not PY2:
                 qualname = decompiler.stack.pop()
@@ -516,7 +519,7 @@ class Decompiler(object):
         pass
 
     def RETURN_VALUE(decompiler):
-        if decompiler.next_pos != decompiler.end: throw(NotImplementedError)
+        if decompiler.next_pos != decompiler.end: throw(DecompileError)
         expr = decompiler.stack.pop()
         return simplify(expr)
 

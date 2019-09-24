@@ -14,7 +14,7 @@ from pony.thirdparty.compiler import ast
 from pony import options, utils
 from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors
-from pony.orm.decompiling import decompile
+from pony.orm.decompiling import decompile, DecompileError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
@@ -1645,7 +1645,10 @@ class HybridMethodMonad(MethodMonad):
         if PY2 and isinstance(func, types.UnboundMethodType):
             func = func.im_func
         func_id = id(func)
-        func_ast, external_names, cells = decompile(func)
+        try:
+            func_ast, external_names, cells = decompile(func)
+        except DecompileError:
+            throw(TranslationError, '%s(...) is too complex to decompile' % ast2src(monad.node))
 
         func_ast, func_extractors = create_extractors(
             func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)

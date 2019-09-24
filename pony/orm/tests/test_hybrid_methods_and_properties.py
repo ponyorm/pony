@@ -44,6 +44,14 @@ class Person(db.Entity):
     def find_by_full_name(cls, full_name):
         return cls.select(lambda p: p.full_name_2 == full_name)
 
+    def complex_method(self):
+        result = ''
+        for i in range(10):
+            result += str(i)
+        return result
+
+    def simple_method(self):
+        return self.complex_method()
 
 class FakePerson(object):
     pass
@@ -189,6 +197,22 @@ class TestHybridsAndProperties(unittest.TestCase):
             self.assertEqual(set(p.id for p in result), {1})
         finally:
             sep = ' '
+
+    @db_session
+    @raises_exception(TranslationError, 'p.complex_method(...) is too complex to decompile')
+    def test_20(self):
+        q = select(p.complex_method() for p in Person)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'p.to_dict(...) is too complex to decompile')
+    def test_21(self):
+        q = select(p.to_dict() for p in Person)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'self.complex_method(...) is too complex to decompile (inside Person.simple_method)')
+    def test_22(self):
+        q = select(p.simple_method() for p in Person)[:]
+
 
 if __name__ == '__main__':
     unittest.main()
