@@ -155,6 +155,15 @@ class TestQuery(unittest.TestCase):
         rollback()
         objects = pickle.loads(data)
         self.assertEqual([obj.id for obj in objects], [3, 2])
+    def test_bulk_delete_clear_query_cache(self):
+        students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students1], [2, 3])
+        Student.select(lambda s: s.id < 3).delete(bulk=True)
+        students2 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students2], [3])
+        rollback()
+        students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students1], [2, 3])
 
 
 if __name__ == '__main__':

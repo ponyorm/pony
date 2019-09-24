@@ -5948,6 +5948,7 @@ class Query(object):
         cache.immediate = True
         cache.prepare_connection_for_query_execution()  # may clear cache.query_results
         cursor = database._exec_sql(sql, arguments)
+        cache.query_results.clear()
         return cursor.rowcount
     @cut_traceback
     def __len__(query):
