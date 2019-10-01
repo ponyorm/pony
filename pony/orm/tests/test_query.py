@@ -55,11 +55,11 @@ class TestQuery(unittest.TestCase):
     def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)
-    @raises_exception(TypeError, "Function 'f1' cannot be used this way: f1(s.gpa)")
     def test6(self):
         def f1(x):
-            return x + 1
-        select(s for s in Student if f1(s.gpa) > 3)
+            return float(x) + 1
+        students = select(s for s in Student if f1(s.gpa) > 4.25)[:]
+        self.assertEqual({s.id for s in students}, {3})
     @raises_exception(NotImplementedError, "m1")
     def test7(self):
         class C1(object):

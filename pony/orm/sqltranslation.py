@@ -16,7 +16,7 @@ from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, c
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors
 from pony.orm.decompiling import decompile, DecompileError
 from pony.orm.ormtypes import \
-    numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, raw_sql, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
     Json, QueryType, Array, array_types
 from pony.orm import core
@@ -125,8 +125,11 @@ class SQLTranslator(ASTTranslator):
                 monad = monad.call_limit(t.limit, t.offset)
         elif tt is FuncType:
             func = t.func
-            func_monad_class = translator.registered_functions.get(func, ErrorSpecialFuncMonad)
-            monad = func_monad_class(func)
+            func_monad_class = translator.registered_functions.get(func)
+            if func_monad_class is not None:
+                monad = func_monad_class(func)
+            else:
+                monad = HybridFuncMonad(t, func.__name__)
         elif tt is MethodType:
             obj, func = t.obj, t.func
             if isinstance(obj, EntityMeta):
@@ -1070,8 +1073,6 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        if isinstance(func_monad, ErrorSpecialFuncMonad): throw(TypeError,
-            'Function %r cannot be used this way: %s' % (func_monad.func.__name__, ast2src(node)))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
@@ -2492,13 +2493,15 @@ class NotMonad(BoolMonad):
     def getsql(monad, sqlquery=None):
         return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
-class HybridMethodMonad(MethodMonad):
-    def __init__(monad, parent, attrname, func):
-        MethodMonad.__init__(monad, parent, attrname)
-        monad.func = func
+class HybridFuncMonad(Monad):
+    def __init__(monad, func_type, func_name, *params):
+        Monad.__init__(monad, func_type)
+        monad.func = func_type.func
+        monad.func_name = func_name
+        monad.params = params
     def __call__(monad, *args, **kwargs):
         translator = monad.translator
-        name_mapping = inspect.getcallargs(monad.func, monad.parent, *args, **kwargs)
+        name_mapping = inspect.getcallargs(monad.func, *(monad.params + args), **kwargs)
 
         func = monad.func
         if PY2 and isinstance(func, types.UnboundMethodType):
@@ -2536,16 +2539,18 @@ class HybridMethodMonad(MethodMonad):
                 translator.code_key = prev_code_key
         except Exception as e:
             if len(e.args) == 1 and isinstance(e.args[0], basestring):
-                msg = e.args[0] + ' (inside %s.%s)' % (monad.parent.type.__name__, monad.attrname)
+                msg = e.args[0] + ' (inside %s)' % (monad.func_name)
                 e.args = (msg,)
             raise
         stack.pop()
         return func_ast.monad
 
-class ErrorSpecialFuncMonad(Monad):
-    def __init__(monad, func):
-        Monad.__init__(monad, func)
-        monad.func = func
+class HybridMethodMonad(HybridFuncMonad):
+    def __init__(monad, parent, attrname, func):
+        entity = parent.type
+        assert isinstance(entity, EntityMeta)
+        func_name = '%s.%s' % (entity.__name__, attrname)
+        HybridFuncMonad.__init__(monad, FuncType(func), func_name, parent)
 
 registered_functions = SQLTranslator.registered_functions = {}
 
@@ -2726,7 +2731,7 @@ class FuncLenMonad(FuncMonad):
     def call(monad, x):
         return x.len()
 
-class GetattrMonad(FuncMonad):
+class FuncGetattrMonad(FuncMonad):
     func = getattr
     def call(monad, obj_monad, name_monad):
         if isinstance(name_monad, ConstMonad):
@@ -2744,6 +2749,12 @@ class GetattrMonad(FuncMonad):
         if not isinstance(attrname, basestring):
             throw(TypeError, 'In `{EXPR}` second argument should be a string. Got: %r' % attrname)
         return obj_monad.getattr(attrname)
+
+class FuncRawSQLMonad(FuncMonad):
+    func = raw_sql
+    def call(monad, *args):
+        throw(TranslationError, 'Expression `{EXPR}` cannot be translated into SQL '
+                                'because raw SQL fragment will be different for each row')
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count

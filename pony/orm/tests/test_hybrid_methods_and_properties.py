@@ -70,6 +70,15 @@ class Car(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
+
+def simple_func(person):
+    return person.full_name
+
+
+def complex_func(person):
+    return person.complex_method()
+
+
 with db_session:
     p1 = Person(id=1, first_name='Alexander', last_name='Kozlovsky', favorite_color='white')
     p2 = Person(id=2, first_name='Alexei', last_name='Malashkevich', favorite_color='green')
@@ -212,6 +221,15 @@ class TestHybridsAndProperties(unittest.TestCase):
     @raises_exception(TranslationError, 'self.complex_method(...) is too complex to decompile (inside Person.simple_method)')
     def test_22(self):
         q = select(p.simple_method() for p in Person)[:]
+
+    @db_session
+    def test_23(self):
+        q = select(simple_func(p) for p in Person)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'person.complex_method(...) is too complex to decompile (inside complex_func)')
+    def test_24(self):
+        q = select(complex_func(p) for p in Person)[:]
 
 
 if __name__ == '__main__':
