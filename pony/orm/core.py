@@ -21,7 +21,7 @@ import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import (
-    LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue, QueryType,
+    LongStr, LongUnicode, numeric_types, raw_sql, RawSQL, normalize, Json, TrackedValue, QueryType,
     Array, IntArray, StrArray, FloatArray
     )
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
@@ -5578,11 +5578,6 @@ def desc(expr):
     if isinstance(expr, basestring):
         return 'desc(%s)' % expr
     return expr
-
-def raw_sql(sql, result_type=None):
-    globals = sys._getframe(1).f_globals
-    locals = sys._getframe(1).f_locals
-    return RawSQL(sql, globals, locals, result_type)
 
 def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     if cells:
