@@ -1633,56 +1633,6 @@ class MethodMonad(Monad):
     def __neg__(monad): raise_forgot_parentheses(monad)
     def abs(monad): raise_forgot_parentheses(monad)
 
-class HybridMethodMonad(MethodMonad):
-    def __init__(monad, parent, attrname, func):
-        MethodMonad.__init__(monad, parent, attrname)
-        monad.func = func
-    def __call__(monad, *args, **kwargs):
-        translator = monad.translator
-        name_mapping = inspect.getcallargs(monad.func, monad.parent, *args, **kwargs)
-
-        func = monad.func
-        if PY2 and isinstance(func, types.UnboundMethodType):
-            func = func.im_func
-        func_id = id(func)
-        try:
-            func_ast, external_names, cells = decompile(func)
-        except DecompileError:
-            throw(TranslationError, '%s(...) is too complex to decompile' % ast2src(monad.node))
-
-        func_ast, func_extractors = create_extractors(
-            func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
-
-        root_translator = translator.root_translator
-        if func not in root_translator.func_extractors_map:
-            func_vars, func_vartypes = extract_vars(func_id, translator.filter_num, func_extractors, func.__globals__, {}, cells)
-            translator.database.provider.normalize_vars(func_vars, func_vartypes)
-            if func.__closure__:
-                translator.can_be_cached = False
-            if func_extractors:
-                root_translator.func_extractors_map[func] = func_extractors
-                root_translator.func_vartypes.update(func_vartypes)
-                root_translator.vartypes.update(func_vartypes)
-                root_translator.vars.update(func_vars)
-
-        stack = translator.namespace_stack
-        stack.append(name_mapping)
-        func_ast = copy_ast(func_ast)
-        try:
-            prev_code_key = translator.code_key
-            translator.code_key = func_id
-            try:
-                translator.dispatch(func_ast)
-            finally:
-                translator.code_key = prev_code_key
-        except Exception as e:
-            if len(e.args) == 1 and isinstance(e.args[0], basestring):
-                msg = e.args[0] + ' (inside %s.%s)' % (monad.parent.type.__name__, monad.attrname)
-                e.args = (msg,)
-            raise
-        stack.pop()
-        return func_ast.monad
-
 class EntityMonad(Monad):
     def __init__(monad, entity):
         Monad.__init__(monad, SetType(entity))
@@ -2541,6 +2491,56 @@ class NotMonad(BoolMonad):
         return monad.operand
     def getsql(monad, sqlquery=None):
         return [ [ 'NOT', monad.operand.getsql()[0] ] ]
+
+class HybridMethodMonad(MethodMonad):
+    def __init__(monad, parent, attrname, func):
+        MethodMonad.__init__(monad, parent, attrname)
+        monad.func = func
+    def __call__(monad, *args, **kwargs):
+        translator = monad.translator
+        name_mapping = inspect.getcallargs(monad.func, monad.parent, *args, **kwargs)
+
+        func = monad.func
+        if PY2 and isinstance(func, types.UnboundMethodType):
+            func = func.im_func
+        func_id = id(func)
+        try:
+            func_ast, external_names, cells = decompile(func)
+        except DecompileError:
+            throw(TranslationError, '%s(...) is too complex to decompile' % ast2src(monad.node))
+
+        func_ast, func_extractors = create_extractors(
+            func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
+
+        root_translator = translator.root_translator
+        if func not in root_translator.func_extractors_map:
+            func_vars, func_vartypes = extract_vars(func_id, translator.filter_num, func_extractors, func.__globals__, {}, cells)
+            translator.database.provider.normalize_vars(func_vars, func_vartypes)
+            if func.__closure__:
+                translator.can_be_cached = False
+            if func_extractors:
+                root_translator.func_extractors_map[func] = func_extractors
+                root_translator.func_vartypes.update(func_vartypes)
+                root_translator.vartypes.update(func_vartypes)
+                root_translator.vars.update(func_vars)
+
+        stack = translator.namespace_stack
+        stack.append(name_mapping)
+        func_ast = copy_ast(func_ast)
+        try:
+            prev_code_key = translator.code_key
+            translator.code_key = func_id
+            try:
+                translator.dispatch(func_ast)
+            finally:
+                translator.code_key = prev_code_key
+        except Exception as e:
+            if len(e.args) == 1 and isinstance(e.args[0], basestring):
+                msg = e.args[0] + ' (inside %s.%s)' % (monad.parent.type.__name__, monad.attrname)
+                e.args = (msg,)
+            raise
+        stack.pop()
+        return func_ast.monad
 
 class ErrorSpecialFuncMonad(Monad):
     def __init__(monad, func):
