@@ -4888,6 +4888,18 @@ class Entity(with_metaclass(EntityMeta)):
                     del avdict[attr]
                     continue
 
+        if unpickling:
+            new_vals = avdict
+            new_dbvals = {attr: attr.converters[0].val2dbval(val, obj) if not attr.reverse else val
+                                for attr, val in iteritems(avdict)}
+        else:
+            new_dbvals = avdict
+            new_vals = {attr: attr.converters[0].dbval2val(dbval, obj) if not attr.reverse else dbval
+                              for attr, dbval in iteritems(avdict)}
+
+        for attr, new_val in items_list(new_vals):
+            new_dbval = new_dbvals[attr]
+            old_dbval = get_dbval(attr, NOT_LOADED)
             bit = obj._bits_except_volatile_[attr]
             if rbits & bit:
                 errormsg = 'Please contact PonyORM developers so they can ' \
@@ -4899,28 +4911,26 @@ class Entity(with_metaclass(EntityMeta)):
 
             if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
             obj._dbvals_[attr] = new_dbval
-            if wbits & bit: del avdict[attr]
+            if wbits & bit:
+                del new_vals[attr]
+
+        for attr, new_val in iteritems(new_vals):
             if attr.is_unique:
                 old_val = get_val(attr)
-                if old_val != new_dbval:
-                    cache.db_update_simple_index(obj, attr, old_val, new_dbval)
+                if old_val != new_val:
+                    cache.db_update_simple_index(obj, attr, old_val, new_val)
 
         for attrs in obj._composite_keys_:
-            if any(attr in avdict for attr in attrs):
-                vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
-                prev_vals = tuple(vals)
+            if any(attr in new_vals for attr in attrs):
+                key_vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
+                prev_key_vals = tuple(key_vals)
                 for i, attr in enumerate(attrs):
-                    if attr in avdict: vals[i] = avdict[attr]
-                new_vals = tuple(vals)
-                if prev_vals != new_vals:
-                    cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
+                    if attr in new_vals: key_vals[i] = new_vals[attr]
+                new_key_vals = tuple(key_vals)
+                if prev_key_vals != new_key_vals:
+                    cache.db_update_composite_index(obj, attrs, prev_key_vals, new_key_vals)
 
-        for attr, new_val in iteritems(avdict):
-            if not attr.reverse:
-                assert len(attr.converters) == 1, attr
-                converter = attr.converters[0]
-                new_val = converter.dbval2val(new_val, obj)
-            obj._vals_[attr] = new_val
+        obj._vals_.update(new_vals)
     def _delete_(obj, undo_funcs=None):
         status = obj._status_
         if status in del_statuses: return
