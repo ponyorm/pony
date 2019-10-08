@@ -4649,7 +4649,6 @@ class Entity(with_metaclass(EntityMeta)):
             OrmError, '%s object %s has to be stored in DB before it can be pickled'
                       % (obj._status_.capitalize(), safe_repr(obj)))
         d = {'__class__' : obj.__class__}
-        adict = obj._adict_
         for attr, val in iteritems(obj._vals_):
             if not attr.is_collection: d[attr.name] = val
         return unpickle_entity, (d,)
