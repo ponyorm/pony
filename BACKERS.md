@@ -6,6 +6,7 @@ Pony ORM is Apache 2.0 licensed open source project. If you would like to suppor
 
 ## Backers
 
+- [Vincere](https://vince.re)
 - Sergio Aguilar Guerrero
 - David ROUBLOT
 - Elijas Dapšauskas
