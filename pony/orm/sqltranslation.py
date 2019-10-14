@@ -362,7 +362,7 @@ class SQLTranslator(ASTTranslator):
                 else:
                     check_name_is_single()
                     attr_names = []
-                    while isinstance(monad, AttrSetMonad) and monad.parent is not None:
+                    while isinstance(monad, (AttrMonad, AttrSetMonad)) and monad.parent is not None:
                         attr_names.append(monad.attr.name)
                         monad = monad.parent
                     attr_names.reverse()
@@ -1193,20 +1193,20 @@ class SqlQuery(object):
             sqlquery.alias_counters = parent_sqlquery.alias_counters.copy()
             sqlquery.expr_counter = parent_sqlquery.expr_counter
         sqlquery.used_from_subquery = False
-    def get_tableref(sqlquery, name_path, from_subquery=False):
+    def get_tableref(sqlquery, name_path):
         tableref = sqlquery.tablerefs.get(name_path)
-        if tableref is not None:
-            if from_subquery and sqlquery.parent_sqlquery is None:
-                sqlquery.used_from_subquery = True
-            return tableref
-        if sqlquery.parent_sqlquery:
-            return sqlquery.parent_sqlquery.get_tableref(name_path, from_subquery=True)
-        return None
+        parent_sqlquery = sqlquery.parent_sqlquery
+        if tableref is None and parent_sqlquery:
+            tableref = parent_sqlquery.get_tableref(name_path)
+            if tableref is not None:
+                parent_sqlquery.used_from_subquery = True
+        return tableref
     def add_tableref(sqlquery, name_path, parent_tableref, attr):
-        tablerefs = sqlquery.tablerefs
-        assert name_path not in tablerefs
+        assert name_path not in sqlquery.tablerefs
+        if parent_tableref.sqlquery is not sqlquery:
+            parent_tableref.sqlquery.used_from_subquery = True
         tableref = JoinedTableRef(sqlquery, name_path, parent_tableref, attr)
-        tablerefs[name_path] = tableref
+        sqlquery.tablerefs[name_path] = tableref
         return tableref
     def make_alias(sqlquery, name):
         name = name[:max_alias_length-3].lower()

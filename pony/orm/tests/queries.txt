@@ -893,6 +893,20 @@ WHERE "ID" IN (
         )
     )
 
+>>> select(s for s in Student if count(g for g in s.group.dept.groups) > 2).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "id" IN (
+    SELECT "s"."id"
+    FROM "Student" "s"
+    WHERE (
+        SELECT COUNT(DISTINCT "g"."number")
+        FROM "Group" "group", "Group" "g"
+        WHERE "s"."group" = "group"."number"
+          AND "group"."dept" = "g"."dept"
+        ) > 2
+    )
+
 # Test UPPER/LOWER functions:
 
 >>> select(s.name.upper() for s in Student)
