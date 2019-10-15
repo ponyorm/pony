@@ -142,10 +142,18 @@ class Transformer:
         })
         self.encoding = None
 
+    def print_tree(self, tree, indent=''):
+        for item in tree:
+            if isinstance(item, tuple):
+                self.print_tree(item, indent+' ')
+            else:
+                print(indent, symbol.sym_name.get(item, item))
+
     def transform(self, tree):
         """Transform an AST into a modified parse tree."""
         if not (isinstance(tree, tuple) or isinstance(tree, list)):
             tree = parser.st2tuple(tree, line_info=1)
+        # self.print_tree(tree)
         return self.compile_node(tree)
 
     def parsesuite(self, text):
@@ -614,7 +622,11 @@ class Transformer:
 
     def testlist_comp(self, nodelist):
         # test ( comp_for | (',' test)* [','] )
-        assert nodelist[0][0] == symbol.test
+        PY38 = sys.version_info >= (3, 8)
+        if PY38 and nodelist[0][0] == symbol.namedexpr_test:
+            nodelist = (nodelist[0][1],) + nodelist[1:]
+        if nodelist[0][0] != symbol.test:
+            assert False, symbol.sym_name.get(nodelist[0][0], nodelist[0][0])
         if len(nodelist) == 2 and nodelist[1][0] == symbol.comp_for:
             test = self.com_node(nodelist[0])
             return self.com_generator_expression(test, nodelist[1])
