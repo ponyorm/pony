@@ -14,9 +14,9 @@ from pony.thirdparty.compiler import ast
 from pony import options, utils
 from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors
-from pony.orm.decompiling import decompile
+from pony.orm.decompiling import decompile, DecompileError
 from pony.orm.ormtypes import \
-    numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, raw_sql, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
     Json, QueryType, Array, array_types
 from pony.orm import core
@@ -125,8 +125,11 @@ class SQLTranslator(ASTTranslator):
                 monad = monad.call_limit(t.limit, t.offset)
         elif tt is FuncType:
             func = t.func
-            func_monad_class = translator.registered_functions.get(func, ErrorSpecialFuncMonad)
-            monad = func_monad_class(func)
+            func_monad_class = translator.registered_functions.get(func)
+            if func_monad_class is not None:
+                monad = func_monad_class(func)
+            else:
+                monad = HybridFuncMonad(t, func.__name__)
         elif tt is MethodType:
             obj, func = t.obj, t.func
             if isinstance(obj, EntityMeta):
@@ -359,7 +362,7 @@ class SQLTranslator(ASTTranslator):
                 else:
                     check_name_is_single()
                     attr_names = []
-                    while isinstance(monad, AttrSetMonad) and monad.parent is not None:
+                    while isinstance(monad, (AttrMonad, AttrSetMonad)) and monad.parent is not None:
                         attr_names.append(monad.attr.name)
                         monad = monad.parent
                     attr_names.reverse()
@@ -1070,8 +1073,6 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        if isinstance(func_monad, ErrorSpecialFuncMonad): throw(TypeError,
-            'Function %r cannot be used this way: %s' % (func_monad.func.__name__, ast2src(node)))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
@@ -1192,20 +1193,20 @@ class SqlQuery(object):
             sqlquery.alias_counters = parent_sqlquery.alias_counters.copy()
             sqlquery.expr_counter = parent_sqlquery.expr_counter
         sqlquery.used_from_subquery = False
-    def get_tableref(sqlquery, name_path, from_subquery=False):
+    def get_tableref(sqlquery, name_path):
         tableref = sqlquery.tablerefs.get(name_path)
-        if tableref is not None:
-            if from_subquery and sqlquery.parent_sqlquery is None:
-                sqlquery.used_from_subquery = True
-            return tableref
-        if sqlquery.parent_sqlquery:
-            return sqlquery.parent_sqlquery.get_tableref(name_path, from_subquery=True)
-        return None
+        parent_sqlquery = sqlquery.parent_sqlquery
+        if tableref is None and parent_sqlquery:
+            tableref = parent_sqlquery.get_tableref(name_path)
+            if tableref is not None:
+                parent_sqlquery.used_from_subquery = True
+        return tableref
     def add_tableref(sqlquery, name_path, parent_tableref, attr):
-        tablerefs = sqlquery.tablerefs
-        assert name_path not in tablerefs
+        assert name_path not in sqlquery.tablerefs
+        if parent_tableref.sqlquery is not sqlquery:
+            parent_tableref.sqlquery.used_from_subquery = True
         tableref = JoinedTableRef(sqlquery, name_path, parent_tableref, attr)
-        tablerefs[name_path] = tableref
+        sqlquery.tablerefs[name_path] = tableref
         return tableref
     def make_alias(sqlquery, name):
         name = name[:max_alias_length-3].lower()
@@ -1632,53 +1633,6 @@ class MethodMonad(Monad):
 
     def __neg__(monad): raise_forgot_parentheses(monad)
     def abs(monad): raise_forgot_parentheses(monad)
-
-class HybridMethodMonad(MethodMonad):
-    def __init__(monad, parent, attrname, func):
-        MethodMonad.__init__(monad, parent, attrname)
-        monad.func = func
-    def __call__(monad, *args, **kwargs):
-        translator = monad.translator
-        name_mapping = inspect.getcallargs(monad.func, monad.parent, *args, **kwargs)
-
-        func = monad.func
-        if PY2 and isinstance(func, types.UnboundMethodType):
-            func = func.im_func
-        func_id = id(func)
-        func_ast, external_names, cells = decompile(func)
-
-        func_ast, func_extractors = create_extractors(
-            func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
-
-        root_translator = translator.root_translator
-        if func not in root_translator.func_extractors_map:
-            func_vars, func_vartypes = extract_vars(func_id, translator.filter_num, func_extractors, func.__globals__, {}, cells)
-            translator.database.provider.normalize_vars(func_vars, func_vartypes)
-            if func.__closure__:
-                translator.can_be_cached = False
-            if func_extractors:
-                root_translator.func_extractors_map[func] = func_extractors
-                root_translator.func_vartypes.update(func_vartypes)
-                root_translator.vartypes.update(func_vartypes)
-                root_translator.vars.update(func_vars)
-
-        stack = translator.namespace_stack
-        stack.append(name_mapping)
-        func_ast = copy_ast(func_ast)
-        try:
-            prev_code_key = translator.code_key
-            translator.code_key = func_id
-            try:
-                translator.dispatch(func_ast)
-            finally:
-                translator.code_key = prev_code_key
-        except Exception as e:
-            if len(e.args) == 1 and isinstance(e.args[0], basestring):
-                msg = e.args[0] + ' (inside %s.%s)' % (monad.parent.type.__name__, monad.attrname)
-                e.args = (msg,)
-            raise
-        stack.pop()
-        return func_ast.monad
 
 class EntityMonad(Monad):
     def __init__(monad, entity):
@@ -2539,10 +2493,64 @@ class NotMonad(BoolMonad):
     def getsql(monad, sqlquery=None):
         return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
-class ErrorSpecialFuncMonad(Monad):
-    def __init__(monad, func):
-        Monad.__init__(monad, func)
-        monad.func = func
+class HybridFuncMonad(Monad):
+    def __init__(monad, func_type, func_name, *params):
+        Monad.__init__(monad, func_type)
+        monad.func = func_type.func
+        monad.func_name = func_name
+        monad.params = params
+    def __call__(monad, *args, **kwargs):
+        translator = monad.translator
+        name_mapping = inspect.getcallargs(monad.func, *(monad.params + args), **kwargs)
+
+        func = monad.func
+        if PY2 and isinstance(func, types.UnboundMethodType):
+            func = func.im_func
+        func_id = id(func)
+        try:
+            func_ast, external_names, cells = decompile(func)
+        except DecompileError:
+            throw(TranslationError, '%s(...) is too complex to decompile' % ast2src(monad.node))
+
+        func_ast, func_extractors = create_extractors(
+            func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
+
+        root_translator = translator.root_translator
+        if func not in root_translator.func_extractors_map:
+            func_vars, func_vartypes = extract_vars(func_id, translator.filter_num, func_extractors, func.__globals__, {}, cells)
+            translator.database.provider.normalize_vars(func_vars, func_vartypes)
+            if func.__closure__:
+                translator.can_be_cached = False
+            if func_extractors:
+                root_translator.func_extractors_map[func] = func_extractors
+                root_translator.func_vartypes.update(func_vartypes)
+                root_translator.vartypes.update(func_vartypes)
+                root_translator.vars.update(func_vars)
+
+        stack = translator.namespace_stack
+        stack.append(name_mapping)
+        func_ast = copy_ast(func_ast)
+        try:
+            prev_code_key = translator.code_key
+            translator.code_key = func_id
+            try:
+                translator.dispatch(func_ast)
+            finally:
+                translator.code_key = prev_code_key
+        except Exception as e:
+            if len(e.args) == 1 and isinstance(e.args[0], basestring):
+                msg = e.args[0] + ' (inside %s)' % (monad.func_name)
+                e.args = (msg,)
+            raise
+        stack.pop()
+        return func_ast.monad
+
+class HybridMethodMonad(HybridFuncMonad):
+    def __init__(monad, parent, attrname, func):
+        entity = parent.type
+        assert isinstance(entity, EntityMeta)
+        func_name = '%s.%s' % (entity.__name__, attrname)
+        HybridFuncMonad.__init__(monad, FuncType(func), func_name, parent)
 
 registered_functions = SQLTranslator.registered_functions = {}
 
@@ -2723,7 +2731,7 @@ class FuncLenMonad(FuncMonad):
     def call(monad, x):
         return x.len()
 
-class GetattrMonad(FuncMonad):
+class FuncGetattrMonad(FuncMonad):
     func = getattr
     def call(monad, obj_monad, name_monad):
         if isinstance(name_monad, ConstMonad):
@@ -2741,6 +2749,12 @@ class GetattrMonad(FuncMonad):
         if not isinstance(attrname, basestring):
             throw(TypeError, 'In `{EXPR}` second argument should be a string. Got: %r' % attrname)
         return obj_monad.getattr(attrname)
+
+class FuncRawSQLMonad(FuncMonad):
+    func = raw_sql
+    def call(monad, *args):
+        throw(TranslationError, 'Expression `{EXPR}` cannot be translated into SQL '
+                                'because raw SQL fragment will be different for each row')
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count

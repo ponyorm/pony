@@ -21,7 +21,7 @@ import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import (
-    LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue, QueryType,
+    LongStr, LongUnicode, numeric_types, raw_sql, RawSQL, normalize, Json, TrackedValue, QueryType,
     Array, IntArray, StrArray, FloatArray
     )
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
@@ -421,7 +421,7 @@ class DBSessionContextManager(object):
                 'sql_debug', 'show_values'
     def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False, optimistic=True,
                  retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
-        if retry is not 0:
+        if retry != 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
             if retry < 0: throw(TypeError,
@@ -454,7 +454,7 @@ class DBSessionContextManager(object):
             return db_session._wrap_coroutine_or_generator_function(func)
         return db_session._wrap_function(func)
     def __enter__(db_session):
-        if db_session.retry is not 0: throw(TypeError,
+        if db_session.retry != 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
         db_session._enter()
     def _enter(db_session):
@@ -4649,7 +4649,6 @@ class Entity(with_metaclass(EntityMeta)):
             OrmError, '%s object %s has to be stored in DB before it can be pickled'
                       % (obj._status_.capitalize(), safe_repr(obj)))
         d = {'__class__' : obj.__class__}
-        adict = obj._adict_
         for attr, val in iteritems(obj._vals_):
             if not attr.is_collection: d[attr.name] = val
         return unpickle_entity, (d,)
@@ -4889,6 +4888,18 @@ class Entity(with_metaclass(EntityMeta)):
                     del avdict[attr]
                     continue
 
+        if unpickling:
+            new_vals = avdict
+            new_dbvals = {attr: attr.converters[0].val2dbval(val, obj) if not attr.reverse else val
+                                for attr, val in iteritems(avdict)}
+        else:
+            new_dbvals = avdict
+            new_vals = {attr: attr.converters[0].dbval2val(dbval, obj) if not attr.reverse else dbval
+                              for attr, dbval in iteritems(avdict)}
+
+        for attr, new_val in items_list(new_vals):
+            new_dbval = new_dbvals[attr]
+            old_dbval = get_dbval(attr, NOT_LOADED)
             bit = obj._bits_except_volatile_[attr]
             if rbits & bit:
                 errormsg = 'Please contact PonyORM developers so they can ' \
@@ -4900,28 +4911,26 @@ class Entity(with_metaclass(EntityMeta)):
 
             if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
             obj._dbvals_[attr] = new_dbval
-            if wbits & bit: del avdict[attr]
+            if wbits & bit:
+                del new_vals[attr]
+
+        for attr, new_val in iteritems(new_vals):
             if attr.is_unique:
                 old_val = get_val(attr)
-                if old_val != new_dbval:
-                    cache.db_update_simple_index(obj, attr, old_val, new_dbval)
+                if old_val != new_val:
+                    cache.db_update_simple_index(obj, attr, old_val, new_val)
 
         for attrs in obj._composite_keys_:
-            if any(attr in avdict for attr in attrs):
-                vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
-                prev_vals = tuple(vals)
+            if any(attr in new_vals for attr in attrs):
+                key_vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
+                prev_key_vals = tuple(key_vals)
                 for i, attr in enumerate(attrs):
-                    if attr in avdict: vals[i] = avdict[attr]
-                new_vals = tuple(vals)
-                if prev_vals != new_vals:
-                    cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
+                    if attr in new_vals: key_vals[i] = new_vals[attr]
+                new_key_vals = tuple(key_vals)
+                if prev_key_vals != new_key_vals:
+                    cache.db_update_composite_index(obj, attrs, prev_key_vals, new_key_vals)
 
-        for attr, new_val in iteritems(avdict):
-            if not attr.reverse:
-                assert len(attr.converters) == 1, attr
-                converter = attr.converters[0]
-                new_val = converter.dbval2val(new_val, obj)
-            obj._vals_[attr] = new_val
+        obj._vals_.update(new_vals)
     def _delete_(obj, undo_funcs=None):
         status = obj._status_
         if status in del_statuses: return
@@ -5579,11 +5588,6 @@ def desc(expr):
         return 'desc(%s)' % expr
     return expr
 
-def raw_sql(sql, result_type=None):
-    globals = sys._getframe(1).f_globals
-    locals = sys._getframe(1).f_locals
-    return RawSQL(sql, globals, locals, result_type)
-
 def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
@@ -5948,6 +5952,7 @@ class Query(object):
         cache.immediate = True
         cache.prepare_connection_for_query_execution()  # may clear cache.query_results
         cursor = database._exec_sql(sql, arguments)
+        cache.query_results.clear()
         return cursor.rowcount
     @cut_traceback
     def __len__(query):
