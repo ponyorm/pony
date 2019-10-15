@@ -153,8 +153,9 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
     def test30(self):
         select(s for s in Student if s.dob < date(s.id, 1, 1))
-    @raises_exception(ExprEvalError, "`max()` raises TypeError: max expected 1 arguments, got 0" if not PYPY else
-                                     "`max()` raises TypeError: max() expects at least one argument")
+    @raises_exception(ExprEvalError, "`max()` raises TypeError: max() expects at least one argument" if PYPY else
+                                     "`max()` raises TypeError: max expected 1 arguments, got 0" if sys.version_info[:2] < (3, 8) else
+                                     "`max()` raises TypeError: max expected 1 argument, got 0")
     def test31(self):
         select(s for s in Student if s.id < max())
     @raises_exception(TypeError, "Incomparable types 'Student' and 'Course' in expression: s in s.courses")
