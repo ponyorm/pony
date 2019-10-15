@@ -421,7 +421,7 @@ class DBSessionContextManager(object):
                 'sql_debug', 'show_values'
     def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False, optimistic=True,
                  retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
-        if retry is not 0:
+        if retry != 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
             if retry < 0: throw(TypeError,
@@ -454,7 +454,7 @@ class DBSessionContextManager(object):
             return db_session._wrap_coroutine_or_generator_function(func)
         return db_session._wrap_function(func)
     def __enter__(db_session):
-        if db_session.retry is not 0: throw(TypeError,
+        if db_session.retry != 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
         db_session._enter()
     def _enter(db_session):
