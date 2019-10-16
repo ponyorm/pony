@@ -907,6 +907,16 @@ WHERE "id" IN (
         ) > 2
     )
 
+>>> Student.select(lambda s: count(s.group.students) == 2).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "id" IN (
+    SELECT "s"."id"
+        FROM "Student" "s"
+      LEFT JOIN "Student" "student"
+        ON "s"."group" = "student"."group"
+    )
+
 # Test UPPER/LOWER functions:
 
 >>> select(s.name.upper() for s in Student)
