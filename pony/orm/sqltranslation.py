@@ -771,17 +771,21 @@ class SQLTranslator(ASTTranslator):
         expr_monad = translator.tree.expr.monad
         if not isinstance(entity, EntityMeta): throw(TranslationError,
             'Delete query should be applied to a single entity. Got: %s' % ast2src(translator.tree.expr))
-        if translator.groupby_monads: throw(TranslationError,
-            'Delete query cannot contains GROUP BY section or aggregate functions')
-        assert not translator.having_conditions
+        force_in = False
+        if translator.groupby_monads:
+            force_in = True
+        else:
+            assert not translator.having_conditions
         tableref = expr_monad.tableref
         from_ast = translator.sqlquery.from_ast
-        assert from_ast[0] == 'FROM'
-        if len(from_ast) == 2 and not translator.sqlquery.used_from_subquery:
+        if from_ast[0] != 'FROM':
+            force_in = True
+
+        if not force_in and len(from_ast) == 2 and not translator.sqlquery.used_from_subquery:
             sql_ast = [ 'DELETE', None, from_ast ]
             if translator.conditions:
                 sql_ast.append([ 'WHERE' ] + translator.conditions)
-        elif translator.dialect == 'MySQL':
+        elif not force_in and translator.dialect == 'MySQL':
             sql_ast = [ 'DELETE', tableref.alias, from_ast ]
             if translator.conditions:
                 sql_ast.append([ 'WHERE' ] + translator.conditions)
