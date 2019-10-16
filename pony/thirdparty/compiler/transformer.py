@@ -41,6 +41,7 @@ if not hasattr(symbol, 'comp_for'): symbol.comp_for = symbol.gen_for
 if not hasattr(symbol, 'comp_if'): symbol.comp_if = symbol.gen_if
 
 atom_expr = getattr(symbol, 'atom_expr', None)
+namedexpr_test = getattr(symbol, 'namedexpr_test', None)
 
 class WalkerError(Exception):
     pass
@@ -120,6 +121,9 @@ class Transformer:
             elt = nodelist[i]
             node = self.com_apply_trailer(node, elt)
         return node
+
+    def namedexpr_test(self, nodelist):
+        return self.test(nodelist[0][1:])
 
     def __init__(self):
         self._dispatch = {}
@@ -623,10 +627,9 @@ class Transformer:
     def testlist_comp(self, nodelist):
         # test ( comp_for | (',' test)* [','] )
         PY38 = sys.version_info >= (3, 8)
-        if PY38 and nodelist[0][0] == symbol.namedexpr_test:
-            nodelist = (nodelist[0][1],) + nodelist[1:]
-        if nodelist[0][0] != symbol.test:
-            assert False, symbol.sym_name.get(nodelist[0][0], nodelist[0][0])
+        code = nodelist[0][0]
+        if code not in (symbol.test, namedexpr_test):
+            assert False, symbol.sym_name.get(code, code)
         if len(nodelist) == 2 and nodelist[1][0] == symbol.comp_for:
             test = self.com_node(nodelist[0])
             return self.com_generator_expression(test, nodelist[1])
