@@ -2451,9 +2451,10 @@ class CmpMonad(BoolMonad):
             if monad.translator.row_value_syntax:
                 return [ [ cmp_ops[op], [ 'ROW' ] + left_sql, [ 'ROW' ] + right_sql ] ]
             clauses = []
-            for i in xrange(1, size):
-                clauses.append(sqland([ [ monad.EQ, left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
-                                + [ [ cmp_ops[op[0] if i < size - 1 else op], left_sql[i], right_sql[i] ] ]))
+            for i in xrange(size):
+                clause = [ [ monad.EQ, left_sql[j], right_sql[j] ] for j in range(i) ]
+                clause.append([ cmp_ops[op], left_sql[i], right_sql[i] ])
+                clauses.append(sqland(clause))
             return [ sqlor(clauses) ]
         if op == '==':
             return [ sqland([ [ monad.EQ, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
