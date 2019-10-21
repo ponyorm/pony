@@ -98,7 +98,7 @@ class TestAttributeOptions(unittest.TestCase):
     def test_py_checkLessException(self):        
         p6 = Person(name='Daniel', lastName='Craig', gpa=-1)
     
-    @raises_exception(TransactionIntegrityError, 'Object Person[new:8] cannot be stored in the database.'
+    @raises_exception(TransactionIntegrityError, 'Object Person[new:...] cannot be stored in the database.'
                       ' IntegrityError: UNIQUE constraint failed: Person.lastName')
     def test_unique(self):
         p6 = Person(name='Boris', lastName='Bodroue')
