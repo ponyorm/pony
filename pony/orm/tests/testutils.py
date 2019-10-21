@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import basestring
 
-from functools import wraps
+import re
 from contextlib import contextmanager
 
 from pony.orm.core import Database
@@ -10,16 +10,18 @@ from pony.utils import import_module
 def test_exception_msg(test_case, exc_msg, test_msg=None):
     if test_msg is None: return
     error_template = "incorrect exception message. expected '%s', got '%s'"
+    error_msg = error_template % (test_msg, exc_msg)
     assert test_msg not in ('...', '....', '.....', '......')
-    if test_msg.startswith('...'):
-        if test_msg.endswith('...'):
-            test_case.assertIn(test_msg[3:-3], exc_msg, error_template % (test_msg, exc_msg))
-        else:
-            test_case.assertTrue(exc_msg.endswith(test_msg[3:]), error_template % (test_msg, exc_msg))
-    elif test_msg.endswith('...'):
-        test_case.assertTrue(exc_msg.startswith(test_msg[:-3]), error_template % (test_msg, exc_msg))
+    if '...' not in test_msg:
+        test_case.assertEqual(test_msg, exc_msg, error_msg)
     else:
-        test_case.assertEqual(exc_msg, test_msg, error_template % (test_msg, exc_msg))
+        pattern = ''.join(
+            '[%s]' % char for char in test_msg.replace('\\', '\\\\')
+                                              .replace('[', '\\[')
+        ).replace('[.][.][.]', '.*')
+        regex = re.compile(pattern)
+        if not regex.match(exc_msg):
+            test_case.fail(error_template % (test_msg, exc_msg))
 
 def raises_exception(exc_class, test_msg=None):
     def decorator(func):
