@@ -47,8 +47,20 @@ class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
     json_path_wildcard_syntax = True
 
+class MySQLValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, timedelta):
+            if value.microseconds:
+                return "INTERVAL '%s' HOUR_MICROSECOND" % timedelta2str(value)
+            return "INTERVAL '%s' HOUR_SECOND" % timedelta2str(value)
+        return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
+
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
+    value_class = MySQLValue
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', imap(builder, args)), ')'
     def TRIM(builder, expr, chars=None):
@@ -79,21 +91,21 @@ class MySQLBuilder(SQLBuilder):
     def SECOND(builder, expr):
         return 'second(', builder(expr), ')'
     def DATE_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+        if delta[0] == 'VALUE' and isinstance(delta[1], time):
+            return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+        return 'ADDDATE(', builder(expr), ', ', builder(delta), ')'
     def DATE_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+        if delta[0] == 'VALUE' and isinstance(delta[1], time):
+            return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+        return 'SUBDATE(', builder(expr), ', ', builder(delta), ')'
+    def DATE_DIFF(builder, expr1, expr2):
+        return 'TIMEDIFF(', builder(expr1), ', ', builder(expr2), ')'
     def DATETIME_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+        return builder.DATE_ADD(expr, delta)
     def DATETIME_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+        return builder.DATE_SUB(expr, delta)
+    def DATETIME_DIFF(builder, expr1, expr2):
+        return 'TIMEDIFF(', builder(expr1), ', ', builder(expr2), ')'
     def JSON_QUERY(builder, expr, path):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'json_extract(', builder(expr), ', ', path_sql, ')'

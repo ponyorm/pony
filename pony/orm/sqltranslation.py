@@ -1746,8 +1746,7 @@ def make_datetime_binop(op, sqlop):
         if monad2.type != timedelta: throw(TypeError,
             _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         expr_monad_cls = DateExprMonad if monad.type is date else DatetimeExprMonad
-        delta = monad2.value if isinstance(monad2, TimedeltaConstMonad) else monad2.getsql()[0]
-        return expr_monad_cls(monad.type, [ sqlop, monad.getsql()[0], delta ],
+        return expr_monad_cls(monad.type, [ sqlop, monad.getsql()[0], monad2.getsql()[0] ],
                               nullable=monad.nullable or monad2.nullable)
     datetime_binop.__name__ = sqlop
     return datetime_binop
@@ -1755,11 +1754,26 @@ def make_datetime_binop(op, sqlop):
 class DateMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type is date
+
     attr_year = numeric_attr_factory('YEAR')
     attr_month = numeric_attr_factory('MONTH')
     attr_day = numeric_attr_factory('DAY')
-    __add__ = make_datetime_binop('+', 'DATE_ADD')
-    __sub__ = make_datetime_binop('-', 'DATE_SUB')
+
+    def __add__(monad, other):
+        if other.type != timedelta:
+            throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '+'))
+        return DateExprMonad(monad.type, [ 'DATE_ADD', monad.getsql()[0], other.getsql()[0] ],
+                             nullable=monad.nullable or other.nullable)
+
+    def __sub__(monad, other):
+        if other.type == timedelta:
+            return DateExprMonad(monad.type, [ 'DATE_SUB', monad.getsql()[0], other.getsql()[0] ],
+                                 nullable=monad.nullable or other.nullable)
+        elif other.type == date:
+            return TimedeltaExprMonad(timedelta, [ 'DATE_DIFF', monad.getsql()[0], other.getsql()[0] ],
+                                      nullable=monad.nullable or other.nullable)
+        throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '-'))
+
 
 class TimeMixin(MonadMixin):
     def mixin_init(monad):
@@ -1775,14 +1789,29 @@ class TimedeltaMixin(MonadMixin):
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):
         assert monad.type is datetime
+
     def call_date(monad):
         sql = [ 'DATE', monad.getsql()[0] ]
         return ExprMonad.new(date, sql, nullable=monad.nullable)
+
     attr_hour = numeric_attr_factory('HOUR')
     attr_minute = numeric_attr_factory('MINUTE')
     attr_second = numeric_attr_factory('SECOND')
-    __add__ = make_datetime_binop('+', 'DATETIME_ADD')
-    __sub__ = make_datetime_binop('-', 'DATETIME_SUB')
+
+    def __add__(monad, other):
+        if other.type != timedelta:
+            throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '+'))
+        return DatetimeExprMonad(monad.type, [ 'DATETIME_ADD', monad.getsql()[0], other.getsql()[0] ],
+                             nullable=monad.nullable or other.nullable)
+
+    def __sub__(monad, other):
+        if other.type == timedelta:
+            return DatetimeExprMonad(monad.type, [ 'DATETIME_SUB', monad.getsql()[0], other.getsql()[0] ],
+                                     nullable=monad.nullable or other.nullable)
+        elif other.type == datetime:
+            return TimedeltaExprMonad(timedelta, [ 'DATETIME_DIFF', monad.getsql()[0], other.getsql()[0] ],
+                                      nullable=monad.nullable or other.nullable)
+        throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '-'))
 
 def make_string_binop(op, sqlop):
     def string_binop(monad, monad2):

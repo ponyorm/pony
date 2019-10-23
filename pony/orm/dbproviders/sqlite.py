@@ -16,7 +16,7 @@ from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json, TrackedArray
 from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
-from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
+from pony.orm.sqlbuilding import SQLBuilder, Value, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, \
     cut_traceback_depth
@@ -54,10 +54,24 @@ class SQLiteTranslator(SQLTranslator):
     StringMixin_UPPER = make_overriden_string_func('PY_UPPER')
     StringMixin_LOWER = make_overriden_string_func('PY_LOWER')
 
+class SQLiteValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, datetime):
+            return self.quote_str(datetime2timestamp(value))
+        if isinstance(value, date):
+            return self.quote_str(str(value))
+        if isinstance(value, timedelta):
+            return repr(value.total_seconds() / (24 * 60 * 60))
+        return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
+
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
     least_func_name = 'min'
     greatest_func_name = 'max'
+    value_class = SQLiteValue
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)
@@ -106,21 +120,25 @@ class SQLiteBuilder(SQLBuilder):
         if not modifiers: return builder(expr)
         return funcname, '(', builder(expr), modifiers, ')'
     def DATE_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('date', expr, delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('date', expr, delta[1])
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
     def DATE_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('date', expr, -delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('date', expr, -delta[1])
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
+    def DATE_DIFF(builder, expr1, expr2):
+        return 'julianday(', builder(expr1), ') - julianday(', builder(expr2), ')'
     def DATETIME_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('datetime', expr, delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('datetime', expr, delta[1])
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
     def DATETIME_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('datetime', expr, -delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('datetime', expr, -delta[1])
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
+    def DATETIME_DIFF(builder, expr1, expr2):
+        return 'julianday(', builder(expr1), ') - julianday(', builder(expr2), ')'
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
     PY_UPPER = make_unary_func('py_upper')
