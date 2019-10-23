@@ -62,6 +62,10 @@ class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
     rename_sql_template = 'ALTER TABLE %(table_name)s CHANGE %(prev_name)s %(new_col_def)s'
 
+    def get_alter_ops(column):
+        sql = '%s %s' % ('MODIFY', column.get_sql())
+        return [ Op(sql, obj=column, type='alter', prefix=alter_table(column.table)) ]
+
     def get_rename_ops(column):
         prev_table = column.table
         schema = prev_table.schema
@@ -237,9 +241,9 @@ class MySQLProvider(DBAPIProvider):
     paramstyle = 'format'
     quote_char = "`"
     max_name_len = 64
+    max_params_count = 10000
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = False
-    select_for_update_nowait_syntax = False
     max_time_precision = default_time_precision = 0
     varchar_default_max_len = 255
     uint64_support = True
@@ -278,6 +282,7 @@ class MySQLProvider(DBAPIProvider):
             provider.max_time_precision = 6
         cursor.execute('select database()')
         provider.default_schema_name = cursor.fetchone()[0]
+        cursor.execute('set session group_concat_max_len = 4294967295')
 
     def should_reconnect(provider, exc):
         return isinstance(exc, mysql_module.OperationalError) and exc.args[0] == 2006

@@ -43,15 +43,15 @@ class TestQuery(unittest.TestCase):
     def test2(self):
         X = [1, 2, 3]
         select('x for x in X')
-    @raises_exception(TypeError, "Query can only iterate over entity or another query (not a list of objects)")
     def test3(self):
         g = Group[1]
-        select(s for s in g.students)
+        students = select(s for s in g.students)
+        self.assertEqual(set(g.students), set(students))
     @raises_exception(ExprEvalError, "`a` raises NameError: global name 'a' is not defined" if PYPY2 else
                                      "`a` raises NameError: name 'a' is not defined")
     def test4(self):
         select(a for s in Student)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'list' in expression: s.name == x" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types '%s' and 'StrArray' in expression: s.name == x" % unicode.__name__)
     def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)

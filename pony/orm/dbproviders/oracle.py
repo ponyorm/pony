@@ -174,11 +174,13 @@ class OraBuilder(SQLBuilder):
         if returning is not None:
             result.extend((' RETURNING ', builder.quote_name(returning), ' INTO :new_id'))
         return result
-    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+    def SELECT_FOR_UPDATE(builder, nowait, skip_locked, *sections):
         assert not builder.indent
+        nowait = ' NOWAIT' if nowait else ''
+        skip_locked = ' SKIP LOCKED' if skip_locked else ''
         last_section = sections[-1]
         if last_section[0] != 'LIMIT':
-            return builder.SELECT(*sections), 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
+            return builder.SELECT(*sections), 'FOR UPDATE', nowait, skip_locked, '\n'
 
         from_section = sections[1]
         assert from_section[0] == 'FROM'
@@ -197,7 +199,7 @@ class OraBuilder(SQLBuilder):
                     ('SELECT', [ 'ROWID', ['AS', rowid, 'row-id' ] ]) + sections[1:] ] ] ]
         if order_by_section: sql_ast.append(order_by_section)
         result = builder(sql_ast)
-        return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
+        return result, 'FOR UPDATE', nowait, skip_locked, '\n'
     def SELECT(builder, *sections):
         prev_suppress_aliases = builder.suppress_aliases
         builder.suppress_aliases = False
@@ -516,7 +518,11 @@ class OraProvider(DBAPIProvider):
                 arguments['new_id'] = var
                 if arguments is None: cursor.execute(sql)
                 else: cursor.execute(sql, arguments)
-                return var.getvalue()
+                value = var.getvalue()
+                if isinstance(value, list):
+                    assert len(value) == 1
+                    value = value[0]
+                return value
             if arguments is None: cursor.execute(sql)
             else: cursor.execute(sql, arguments)
 

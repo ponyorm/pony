@@ -5,7 +5,7 @@ from operator import attrgetter
 
 import pony
 from pony import orm
-from pony.orm.core import log_sql, DBSchemaError, MappingError, UpgradeError
+from pony.orm.core import log_sql, DBSchemaError, MappingError, UpgradeError, Array
 from pony.orm.dbapiprovider import obsolete
 from pony.utils import throw, get_version_tuple
 from collections import OrderedDict
@@ -273,13 +273,13 @@ class Table(DBObject):
             # is_pk == True
             del table.indexes[col_names]
         return table.schema.index_class(index_name, table, col_names, is_pk, is_unique)
-    def add_foreign_key(table, fk_name, col_names, parent_table, parent_col_names, index_name=None):
+    def add_foreign_key(table, fk_name, col_names, parent_table, parent_col_names, index_name=None, on_delete=False):
         assert type(parent_col_names) is tuple
         assert type(col_names) is tuple
         if fk_name is None:
             provider = table.schema.provider
             fk_name = provider.get_default_fk_name(table.name, col_names)
-        return table.schema.fk_class(fk_name, table, col_names, parent_table, parent_col_names, index_name)
+        return table.schema.fk_class(fk_name, table, col_names, parent_table, parent_col_names, index_name, on_delete)
     def rename_column(table, prev_name, new_name, with_constraints=True):
         assert new_name not in table.column_dict
         column = table.column_dict.pop(prev_name)
@@ -406,6 +406,10 @@ class Column(object):
                 append('REFERENCES')
                 append(quote_name(parent_table.name))
                 append(schema.names_row(fk.parent_col_names))
+                if fk.on_delete:
+                    append('ON DELETE %s' % fk.on_delete)
+                if fk.on_delete:
+                    append('ON DELETE %s' % fk.on_delete)
         return ' '.join(result)
 
     def get_alter_ops(column):
@@ -539,6 +543,9 @@ class DBIndex(Constraint):
             append(quote_name(index.name))
             append('ON')
             append(quote_name(index.table.name))
+            converter = index.columns[0].converter
+            if isinstance(converter.py_type, Array) and converter.provider.dialect == 'PostgreSQL':
+                append('USING GIN')
         else:
             if index.name:
                 append('CONSTRAINT')
@@ -558,7 +565,7 @@ class DBIndex(Constraint):
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(fk, name, table, col_names, parent_table, parent_col_names, index_name):
+    def __init__(fk, name, table, col_names, parent_table, parent_col_names, index_name, on_delete):
         assert type(parent_col_names) is tuple
         assert type(col_names) is tuple
         schema = parent_table.schema
@@ -589,6 +596,8 @@ class ForeignKey(Constraint):
         fk.col_names = col_names
         fk.parent_table = parent_table
         fk.parent_col_names = parent_col_names
+        fk.on_delete = on_delete
+        fk.on_delete = on_delete
 
         if index_name is not False:
             child_columns_len = len(col_names)
@@ -626,6 +635,10 @@ class ForeignKey(Constraint):
         append('REFERENCES')
         append(quote_name(fk.parent_table.name))
         append(schema.names_row(fk.parent_col_names))
+        if fk.on_delete:
+            append('ON DELETE %s' % fk.on_delete)
+        if fk.on_delete:
+            append('ON DELETE %s' % fk.on_delete)
         return ' '.join(cmd)
     def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema

@@ -146,7 +146,7 @@ class Serializer(object):
         lines = [ 'class %s(%s):' % (name, ', '.join(_bases)) ]
 
         for name, value in cls_dict.items():
-            if name in ('__slots__', '__qualname__', '__module__', '_indexes_'): continue
+            if name in ('__slots__', '__qualname__', '__module__', '_indexes_', '__classcell__'): continue
             if isinstance(value, (core.Attribute, types.MethodType, types.FunctionType,
                                   staticmethod, classmethod, property)): continue
             lines.append('%s = %s' % (name, self.serialize(value)))

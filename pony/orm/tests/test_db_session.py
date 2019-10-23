@@ -1,6 +1,6 @@
 from __future__ import absolute_import, print_function, division
 
-import unittest
+import unittest, warnings
 from datetime import date
 from decimal import Decimal
 from itertools import count
@@ -254,6 +254,17 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
+    @raises_exception(PonyRuntimeWarning, '@db_session decorator with `retry=3` option is ignored for test() function '
+                                          'because it is called inside another db_session')
+    def test_retry_11(self):
+        @db_session(retry=3)
+        def test():
+            pass
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', PonyRuntimeWarning)
+            with db_session:
+                test()
+
     def test_db_session_manager_1(self):
         with db_session:
             self.X(a=3, b=3)
@@ -313,7 +324,8 @@ class TestDBSession(unittest.TestCase):
               with db_session(ddl=True):
                   pass
 
-    @raises_exception(TransactionError, "test() cannot be called inside of db_session")
+    @raises_exception(TransactionError, "@db_session-decorated test() function with `ddl` option "
+                                        "cannot be called inside of another db_session")
     def test_db_session_ddl_2(self):
         @db_session(ddl=True)
         def test():

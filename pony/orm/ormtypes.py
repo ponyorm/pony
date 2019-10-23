@@ -7,7 +7,7 @@ from datetime import date, time, datetime, timedelta
 from functools import wraps, WRAPPER_ASSIGNMENTS
 from uuid import UUID
 
-from pony.utils import throw, parse_expr
+from pony.utils import throw, parse_expr, deref_proxy
 
 NoneType = type(None)
 
@@ -142,18 +142,10 @@ class QueryType(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-numeric_types = {bool, int, float, Decimal}
-comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID}
-primitive_types = comparable_types | {buffer}
-function_types = {type, types.FunctionType, types.BuiltinFunctionType}
-type_normalization_dict = { long : int } if PY2 else {}
 
 def normalize(value):
+    value = deref_proxy(value)
     t = type(value)
-    if t.__name__ == 'LocalProxy' and '_get_current_object' in t.__dict__:
-        value = value._get_current_object()
-        t = type(value)
-
     if t is tuple:
         item_types, item_values = [], []
         for item in value:
@@ -203,15 +195,16 @@ def normalize_type(t):
     if t in (slice, type(Ellipsis)): return t
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
+    if issubclass(t, Array): return t
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
-    (int, float) : float,
-    (int, Decimal) : Decimal,
-    (date, datetime) : datetime,
-    (bool, int) : int,
-    (bool, float) : float,
-    (bool, Decimal) : Decimal
+    (int, float): float,
+    (int, Decimal): Decimal,
+    (date, datetime): datetime,
+    (bool, int): int,
+    (bool, float): float,
+    (bool, Decimal): Decimal
     }
 coercions.update(((t2, t1), t3) for ((t1, t2), t3) in items_list(coercions))
 
@@ -340,11 +333,80 @@ class TrackedList(TrackedValue, list):
     def get_untracked(self):
         return [val.get_untracked() if isinstance(val, TrackedValue) else val for val in self]
 
+def validate_item(item_type, item):
+    if PY2 and isinstance(item, str):
+        item = item.decode('ascii')
+    if not isinstance(item, item_type):
+        if item_type is not unicode and hasattr(item, '__index__'):
+            return item.__index__()
+        throw(TypeError, 'Cannot store %r item in array of %r' % (type(item).__name__, item_type.__name__))
+    return item
+
+class TrackedArray(TrackedList):
+    def __init__(self, obj, attr, value):
+        TrackedList.__init__(self, obj, attr, value)
+        self.item_type = attr.py_type.item_type
+    def extend(self, items):
+        items = [validate_item(self.item_type, item) for item in items]
+        TrackedList.extend(self, items)
+    def append(self, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.append(self, item)
+    def insert(self, index, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.insert(self, index, item)
+    def __setitem__(self, index, item):
+        item = validate_item(self.item_type, item)
+        TrackedList.__setitem__(self, index, item)
+
+    def __contains__(self, item):
+        if not isinstance(item, basestring) and hasattr(item, '__iter__'):
+            return all(it in set(self) for it in item)
+        return list.__contains__(self, item)
+
+
 class Json(object):
     """A wrapper over a dict or list
     """
+    @classmethod
+    def default_empty_value(cls):
+        return {}
+
     def __init__(self, wrapped):
         self.wrapped = wrapped
 
     def __repr__(self):
         return '<Json %r>' % self.wrapped
+
+class Array(object):
+    item_type = None  # Should be overridden in subclass
+
+    @classmethod
+    def default_empty_value(cls):
+        return []
+
+
+class IntArray(Array):
+    item_type = int
+
+
+class StrArray(Array):
+    item_type = unicode
+
+
+class FloatArray(Array):
+    item_type = float
+
+
+numeric_types = {bool, int, float, Decimal}
+comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID, IntArray, StrArray, FloatArray}
+primitive_types = comparable_types | {buffer}
+function_types = {type, types.FunctionType, types.BuiltinFunctionType}
+type_normalization_dict = { long : int } if PY2 else {}
+
+array_types = {
+    int: IntArray,
+    float: FloatArray,
+    unicode: StrArray
+}
+

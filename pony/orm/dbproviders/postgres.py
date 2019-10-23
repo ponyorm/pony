@@ -27,7 +27,7 @@ from pony.orm import core, dbschema, dbapiprovider, sqltranslation, ormtypes
 from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
-from pony.orm.sqlbuilding import Value, SQLBuilder
+from pony.orm.sqlbuilding import Value, SQLBuilder, join
 from pony.converting import timedelta2str
 from pony.utils import is_ident
 
@@ -189,6 +189,23 @@ class PGSQLBuilder(SQLBuilder):
         else:
             result = result, ", ','"
         return result, ')'
+    def ARRAY_INDEX(builder, col, index):
+        return builder(col), '[', builder(index), ']'
+    def ARRAY_CONTAINS(builder, key, not_in, col):
+        if not_in:
+            return builder(key), ' <> ALL(', builder(col), ')'
+        return builder(key), ' = ANY(', builder(col), ')'
+    def ARRAY_SUBSET(builder, array1, not_in, array2):
+        result = builder(array1), ' <@ ', builder(array2)
+        if not_in:
+            result = 'NOT (', result, ')'
+        return result
+    def ARRAY_LENGTH(builder, array):
+        return 'COALESCE(ARRAY_LENGTH(', builder(array), ', 1), 0)'
+    def ARRAY_SLICE(builder, array, start, stop):
+        return builder(array), '[', builder(start) if start else '', ':', builder(stop) if stop else '', ']'
+    def MAKE_ARRAY(builder, *items):
+        return 'ARRAY[', join(', ', (builder(item) for item in items)), ']'
 
 
 class PGStrConverter(dbapiprovider.StrConverter):
@@ -225,6 +242,13 @@ class PGJsonConverter(dbapiprovider.JsonConverter):
     def sql_type(self):
         return "JSONB"
 
+class PGArrayConverter(dbapiprovider.ArrayConverter):
+    array_types = {
+        int: ('int', PGIntConverter),
+        unicode: ('text', PGStrConverter),
+        float: ('double precision', PGRealConverter)
+    }
+
 class PGPool(Pool):
     def _connect(pool):
         pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
@@ -246,12 +270,14 @@ class PGProvider(DBAPIProvider):
     dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
     max_name_len = 63
+    max_params_count = 10000
     index_if_not_exists_syntax = False
 
     dbapi_module = psycopg2
     dbschema_cls = PGSchema
     translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder
+    array_converter_cls = PGArrayConverter
 
     default_schema_name = 'public'
 
