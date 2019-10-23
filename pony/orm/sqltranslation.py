@@ -2818,6 +2818,8 @@ class FuncGroupConcatMonad(FuncMonad):
     func = utils.group_concat, core.group_concat
     def call(monad, x, sep=None, distinct=None):
         if sep is not None:
+            if distinct and monad.translator.database.provider.dialect == 'SQLite':
+                throw(TypeError, 'SQLite does not allow to specify distinct and separator in group_concat at the same time: {EXPR}')
             if not(isinstance(sep, StringConstMonad) and isinstance(sep.value, basestring)):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % ast2src(sep.node))
             sep = sep.value
