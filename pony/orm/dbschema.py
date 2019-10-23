@@ -5,7 +5,7 @@ from operator import attrgetter
 
 import pony
 from pony import orm
-from pony.orm.core import log_sql, DBSchemaError, MappingError, UpgradeError
+from pony.orm.core import log_sql, DBSchemaError, MappingError, UpgradeError, Array
 from pony.orm.dbapiprovider import obsolete
 from pony.utils import throw, get_version_tuple
 from collections import OrderedDict
@@ -406,10 +406,10 @@ class Column(object):
                 append('REFERENCES')
                 append(quote_name(parent_table.name))
                 append(schema.names_row(fk.parent_col_names))
-                if foreign_key.on_delete:
-                    append('ON DELETE %s' % foreign_key.on_delete)
-                if foreign_key.on_delete:
-                    append('ON DELETE %s' % foreign_key.on_delete)
+                if fk.on_delete:
+                    append('ON DELETE %s' % fk.on_delete)
+                if fk.on_delete:
+                    append('ON DELETE %s' % fk.on_delete)
         return ' '.join(result)
 
     def get_alter_ops(column):
@@ -544,8 +544,8 @@ class DBIndex(Constraint):
             append('ON')
             append(quote_name(index.table.name))
             converter = index.columns[0].converter
-            if isinstance(converter.py_type, core.Array) and converter.provider.dialect == 'PostgreSQL':
-                append(case('USING GIN'))
+            if isinstance(converter.py_type, Array) and converter.provider.dialect == 'PostgreSQL':
+                append('USING GIN')
         else:
             if index.name:
                 append('CONSTRAINT')
@@ -596,8 +596,8 @@ class ForeignKey(Constraint):
         fk.col_names = col_names
         fk.parent_table = parent_table
         fk.parent_col_names = parent_col_names
-        foreign_key.on_delete = on_delete
-        foreign_key.on_delete = on_delete
+        fk.on_delete = on_delete
+        fk.on_delete = on_delete
 
         if index_name is not False:
             child_columns_len = len(col_names)
@@ -635,10 +635,10 @@ class ForeignKey(Constraint):
         append('REFERENCES')
         append(quote_name(fk.parent_table.name))
         append(schema.names_row(fk.parent_col_names))
-        if foreign_key.on_delete:
-            append(case('ON DELETE %s' % foreign_key.on_delete))
-        if foreign_key.on_delete:
-            append(case('ON DELETE %s' % foreign_key.on_delete))
+        if fk.on_delete:
+            append('ON DELETE %s' % fk.on_delete)
+        if fk.on_delete:
+            append('ON DELETE %s' % fk.on_delete)
         return ' '.join(cmd)
     def get_drop_ops(foreign_key):
         schema = foreign_key.table.schema
