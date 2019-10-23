@@ -3,11 +3,12 @@ from pony.py23compat import PY2, izip, imap, itervalues, basestring, unicode, bu
 
 from operator import attrgetter
 from decimal import Decimal
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from binascii import hexlify
 
 from pony import options
 from pony.utils import datetime2timestamp, throw, is_ident
+from pony.converting import timedelta2str
 from pony.orm.ormtypes import RawSQL, Json
 
 class AstError(Exception): pass
@@ -68,19 +69,31 @@ class Value(object):
         self.value = value
     def __unicode__(self):
         value = self.value
-        if value is None: return 'null'
-        if isinstance(value, bool): return value and '1' or '0'
-        if isinstance(value, basestring): return self.quote_str(value)
-        if isinstance(value, datetime): return self.quote_str(datetime2timestamp(value))
-        if isinstance(value, date): return self.quote_str(str(value))
+        if value is None:
+            return 'null'
+        if isinstance(value, bool):
+            return value and '1' or '0'
+        if isinstance(value, basestring):
+            return self.quote_str(value)
+        if isinstance(value, datetime):
+            return 'TIMESTAMP ' + self.quote_str(datetime2timestamp(value))
+        if isinstance(value, date):
+            return 'DATE ' + self.quote_str(str(value))
+        if isinstance(value, timedelta):
+            return "INTERVAL '%s' HOUR TO SECOND" % timedelta2str(value)
         if PY2:
-            if isinstance(value, (int, long, float, Decimal)): return str(value)
-            if isinstance(value, buffer): return "X'%s'" % hexlify(value)
+            if isinstance(value, (int, long, float, Decimal)):
+                return str(value)
+            if isinstance(value, buffer):
+                return "X'%s'" % hexlify(value)
         else:
-            if isinstance(value, (int, float, Decimal)): return str(value)
-            if isinstance(value, bytes): return "X'%s'" % hexlify(value).decode('ascii')
-        assert False, value  # pragma: no cover
-    if not PY2: __str__ = __unicode__
+            if isinstance(value, (int, float, Decimal)):
+                return str(value)
+            if isinstance(value, bytes):
+                return "X'%s'" % hexlify(value).decode('ascii')
+        assert False, repr(value)  # pragma: no cover
+    if not PY2:
+        __str__ = __unicode__
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):

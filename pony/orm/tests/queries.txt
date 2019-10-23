@@ -1071,3 +1071,115 @@ FROM "STUDENT" "s1", "STUDENT" "s2"
 WHERE "s1"."NAME" = "s2"."NAME"
   AND "s1"."GPA" = "s2"."GPA"
   AND "s1"."TEL" = "s2"."TEL"
+
+
+# Test date operations:
+
+
+>>> select(s for s in Student if s.dob + timedelta(days=100) < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE date("s"."dob", '+100 days') < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" + INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" + INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE ADDDATE(`s`.`dob`, INTERVAL '2400:0:0' HOUR_SECOND) < DATE '2010-01-01'
+
+
+>>> td = timedelta(days=100)
+>>> select(s for s in Student if s.dob + td < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE datetime(julianday("s"."dob") + ?) < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" + %(p1)s) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" + :p1) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE ADDDATE(`s`.`dob`, %s) < DATE '2010-01-01'
+
+
+>>> select(s for s in Student if s.dob - timedelta(days=100) < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE date("s"."dob", '-100 days') < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" - INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" - INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE SUBDATE(`s`.`dob`, INTERVAL '2400:0:0' HOUR_SECOND) < DATE '2010-01-01'
+
+>>> td = timedelta(days=100)
+>>> select(s for s in Student if s.dob - td < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE datetime(julianday("s"."dob") - ?) < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" - %(p1)s) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" - :p1) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE SUBDATE(`s`.`dob`, %s) < DATE '2010-01-01'
