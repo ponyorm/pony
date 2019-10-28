@@ -14,9 +14,9 @@ from pony.thirdparty.compiler import ast
 from pony import options, utils
 from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors
-from pony.orm.decompiling import decompile
+from pony.orm.decompiling import decompile, DecompileError
 from pony.orm.ormtypes import \
-    numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, raw_sql, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
     Json, QueryType, Array, array_types
 from pony.orm import core
@@ -125,8 +125,11 @@ class SQLTranslator(ASTTranslator):
                 monad = monad.call_limit(t.limit, t.offset)
         elif tt is FuncType:
             func = t.func
-            func_monad_class = translator.registered_functions.get(func, ErrorSpecialFuncMonad)
-            monad = func_monad_class(func)
+            func_monad_class = translator.registered_functions.get(func)
+            if func_monad_class is not None:
+                monad = func_monad_class(func)
+            else:
+                monad = HybridFuncMonad(t, func.__name__)
         elif tt is MethodType:
             obj, func = t.obj, t.func
             if isinstance(obj, EntityMeta):
@@ -359,7 +362,7 @@ class SQLTranslator(ASTTranslator):
                 else:
                     check_name_is_single()
                     attr_names = []
-                    while isinstance(monad, AttrSetMonad) and monad.parent is not None:
+                    while isinstance(monad, (AttrMonad, AttrSetMonad)) and monad.parent is not None:
                         attr_names.append(monad.attr.name)
                         monad = monad.parent
                     attr_names.reverse()
@@ -506,6 +509,8 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
+        if translator.aggregated:
+            translator.distinct = False
         translator.vars = None
         if translator is not this:
             raise UseAnotherTranslator(translator)
@@ -661,11 +666,6 @@ class SQLTranslator(ASTTranslator):
             translator.query_result_is_cacheable = False
         else: sql_ast = [ 'SELECT' ]
 
-        groupby_monads = translator.groupby_monads
-        if distinct and translator.aggregated and not groupby_monads:
-            distinct = False
-            groupby_monads = translator.expr_monads
-
         select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         if aggr_func_name:
             expr_type = translator.expr_type
@@ -683,9 +683,10 @@ class SQLTranslator(ASTTranslator):
                     throw(TypeError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
             aggr_ast = None
-            if groupby_monads or (aggr_func_name == 'COUNT' and distinct
-                                  and isinstance(translator.expr_type, EntityMeta)
-                                  and len(translator.expr_columns) > 1):
+            if translator.groupby_monads or (
+                    aggr_func_name == 'COUNT' and distinct
+                    and isinstance(translator.expr_type, EntityMeta)
+                    and len(translator.expr_columns) > 1):
                 outer_alias = 't'
                 if aggr_func_name == 'COUNT' and not aggr_func_distinct:
                     outer_aggr_ast = [ 'COUNT', None ]
@@ -738,9 +739,9 @@ class SQLTranslator(ASTTranslator):
         if conditions:
             sql_ast.append([ 'WHERE' ] + conditions)
 
-        if groupby_monads:
+        if translator.groupby_monads:
             group_by = [ 'GROUP_BY' ]
-            for m in groupby_monads: group_by.extend(m.getsql())
+            for m in translator.groupby_monads: group_by.extend(m.getsql())
             sql_ast.append(group_by)
         else: group_by = None
 
@@ -772,17 +773,21 @@ class SQLTranslator(ASTTranslator):
         expr_monad = translator.tree.expr.monad
         if not isinstance(entity, EntityMeta): throw(TranslationError,
             'Delete query should be applied to a single entity. Got: %s' % ast2src(translator.tree.expr))
-        if translator.groupby_monads: throw(TranslationError,
-            'Delete query cannot contains GROUP BY section or aggregate functions')
-        assert not translator.having_conditions
+        force_in = False
+        if translator.groupby_monads:
+            force_in = True
+        else:
+            assert not translator.having_conditions
         tableref = expr_monad.tableref
         from_ast = translator.sqlquery.from_ast
-        assert from_ast[0] == 'FROM'
-        if len(from_ast) == 2 and not translator.sqlquery.used_from_subquery:
+        if from_ast[0] != 'FROM':
+            force_in = True
+
+        if not force_in and len(from_ast) == 2 and not translator.sqlquery.used_from_subquery:
             sql_ast = [ 'DELETE', None, from_ast ]
             if translator.conditions:
                 sql_ast.append([ 'WHERE' ] + translator.conditions)
-        elif translator.dialect == 'MySQL':
+        elif not force_in and translator.dialect == 'MySQL':
             sql_ast = [ 'DELETE', tableref.alias, from_ast ]
             if translator.conditions:
                 sql_ast.append([ 'WHERE' ] + translator.conditions)
@@ -1074,8 +1079,6 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        if isinstance(func_monad, ErrorSpecialFuncMonad): throw(TypeError,
-            'Function %r cannot be used this way: %s' % (func_monad.func.__name__, ast2src(node)))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
@@ -1196,20 +1199,20 @@ class SqlQuery(object):
             sqlquery.alias_counters = parent_sqlquery.alias_counters.copy()
             sqlquery.expr_counter = parent_sqlquery.expr_counter
         sqlquery.used_from_subquery = False
-    def get_tableref(sqlquery, name_path, from_subquery=False):
+    def get_tableref(sqlquery, name_path):
         tableref = sqlquery.tablerefs.get(name_path)
-        if tableref is not None:
-            if from_subquery and sqlquery.parent_sqlquery is None:
-                sqlquery.used_from_subquery = True
-            return tableref
-        if sqlquery.parent_sqlquery:
-            return sqlquery.parent_sqlquery.get_tableref(name_path, from_subquery=True)
-        return None
+        parent_sqlquery = sqlquery.parent_sqlquery
+        if tableref is None and parent_sqlquery:
+            tableref = parent_sqlquery.get_tableref(name_path)
+            if tableref is not None:
+                parent_sqlquery.used_from_subquery = True
+        return tableref
     def add_tableref(sqlquery, name_path, parent_tableref, attr):
-        tablerefs = sqlquery.tablerefs
-        assert name_path not in tablerefs
+        assert name_path not in sqlquery.tablerefs
+        if parent_tableref.sqlquery is not sqlquery:
+            parent_tableref.sqlquery.used_from_subquery = True
         tableref = JoinedTableRef(sqlquery, name_path, parent_tableref, attr)
-        tablerefs[name_path] = tableref
+        sqlquery.tablerefs[name_path] = tableref
         return tableref
     def make_alias(sqlquery, name):
         name = name[:max_alias_length-3].lower()
@@ -1637,53 +1640,6 @@ class MethodMonad(Monad):
     def __neg__(monad): raise_forgot_parentheses(monad)
     def abs(monad): raise_forgot_parentheses(monad)
 
-class HybridMethodMonad(MethodMonad):
-    def __init__(monad, parent, attrname, func):
-        MethodMonad.__init__(monad, parent, attrname)
-        monad.func = func
-    def __call__(monad, *args, **kwargs):
-        translator = monad.translator
-        name_mapping = inspect.getcallargs(monad.func, monad.parent, *args, **kwargs)
-
-        func = monad.func
-        if PY2 and isinstance(func, types.UnboundMethodType):
-            func = func.im_func
-        func_id = id(func)
-        func_ast, external_names, cells = decompile(func)
-
-        func_ast, func_extractors = create_extractors(
-            func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
-
-        root_translator = translator.root_translator
-        if func not in root_translator.func_extractors_map:
-            func_vars, func_vartypes = extract_vars(func_id, translator.filter_num, func_extractors, func.__globals__, {}, cells)
-            translator.database.provider.normalize_vars(func_vars, func_vartypes)
-            if func.__closure__:
-                translator.can_be_cached = False
-            if func_extractors:
-                root_translator.func_extractors_map[func] = func_extractors
-                root_translator.func_vartypes.update(func_vartypes)
-                root_translator.vartypes.update(func_vartypes)
-                root_translator.vars.update(func_vars)
-
-        stack = translator.namespace_stack
-        stack.append(name_mapping)
-        func_ast = copy_ast(func_ast)
-        try:
-            prev_code_key = translator.code_key
-            translator.code_key = func_id
-            try:
-                translator.dispatch(func_ast)
-            finally:
-                translator.code_key = prev_code_key
-        except Exception as e:
-            if len(e.args) == 1 and isinstance(e.args[0], basestring):
-                msg = e.args[0] + ' (inside %s.%s)' % (monad.parent.type.__name__, monad.attrname)
-                e.args = (msg,)
-            raise
-        stack.pop()
-        return func_ast.monad
-
 class EntityMonad(Monad):
     def __init__(monad, entity):
         Monad.__init__(monad, SetType(entity))
@@ -1792,8 +1748,7 @@ def make_datetime_binop(op, sqlop):
         if monad2.type != timedelta: throw(TypeError,
             _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         expr_monad_cls = DateExprMonad if monad.type is date else DatetimeExprMonad
-        delta = monad2.value if isinstance(monad2, TimedeltaConstMonad) else monad2.getsql()[0]
-        return expr_monad_cls(monad.type, [ sqlop, monad.getsql()[0], delta ],
+        return expr_monad_cls(monad.type, [ sqlop, monad.getsql()[0], monad2.getsql()[0] ],
                               nullable=monad.nullable or monad2.nullable)
     datetime_binop.__name__ = sqlop
     return datetime_binop
@@ -1801,11 +1756,26 @@ def make_datetime_binop(op, sqlop):
 class DateMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type is date
+
     attr_year = numeric_attr_factory('YEAR')
     attr_month = numeric_attr_factory('MONTH')
     attr_day = numeric_attr_factory('DAY')
-    __add__ = make_datetime_binop('+', 'DATE_ADD')
-    __sub__ = make_datetime_binop('-', 'DATE_SUB')
+
+    def __add__(monad, other):
+        if other.type != timedelta:
+            throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '+'))
+        return DateExprMonad(monad.type, [ 'DATE_ADD', monad.getsql()[0], other.getsql()[0] ],
+                             nullable=monad.nullable or other.nullable)
+
+    def __sub__(monad, other):
+        if other.type == timedelta:
+            return DateExprMonad(monad.type, [ 'DATE_SUB', monad.getsql()[0], other.getsql()[0] ],
+                                 nullable=monad.nullable or other.nullable)
+        elif other.type == date:
+            return TimedeltaExprMonad(timedelta, [ 'DATE_DIFF', monad.getsql()[0], other.getsql()[0] ],
+                                      nullable=monad.nullable or other.nullable)
+        throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '-'))
+
 
 class TimeMixin(MonadMixin):
     def mixin_init(monad):
@@ -1821,14 +1791,29 @@ class TimedeltaMixin(MonadMixin):
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):
         assert monad.type is datetime
+
     def call_date(monad):
         sql = [ 'DATE', monad.getsql()[0] ]
         return ExprMonad.new(date, sql, nullable=monad.nullable)
+
     attr_hour = numeric_attr_factory('HOUR')
     attr_minute = numeric_attr_factory('MINUTE')
     attr_second = numeric_attr_factory('SECOND')
-    __add__ = make_datetime_binop('+', 'DATETIME_ADD')
-    __sub__ = make_datetime_binop('-', 'DATETIME_SUB')
+
+    def __add__(monad, other):
+        if other.type != timedelta:
+            throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '+'))
+        return DatetimeExprMonad(monad.type, [ 'DATETIME_ADD', monad.getsql()[0], other.getsql()[0] ],
+                             nullable=monad.nullable or other.nullable)
+
+    def __sub__(monad, other):
+        if other.type == timedelta:
+            return DatetimeExprMonad(monad.type, [ 'DATETIME_SUB', monad.getsql()[0], other.getsql()[0] ],
+                                     nullable=monad.nullable or other.nullable)
+        elif other.type == datetime:
+            return TimedeltaExprMonad(timedelta, [ 'DATETIME_DIFF', monad.getsql()[0], other.getsql()[0] ],
+                                      nullable=monad.nullable or other.nullable)
+        throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(other.type), '-'))
 
 def make_string_binop(op, sqlop):
     def string_binop(monad, monad2):
@@ -2497,9 +2482,10 @@ class CmpMonad(BoolMonad):
             if monad.translator.row_value_syntax:
                 return [ [ cmp_ops[op], [ 'ROW' ] + left_sql, [ 'ROW' ] + right_sql ] ]
             clauses = []
-            for i in xrange(1, size):
-                clauses.append(sqland([ [ monad.EQ, left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
-                                + [ [ cmp_ops[op[0] if i < size - 1 else op], left_sql[i], right_sql[i] ] ]))
+            for i in xrange(size):
+                clause = [ [ monad.EQ, left_sql[j], right_sql[j] ] for j in range(i) ]
+                clause.append([ cmp_ops[op], left_sql[i], right_sql[i] ])
+                clauses.append(sqland(clause))
             return [ sqlor(clauses) ]
         if op == '==':
             return [ sqland([ [ monad.EQ, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
@@ -2543,10 +2529,64 @@ class NotMonad(BoolMonad):
     def getsql(monad, sqlquery=None):
         return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
-class ErrorSpecialFuncMonad(Monad):
-    def __init__(monad, func):
-        Monad.__init__(monad, func)
-        monad.func = func
+class HybridFuncMonad(Monad):
+    def __init__(monad, func_type, func_name, *params):
+        Monad.__init__(monad, func_type)
+        monad.func = func_type.func
+        monad.func_name = func_name
+        monad.params = params
+    def __call__(monad, *args, **kwargs):
+        translator = monad.translator
+        name_mapping = inspect.getcallargs(monad.func, *(monad.params + args), **kwargs)
+
+        func = monad.func
+        if PY2 and isinstance(func, types.UnboundMethodType):
+            func = func.im_func
+        func_id = id(func)
+        try:
+            func_ast, external_names, cells = decompile(func)
+        except DecompileError:
+            throw(TranslationError, '%s(...) is too complex to decompile' % ast2src(monad.node))
+
+        func_ast, func_extractors = create_extractors(
+            func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
+
+        root_translator = translator.root_translator
+        if func not in root_translator.func_extractors_map:
+            func_vars, func_vartypes = extract_vars(func_id, translator.filter_num, func_extractors, func.__globals__, {}, cells)
+            translator.database.provider.normalize_vars(func_vars, func_vartypes)
+            if func.__closure__:
+                translator.can_be_cached = False
+            if func_extractors:
+                root_translator.func_extractors_map[func] = func_extractors
+                root_translator.func_vartypes.update(func_vartypes)
+                root_translator.vartypes.update(func_vartypes)
+                root_translator.vars.update(func_vars)
+
+        stack = translator.namespace_stack
+        stack.append(name_mapping)
+        func_ast = copy_ast(func_ast)
+        try:
+            prev_code_key = translator.code_key
+            translator.code_key = func_id
+            try:
+                translator.dispatch(func_ast)
+            finally:
+                translator.code_key = prev_code_key
+        except Exception as e:
+            if len(e.args) == 1 and isinstance(e.args[0], basestring):
+                msg = e.args[0] + ' (inside %s)' % (monad.func_name)
+                e.args = (msg,)
+            raise
+        stack.pop()
+        return func_ast.monad
+
+class HybridMethodMonad(HybridFuncMonad):
+    def __init__(monad, parent, attrname, func):
+        entity = parent.type
+        assert isinstance(entity, EntityMeta)
+        func_name = '%s.%s' % (entity.__name__, attrname)
+        HybridFuncMonad.__init__(monad, FuncType(func), func_name, parent)
 
 registered_functions = SQLTranslator.registered_functions = {}
 
@@ -2727,7 +2767,7 @@ class FuncLenMonad(FuncMonad):
     def call(monad, x):
         return x.len()
 
-class GetattrMonad(FuncMonad):
+class FuncGetattrMonad(FuncMonad):
     func = getattr
     def call(monad, obj_monad, name_monad):
         if isinstance(name_monad, ConstMonad):
@@ -2745,6 +2785,12 @@ class GetattrMonad(FuncMonad):
         if not isinstance(attrname, basestring):
             throw(TypeError, 'In `{EXPR}` second argument should be a string. Got: %r' % attrname)
         return obj_monad.getattr(attrname)
+
+class FuncRawSQLMonad(FuncMonad):
+    func = raw_sql
+    def call(monad, *args):
+        throw(TranslationError, 'Expression `{EXPR}` cannot be translated into SQL '
+                                'because raw SQL fragment will be different for each row')
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count
@@ -2774,6 +2820,8 @@ class FuncGroupConcatMonad(FuncMonad):
     func = utils.group_concat, core.group_concat
     def call(monad, x, sep=None, distinct=None):
         if sep is not None:
+            if distinct and monad.translator.database.provider.dialect == 'SQLite':
+                throw(TypeError, 'SQLite does not allow to specify distinct and separator in group_concat at the same time: {EXPR}')
             if not(isinstance(sep, StringConstMonad) and isinstance(sep.value, basestring)):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % ast2src(sep.node))
             sep = sep.value

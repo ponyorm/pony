@@ -8,9 +8,8 @@ def _enter_session():
 
 def _exit_session(exception):
     session = getattr(request, 'pony_session', None)
-    if session is None:
-        raise RuntimeError('Request object lost db_session')
-    session.__exit__(exc=exception)
+    if session is not None:
+        session.__exit__(exc=exception)
 
 class Pony(object):
     def __init__(self, app=None):

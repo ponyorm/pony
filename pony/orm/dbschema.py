@@ -378,27 +378,28 @@ class Column(object):
             pk_constraint_template = column.pk_constraint_template % {
                 'constraint_name': constraint_name
             }
+
+        def add_default():
+            if column.sql_default not in (None, True, False):
+                append('DEFAULT')
+                append(column.sql_default)
+
         if column.is_pk == 'auto' and column.auto_template and column.converter.py_type in int_types:
             append(column.auto_template % {
                 'type': column.sql_type,
                 'pk_constraint_template': pk_constraint_template,
             })
+            add_default()
         else:
             append(column.sql_type)
+            add_default()
             if column.is_pk:
                 if schema.provider.dialect == 'SQLite': append('NOT NULL')
                 append(pk_constraint_template)
                 append('PRIMARY KEY')
             else:
-                if schema.provider.dialect == 'Oracle' \
-                        and column.sql_default not in (None, True, False):
-                    append('DEFAULT')
-                    append(column.sql_default)
                 if column.is_unique: append('UNIQUE')
                 if column.is_not_null: append('NOT NULL')
-        if column.sql_default not in (None, True, False) and schema.provider.dialect != 'Oracle':
-            append('DEFAULT')
-            append(column.sql_default)
         if schema.inline_fk_syntax and not schema.named_foreign_keys:
             fk = table.foreign_keys.get((column.name,))
             if fk is not None:
@@ -543,7 +544,11 @@ class DBIndex(Constraint):
             append(quote_name(index.name))
             append('ON')
             append(quote_name(index.table.name))
-            converter = index.columns[0].converter
+
+            col_name = index.col_names[0]
+            column = index.table.column_dict[col_name]
+            converter = column.converter
+
             if isinstance(converter.py_type, Array) and converter.provider.dialect == 'PostgreSQL':
                 append('USING GIN')
         else:

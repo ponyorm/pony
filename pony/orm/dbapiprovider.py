@@ -56,7 +56,13 @@ def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
             try: return func(provider, *args, **kwargs)
             finally: provider.local_exceptions.keep_traceback = False
     except dbapi_module.NotSupportedError as e: raise NotSupportedError(e)
-    except dbapi_module.ProgrammingError as e: raise ProgrammingError(e)
+    except dbapi_module.ProgrammingError as e:
+        if provider.dialect == 'PostgreSQL':
+            msg = str(e)
+            if msg.startswith('operator does not exist:') and ' json ' in msg:
+                msg += ' (Note: use column type `jsonb` instead of `json`)'
+                raise ProgrammingError(e, msg, *e.args[1:])
+        raise ProgrammingError(e)
     except dbapi_module.InternalError as e: raise InternalError(e)
     except dbapi_module.IntegrityError as e: raise IntegrityError(e)
     except dbapi_module.OperationalError as e:

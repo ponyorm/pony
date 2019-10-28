@@ -44,6 +44,14 @@ class Person(db.Entity):
     def find_by_full_name(cls, full_name):
         return cls.select(lambda p: p.full_name_2 == full_name)
 
+    def complex_method(self):
+        result = ''
+        for i in range(10):
+            result += str(i)
+        return result
+
+    def simple_method(self):
+        return self.complex_method()
 
 class FakePerson(object):
     pass
@@ -61,6 +69,15 @@ class Car(db.Entity):
     color = Required(str)
 
 db.generate_mapping(create_tables=True)
+
+
+def simple_func(person):
+    return person.full_name
+
+
+def complex_func(person):
+    return person.complex_method()
+
 
 with db_session:
     p1 = Person(id=1, first_name='Alexander', last_name='Kozlovsky', favorite_color='white')
@@ -189,6 +206,31 @@ class TestHybridsAndProperties(unittest.TestCase):
             self.assertEqual(set(p.id for p in result), {1})
         finally:
             sep = ' '
+
+    @db_session
+    @raises_exception(TranslationError, 'p.complex_method(...) is too complex to decompile')
+    def test_20(self):
+        q = select(p.complex_method() for p in Person)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'p.to_dict(...) is too complex to decompile')
+    def test_21(self):
+        q = select(p.to_dict() for p in Person)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'self.complex_method(...) is too complex to decompile (inside Person.simple_method)')
+    def test_22(self):
+        q = select(p.simple_method() for p in Person)[:]
+
+    @db_session
+    def test_23(self):
+        q = select(simple_func(p) for p in Person)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'person.complex_method(...) is too complex to decompile (inside complex_func)')
+    def test_24(self):
+        q = select(complex_func(p) for p in Person)[:]
+
 
 if __name__ == '__main__':
     unittest.main()

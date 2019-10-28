@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, items_list, izip, basestring, unicode, buffer, int_types, iteritems
 
-import types, weakref
+import sys, types, weakref
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from functools import wraps, WRAPPER_ASSIGNMENTS
@@ -96,6 +96,11 @@ def parse_raw_sql(sql):
     result = tuple(items), tuple(codes)
     raw_sql_cache[sql] = result
     return result
+
+def raw_sql(sql, result_type=None):
+    globals = sys._getframe(1).f_globals
+    locals = sys._getframe(1).f_locals
+    return RawSQL(sql, globals, locals, result_type)
 
 class RawSQL(object):
     def __deepcopy__(self, memo):

@@ -255,7 +255,7 @@ HAVING "order"."total_price" < coalesce(SUM(("item"."price" * "item"."quantity")
 
 >>> select(c for c in Customer for p in c.orders.items.product if 'Tablets' in p.categories.name and count(p) > 1)
 
-SELECT DISTINCT "c"."id"
+SELECT "c"."id"
 FROM "Customer" "c", "Order" "order", "OrderItem" "orderitem"
 WHERE 'Tablets' IN (
     SELECT "category"."name"
@@ -516,7 +516,7 @@ GROUP BY "g"."number"
 
 >>> select((s, count(c)) for s in Student for c in s.courses)
 
-SELECT DISTINCT "s"."id", COUNT(DISTINCT "c"."ROWID")
+SELECT "s"."id", COUNT(DISTINCT "c"."ROWID")
 FROM "Student" "s", "Course_Student" "t-1", "Course" "c"
 WHERE "s"."id" = "t-1"."student"
   AND "t-1"."course_name" = "c"."name"
@@ -525,7 +525,7 @@ GROUP BY "s"."id"
 
 Oracle:
 
-SELECT DISTINCT "s"."ID", COUNT(DISTINCT "c"."ROWID")
+SELECT "s"."ID", COUNT(DISTINCT "c"."ROWID")
 FROM "STUDENT" "s", "COURSE_STUDENT" "t-1", "COURSE" "c"
 WHERE "s"."ID" = "t-1"."STUDENT"
   AND "t-1"."COURSE_NAME" = "c"."NAME"
@@ -534,7 +534,7 @@ GROUP BY "s"."ID"
 
 PostgreSQL:
 
-SELECT DISTINCT "s"."id", COUNT(DISTINCT case when ("t-1"."course_name", "t-1"."course_semester") IS NULL then null else ("t-1"."course_name", "t-1"."course_semester") end)
+SELECT "s"."id", COUNT(DISTINCT case when ("t-1"."course_name", "t-1"."course_semester") IS NULL then null else ("t-1"."course_name", "t-1"."course_semester") end)
 FROM "student" "s", "course_student" "t-1"
 WHERE "s"."id" = "t-1"."student"
 GROUP BY "s"."id"
@@ -893,6 +893,30 @@ WHERE "ID" IN (
         )
     )
 
+>>> select(s for s in Student if count(g for g in s.group.dept.groups) > 2).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "id" IN (
+    SELECT "s"."id"
+    FROM "Student" "s"
+    WHERE (
+        SELECT COUNT(DISTINCT "g"."number")
+        FROM "Group" "group", "Group" "g"
+        WHERE "s"."group" = "group"."number"
+          AND "group"."dept" = "g"."dept"
+        ) > 2
+    )
+
+>>> Student.select(lambda s: count(s.group.students) == 2).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "id" IN (
+    SELECT "s"."id"
+        FROM "Student" "s"
+      LEFT JOIN "Student" "student"
+        ON "s"."group" = "student"."group"
+    )
+
 # Test UPPER/LOWER functions:
 
 >>> select(s.name.upper() for s in Student)
@@ -949,7 +973,7 @@ GROUP BY "g"."number"
 
 MySQL:
 
-SELECT `g`.`number`, GROUP_CONCAT(`s`.`name`, '+')
+SELECT `g`.`number`, GROUP_CONCAT(`s`.`name` SEPARATOR '+')
 FROM `group` `g`, `student` `s`
 WHERE `g`.`number` = `s`.`group`
 GROUP BY `g`.`number`
@@ -990,3 +1014,172 @@ SELECT t.* FROM (
     ) t 
 ) t WHERE "row-num" > 3
 
+# Test row comparison:
+
+>>> select((s1.id, s2.id) for s1 in Student for s2 in Student if (s1.name, s1.gpa, s1.tel) < (s2.name, s2.gpa, s2.tel))
+
+SELECT DISTINCT "s1"."id", "s2"."id"
+FROM "Student" "s1", "Student" "s2"
+WHERE ("s1"."name" < "s2"."name" OR "s1"."name" = "s2"."name" AND "s1"."gpa" < "s2"."gpa" OR "s1"."name" = "s2"."name" AND "s1"."gpa" = "s2"."gpa" AND "s1"."tel" < "s2"."tel")
+
+PostgreSQL:
+
+SELECT DISTINCT "s1"."id", "s2"."id"
+FROM "student" "s1", "student" "s2"
+WHERE ("s1"."name", "s1"."gpa", "s1"."tel") < ("s2"."name", "s2"."gpa", "s2"."tel")
+
+MySQL:
+
+SELECT DISTINCT `s1`.`id`, `s2`.`id`
+FROM `student` `s1`, `student` `s2`
+WHERE (`s1`.`name`, `s1`.`gpa`, `s1`.`tel`) < (`s2`.`name`, `s2`.`gpa`, `s2`.`tel`)
+
+Oracle:
+
+SELECT DISTINCT "s1"."ID", "s2"."ID"
+FROM "STUDENT" "s1", "STUDENT" "s2"
+WHERE ("s1"."NAME", "s1"."GPA", "s1"."TEL") < ("s2"."NAME", "s2"."GPA", "s2"."TEL")
+
+>>> select((s1.id, s2.id) for s1 in Student for s2 in Student if (s1.name, s1.gpa, s1.tel) == (s2.name, s2.gpa, s2.tel))
+
+SELECT DISTINCT "s1"."id", "s2"."id"
+FROM "Student" "s1", "Student" "s2"
+WHERE "s1"."name" = "s2"."name"
+  AND "s1"."gpa" = "s2"."gpa"
+  AND "s1"."tel" = "s2"."tel"
+
+PostgreSQL:
+
+SELECT DISTINCT "s1"."id", "s2"."id"
+FROM "student" "s1", "student" "s2"
+WHERE "s1"."name" = "s2"."name"
+  AND "s1"."gpa" = "s2"."gpa"
+  AND "s1"."tel" = "s2"."tel"
+
+MySQL:
+
+SELECT DISTINCT `s1`.`id`, `s2`.`id`
+FROM `student` `s1`, `student` `s2`
+WHERE `s1`.`name` = `s2`.`name`
+  AND `s1`.`gpa` = `s2`.`gpa`
+  AND `s1`.`tel` = `s2`.`tel`
+
+Oracle:
+
+SELECT DISTINCT "s1"."ID", "s2"."ID"
+FROM "STUDENT" "s1", "STUDENT" "s2"
+WHERE "s1"."NAME" = "s2"."NAME"
+  AND "s1"."GPA" = "s2"."GPA"
+  AND "s1"."TEL" = "s2"."TEL"
+
+
+# Test date operations:
+
+
+>>> select(s for s in Student if s.dob + timedelta(days=100) < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE date("s"."dob", '+100 days') < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" + INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" + INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE ADDDATE(`s`.`dob`, INTERVAL '2400:0:0' HOUR_SECOND) < DATE '2010-01-01'
+
+
+>>> td = timedelta(days=100)
+>>> select(s for s in Student if s.dob + td < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE datetime(julianday("s"."dob") + ?) < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" + %(p1)s) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" + :p1) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE ADDDATE(`s`.`dob`, %s) < DATE '2010-01-01'
+
+
+>>> select(s for s in Student if s.dob - timedelta(days=100) < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE date("s"."dob", '-100 days') < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" - INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" - INTERVAL '2400:0:0' HOUR TO SECOND) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE SUBDATE(`s`.`dob`, INTERVAL '2400:0:0' HOUR_SECOND) < DATE '2010-01-01'
+
+>>> td = timedelta(days=100)
+>>> select(s for s in Student if s.dob - td < date(2010, 1, 1))
+
+SQLite:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE datetime(julianday("s"."dob") - ?) < '2010-01-01'
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."dob" - %(p1)s) < DATE '2010-01-01'
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE ("s"."DOB" - :p1) < DATE '2010-01-01'
+
+MySQL:
+
+SELECT `s`.`id`, `s`.`name`, `s`.`dob`, `s`.`tel`, `s`.`gpa`, `s`.`group`
+FROM `student` `s`
+WHERE SUBDATE(`s`.`dob`, %s) < DATE '2010-01-01'
