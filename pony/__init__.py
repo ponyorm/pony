@@ -10,7 +10,7 @@ def detect_mode():
     except ImportError: pass
     else:
         if os.environ.get('SERVER_SOFTWARE', '').startswith('Development'):
-        return 'GAE-LOCAL'
+            return 'GAE-LOCAL'
         return 'GAE-SERVER'
 
     try: from mod_wsgi import version

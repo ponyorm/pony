@@ -17,7 +17,7 @@ class TestCascade(unittest.TestCase):
 
         db.generate_mapping(create_tables=True)
 
-        self.assertTrue('ON DELETE CASCADE' in self.db.schema.tables['Person'].get_create_command())
+        self.assertTrue('ON DELETE CASCADE' in self.db.schema.tables['person'].get_create_command())
 
     def test_2(self):
         db = self.db = Database('sqlite', ':memory:')
@@ -31,7 +31,7 @@ class TestCascade(unittest.TestCase):
 
         db.generate_mapping(create_tables=True)
 
-        self.assertTrue('ON DELETE CASCADE' in self.db.schema.tables['Person'].get_create_command())
+        self.assertTrue('ON DELETE CASCADE' in self.db.schema.tables['person'].get_create_command())
 
 
     def test_3(self):
@@ -46,7 +46,7 @@ class TestCascade(unittest.TestCase):
 
         db.generate_mapping(create_tables=True)
 
-        self.assertTrue('ON DELETE CASCADE' in self.db.schema.tables['Person'].get_create_command())
+        self.assertTrue('ON DELETE CASCADE' in self.db.schema.tables['person'].get_create_command())
 
     @raises_exception(TypeError, "'cascade_delete' option cannot be set for attribute Group.persons, because reverse attribute Person.group is collection")
     def test_4(self):
@@ -86,7 +86,7 @@ class TestCascade(unittest.TestCase):
 
         db.generate_mapping(create_tables=True)
 
-        self.assertTrue('ON DELETE SET NULL' in self.db.schema.tables['Group'].get_create_command())
+        self.assertTrue('ON DELETE SET NULL' in self.db.schema.tables['group'].get_create_command())
 
 if __name__ == '__main__':
     unittest.main()

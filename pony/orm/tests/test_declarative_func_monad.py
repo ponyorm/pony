@@ -115,6 +115,7 @@ class TestFuncMonad(unittest.TestCase):
         self.assertEqual(result, {Student[1], Student[2], Student[3], Student[4], Student[5]})
     @raises_exception(ExprEvalError, "`1 < datetime.now()` raises TypeError: " + (
         "can't compare 'datetime' to 'int'" if PYPY2 else
+        "'<' not supported between instances of 'int' and 'datetime'" if PYPY and sys.version_info >= (3, 6) else
         "unorderable types: int < datetime" if PYPY else
         "can't compare datetime.datetime to int" if PY2 else
         "unorderable types: int() < datetime.datetime()" if sys.version_info < (3, 6) else

@@ -153,7 +153,8 @@ class TestRawSQL(unittest.TestCase):
         self.assertEqual(persons, [Person[1], Person[3], Person[2]])
 
     @db_session
-    @raises_exception(TypeError, "Function 'raw_sql' cannot be used this way: raw_sql(p.name)")
+    @raises_exception(TranslationError, "Expression `raw_sql(p.name)` cannot be translated into SQL "
+                                        "because raw SQL fragment will be different for each row")
     def test_19(self):
         # raw_sql argument cannot depend on iterator variables
         select(p for p in Person if raw_sql(p.name))[:]

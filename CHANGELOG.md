@@ -1,3 +1,38 @@
+# PonyORM release 0.7.11 (2019-10-23)
+
+## Features
+
+* #472: Python 3.8 support
+* Support of hybrid functions (inlining simple Python functions into query)
+* #438: support datetime-datetime, datetime-timedelta, datetime+timedelta in queries
+
+## Bugfixes
+
+* #430: add ON DELETE CASCADE for many-to-many relationships
+* #465: Should reconnect to MySQL on OperationalError 2013 'Lost connection to MySQL server during query'
+* #468: Tuple-value comparisons generate incorrect queries
+* #470 fix PendingDeprecationWarning of imp module
+* Fix incorrect unpickling of objects with Json attributes
+* Check value of discriminator column on object creation if set explicitly
+* Correctly handle Flask current_user proxy when adding new items to collections
+* Some bugs in syntax of aggregated queries were fixed
+* Fix syntax of bulk delete queries
+* Bulk delete queries should clear query results cache so next select will get correct result from the database
+* Fix error message when hybrid method is too complex to decompile
+
+
+# PonyORM release 0.7.10 (2019-04-20)
+
+## Bugfixes
+
+* Python3.7 and PyPy decompiling fixes
+* Fix reading NULL from Optional nullable array column
+* Fix handling of empty arrays in queries
+* #415: error message typo
+* #432: PonyFlask - request object can trigger teardown_request without real request
+* Fix GROUP CONCAT separator for MySQL
+
+
 # PonyORM release 0.7.9 (2019-01-21)
 
 ## Bugfixes

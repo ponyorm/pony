@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, basestring, buffer, int_types, unicode
+from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
 import os.path, sys, re, json
 import sqlite3 as sqlite
@@ -16,7 +16,7 @@ from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm
 from pony.orm.ormtypes import Json, TrackedArray
 from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
-from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
+from pony.orm.sqlbuilding import SQLBuilder, Value, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, localbase, throw, reraise, \
     cut_traceback_depth
@@ -117,9 +117,23 @@ class SQLiteTranslator(SQLTranslator):
     StringMixin_UPPER = make_overriden_string_func('PY_UPPER')
     StringMixin_LOWER = make_overriden_string_func('PY_LOWER')
 
+class SQLiteValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, datetime):
+            return self.quote_str(datetime2timestamp(value))
+        if isinstance(value, date):
+            return self.quote_str(str(value))
+        if isinstance(value, timedelta):
+            return repr(value.total_seconds() / (24 * 60 * 60))
+        return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
+
 class SQLiteBuilder(SQLBuilder):
     least_func_name = 'min'
     greatest_func_name = 'max'
+    value_class = SQLiteValue
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)
@@ -170,21 +184,25 @@ class SQLiteBuilder(SQLBuilder):
         if not modifiers: return builder(expr)
         return funcname, '(', builder(expr), modifiers, ')'
     def DATE_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('date', expr, delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('date', expr, delta[1])
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
     def DATE_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('date', expr, -delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('date', expr, -delta[1])
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
+    def DATE_DIFF(builder, expr1, expr2):
+        return 'julianday(', builder(expr1), ') - julianday(', builder(expr2), ')'
     def DATETIME_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('datetime', expr, delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('datetime', expr, delta[1])
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
     def DATETIME_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return builder.datetime_add('datetime', expr, -delta)
+        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+            return builder.datetime_add('datetime', expr, -delta[1])
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
+    def DATETIME_DIFF(builder, expr1, expr2):
+        return 'julianday(', builder(expr1), ') - julianday(', builder(expr2), ')'
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
     PY_UPPER = make_unary_func('py_upper')
@@ -237,6 +255,9 @@ class SQLiteIntConverter(dbapiprovider.IntConverter):
         return dbapiprovider.IntConverter.sql_type(converter)
 
 class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
+    inf = Decimal('infinity')
+    neg_inf = Decimal('-infinity')
+    NaN = Decimal('NaN')
     def sql2py(converter, val):
         try: val = Decimal(str(val))
         except: return val
@@ -246,7 +267,10 @@ class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
     def py2sql(converter, val):
         if type(val) is not Decimal: val = Decimal(val)
         exp = converter.exp
-        if exp is not None: val = val.quantize(exp)
+        if exp is not None:
+            if val in (converter.inf, converter.neg_inf, converter.NaN):
+                throw(ValueError, 'Cannot store %s Decimal value in database' % val)
+            val = val.quantize(exp)
         return str(val)
 
 class SQLiteDateConverter(dbapiprovider.DateConverter):
@@ -360,6 +384,7 @@ class SQLiteProvider(DBAPIProvider):
 
     def __init__(provider, db, *args, **kwargs):
         DBAPIProvider.__init__(provider, db, *args, **kwargs)
+        provider.pre_transaction_lock = Lock()
         provider.transaction_lock = Lock()
 
     @wrap_dbapi_exceptions
@@ -371,11 +396,21 @@ class SQLiteProvider(DBAPIProvider):
             try: reraise(*provider.local_exceptions.exc_info)
             finally: provider.local_exceptions.exc_info = None
 
+    def acquire_lock(provider):
+        provider.pre_transaction_lock.acquire()
+        try:
+            provider.transaction_lock.acquire()
+        finally:
+            provider.pre_transaction_lock.release()
+
+    def release_lock(provider):
+        provider.transaction_lock.release()
+
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):
         assert not cache.in_transaction
         if cache.immediate:
-            provider.transaction_lock.acquire()
+            provider.acquire_lock()
         try:
             cursor = connection.cursor()
 
@@ -399,7 +434,7 @@ class SQLiteProvider(DBAPIProvider):
             elif core.local.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
         finally:
             if cache.immediate and not cache.in_transaction:
-                provider.transaction_lock.release()
+                provider.release_lock()
 
     def commit(provider, connection, cache=None):
         in_transaction = cache is not None and cache.in_transaction
@@ -408,7 +443,7 @@ class SQLiteProvider(DBAPIProvider):
         finally:
             if in_transaction:
                 cache.in_transaction = False
-                provider.transaction_lock.release()
+                provider.release_lock()
 
     def rollback(provider, connection, cache=None):
         in_transaction = cache is not None and cache.in_transaction
@@ -417,7 +452,7 @@ class SQLiteProvider(DBAPIProvider):
         finally:
             if in_transaction:
                 cache.in_transaction = False
-                provider.transaction_lock.release()
+                provider.release_lock()
 
     def drop(provider, connection, cache=None):
         in_transaction = cache is not None and cache.in_transaction
@@ -426,7 +461,7 @@ class SQLiteProvider(DBAPIProvider):
         finally:
             if in_transaction:
                 cache.in_transaction = False
-                provider.transaction_lock.release()
+                provider.release_lock()
 
     @wrap_dbapi_exceptions
     def release(provider, connection, cache=None):

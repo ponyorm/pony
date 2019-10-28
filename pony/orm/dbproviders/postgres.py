@@ -114,11 +114,11 @@ class PGValue(Value):
     __slots__ = []
     def __unicode__(self):
         value = self.value
-        if isinstance(value, bool): return value and 'true' or 'false'
-        if isinstance(value, datetime): return 'timestamp ' + Value.__unicode__(self)
-        if isinstance(value, date): return 'date ' + Value.__unicode__(self)
+        if isinstance(value, bool):
+            return value and 'true' or 'false'
         return Value.__unicode__(self)
-    if not PY2: __str__ = __unicode__
+    if not PY2:
+        __str__ = __unicode__
 
 class PGSQLBuilder(SQLBuilder):
     value_class = PGValue
@@ -138,21 +138,17 @@ class PGSQLBuilder(SQLBuilder):
     def RANDOM(builder):
         return 'random()'
     def DATE_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' + ', builder(delta), ')'
     def DATE_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
+    def DATE_DIFF(builder, expr1, expr2):
+        return builder(expr1), ' - ', builder(expr2)
     def DATETIME_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' + ', builder(delta), ')'
     def DATETIME_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
+    def DATETIME_DIFF(builder, expr1, expr2):
+        return builder(expr1), ' - ',  builder(expr2)
     def eval_json_path(builder, values):
         result = []
         for value in values:

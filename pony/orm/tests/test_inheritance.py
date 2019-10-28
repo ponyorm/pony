@@ -276,10 +276,23 @@ class TestInheritance(unittest.TestCase):
             self.assertEqual(obj._pkval_, ('Entity2', 20))
         with db_session:
             obj = Entity1['Entity2', 20]
+            self.assertIsInstance(obj, Entity2)
             self.assertEqual(obj.a, 'Entity2')
             self.assertEqual(obj.b, 20)
             self.assertEqual(obj._pkval_, ('Entity2', 20))
 
+    @raises_exception(TypeError, "Invalid discriminator attribute value for Foo. Expected: 'Foo', got: 'Baz'")
+    def test_discriminator_2(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            id = PrimaryKey(int)
+            a = Discriminator(str)
+            b = Required(int)
+        class Bar(db.Entity):
+            c = Required(int)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            x = Foo(id=1, a='Baz', b=100)
 
 if __name__ == '__main__':
     unittest.main()

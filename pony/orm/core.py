@@ -13,6 +13,7 @@ from hashlib import md5
 from inspect import isgeneratorfunction
 from contextlib import contextmanager
 from functools import wraps
+from time import time
 
 from pony.thirdparty.compiler import ast, parse
 
@@ -20,13 +21,14 @@ import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import (
-    LongStr, LongUnicode, numeric_types, RawSQL, normalize, Json, TrackedValue, QueryType,
+    LongStr, LongUnicode, numeric_types, raw_sql, RawSQL, normalize, Json, TrackedValue, QueryType,
     Array, IntArray, StrArray, FloatArray
     )
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
-    OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
+    OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError,
+    Name
     )
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
@@ -425,7 +427,7 @@ class DBSessionContextManager(object):
                 'sql_debug', 'show_values'
     def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False, optimistic=True,
                  retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
-        if retry is not 0:
+        if retry != 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
             if retry < 0: throw(TypeError,
@@ -458,7 +460,7 @@ class DBSessionContextManager(object):
             return db_session._wrap_coroutine_or_generator_function(func)
         return db_session._wrap_function(func)
     def __enter__(db_session):
-        if db_session.retry is not 0: throw(TypeError,
+        if db_session.retry != 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
         db_session._enter()
     def _enter(db_session):
@@ -796,13 +798,17 @@ class Database(object):
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
             throw(BindingError, 'Database object was already bound to %s provider' % self.provider.dialect)
+        if len(args) == 1 and not kwargs and hasattr(args[0], 'keys'):
+            args, kwargs = (), args[0]
+        provider = None
         if args: provider, args = args[0], args[1:]
         elif 'provider' not in kwargs: throw(TypeError, 'Database provider is not specified')
         else: provider = kwargs.pop('provider')
         if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
             provider_cls = provider
         else:
-            if not isinstance(provider, basestring): throw(TypeError)
+            if not isinstance(provider, basestring):
+                throw(TypeError, 'Provider name should be string. Got: %r' % type(provider).__name__)
             if provider == 'pygresql': throw(TypeError,
                 'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
             self.provider_name = provider
@@ -883,7 +889,6 @@ class Database(object):
         dblocal.last_sql = sql
         stats = dblocal.stats
         query_end_time = time()
-        duration = query_end_time - query_start_time
 
         stat = stats.get(sql)
         if stat is not None:
@@ -925,7 +930,7 @@ class Database(object):
     def disconnect(database):
         provider = database.provider
         if provider is None: return
-        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
+        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_session')
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
         provider.disconnect()
@@ -1086,8 +1091,13 @@ class Database(object):
         for entity in entities:
             table = entity._add_table_(schema)
             for attr in entity._new_attrs_:
-                if attr.is_collection: attr._add_m2m_table_(schema)
-                else: attr._add_columns_(table)
+                if not attr.is_collection:
+                    attr._add_columns_(table)
+                elif not attr.reverse.is_collection:
+                    pass
+                elif (entity.__name__, attr.name) <= (attr.reverse.entity.__name__, attr.reverse.name):
+                        attr._add_m2m_table_(schema)
+
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_ if attr.columns and not attr.is_collection ]
             entity._init_bits_()
 
@@ -1974,7 +1984,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'column_objects', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
+                'cascade_delete', 'index', 'reverse_index', 'original_default', 'sql_default', 'py_check', 'hidden', \
                 'optimistic', 'fk_name', '_provided_columns', 'initial', '_constructor_args', 'provided_table', \
                 'prev_attr', 'new_attr', 'type_has_empty_value'
     def __deepcopy__(attr, memo):
@@ -2039,6 +2049,7 @@ class Attribute(object):
         attr._provided_columns = attr.columns
 
         attr.index = kwargs.pop('index', None)
+        attr.reverse_index = kwargs.pop('reverse_index', None)
         attr.fk_name = kwargs.pop('fk_name', None)
         attr.col_paths = ()
         attr._columns_checked = False
@@ -2216,6 +2227,12 @@ class Attribute(object):
         return '%s.%s' % (owner_name, attr.name or '?')
     def __lt__(attr, other):
         return attr.id < other.id
+    def _get_entity(attr, obj, entity):
+        if entity is not None:
+            return entity
+        if obj is not None:
+            return obj.__class__
+        return attr.entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
         val = deref_proxy(val)
         if val is None:
@@ -2230,10 +2247,7 @@ class Attribute(object):
             if callable(default): val = default()
             else: val = default
 
-        if entity is not None: pass
-        elif obj is not None: entity = obj.__class__
-        else: entity = attr.entity
-
+        entity = attr._get_entity(obj, entity)
         reverse = attr.reverse
         if not reverse:
             if isinstance(val, Entity): throw(TypeError, 'Attribute %s must be of %s type. Got: %s'
@@ -2509,7 +2523,7 @@ class Attribute(object):
         return val._get_raw_pkval_()
     def _set_nullable_(attr):
         if attr.is_collection or attr.is_required: pass
-        elif not attr.has_empty_value:
+        elif not attr.type_has_empty_value:
             if attr.nullable is False: throw(TypeError,
                 'Optional attribute with non-string type %s must be nullable' % attr)
             attr.nullable = True
@@ -2612,11 +2626,14 @@ class Attribute(object):
             if not isinstance(reverse, Set): throw(NotImplementedError)
             entity = attr.entity
             m2m_table = table.schema.tables[attr.table]
+            on_delete = 'CASCADE'
             m2m_table.add_foreign_key(reverse.fk_name, col_names=reverse.columns,
-                                      parent_table=table, parent_col_names=entity._pk_columns_, index_name=attr.index)
+                                      parent_table=table, parent_col_names=entity._pk_columns_,
+                                      index_name=attr.index, on_delete=on_delete)
             if attr.symmetric:
                 m2m_table.add_foreign_key(attr.reverse_fk_name, col_names=attr.reverse_columns,
-                                          parent_table=table, parent_col_names=entity._pk_columns_)
+                                          parent_table=table, parent_col_names=entity._pk_columns_,
+                                          on_delete=on_delete)  # FIXME: specify index?
         elif attr.reverse and attr.columns:
             rentity = attr.reverse.entity
             parent_table = table.schema.tables[rentity._table_]
@@ -2696,7 +2713,7 @@ class Discriminator(Required):
             entity._discriminator_ = entity.__name__
         discr_value = entity._discriminator_
         if discr_value is not None:
-            try: entity._discriminator_ = discr_value = attr.validate(discr_value)
+            try: entity._discriminator_ = discr_value = attr.validate(discr_value, None, entity)
             except ValueError: throw(TypeError,
                 "Incorrect discriminator value is set for %s attribute '%s' of '%s' type: %r"
                 % (entity.__name__, attr.name, attr.py_type.__name__, discr_value))
@@ -2707,10 +2724,18 @@ class Discriminator(Required):
                                % (entity.__name__, attr.name, attr.py_type.__name__))
         attr.code2cls[discr_value] = entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
-        if from_db: return val
-        elif val is DEFAULT:
+        if from_db:
+            return val
+        entity = attr._get_entity(obj, entity)
+        if val is DEFAULT:
             assert entity is not None
             return entity._discriminator_
+        if val != entity._discriminator_:
+            for cls in entity._subclasses_:
+                if val == cls._discriminator_:
+                    break
+            else: throw(TypeError, 'Invalid discriminator attribute value for %s. Expected: %r, got: %r'
+                                   % (entity.__name__, entity._discriminator_, val))
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
         assert False  # pragma: no cover
@@ -2874,8 +2899,11 @@ class Collection(Attribute):
         if attr.default is not None:
             throw(TypeError, 'Default value could not be set for collection attribute')
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
-        if not attr.symmetric and attr.reverse_columns: throw(TypeError,
-            "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+        if not attr.symmetric:
+            if attr.reverse_columns:
+                throw(TypeError, "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+            if attr.reverse_index:
+                throw(TypeError, "'reverse_index' option can be set for symmetric relations only")
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def _add_m2m_table_(attr, schema):
@@ -2931,6 +2959,7 @@ def construct_batchload_criteria_list(alias, columns, converters, batch_size, ro
 class Set(Collection):
     __slots__ = []
     def validate(attr, val, obj=None, entity=None, from_db=False):
+        val = deref_proxy(val)
         assert val is not NOT_LOADED
         if val is DEFAULT: return set()
         reverse = attr.reverse
@@ -2947,6 +2976,7 @@ class Set(Collection):
             except TypeError: throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                               % (entity.__name__, attr.name, rentity.__name__, val))
             for item in items:
+                item = deref_proxy(item)
                 if not isinstance(item, rentity):
                     throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                     % (entity.__name__, attr.name, rentity.__name__, item))
@@ -3056,8 +3086,7 @@ class Set(Collection):
 
         counter = cache.collection_statistics.setdefault(attr, 0)
         nplus1_threshold = attr.nplus1_threshold
-        prefetching = not attr.lazy and nplus1_threshold is not None \
-                      and (counter >= nplus1_threshold or cache.noflush_counter)
+        prefetching = not attr.lazy and nplus1_threshold is not None and counter >= nplus1_threshold
 
         objects = [ obj ]
         setdata_list = [ setdata ]
@@ -3348,17 +3377,15 @@ class Set(Collection):
             table_name = attr.provided_table
         elif reverse.provided_table: table_name = reverse.provided_table
         else: table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
-        obsolete_name = getattr(table_name, 'obsolete_name', table_name)
-        existing_obsolete_names = set(getattr(t, 'obsolete_name', t) for t in schema.tables)
-        # in previous versions, name collisions of m2m relations were handled
-        # by appending a number. We need to replicate that behaviour here in order
-        # to let auto upgrade work
-        if obsolete_name in existing_obsolete_names:
-          pattern = re.compile(obsolete_name + '(_[0-9]+)?')
-          matches = [n for n in existing_obsolete_names if pattern.match(n) is not None]
-          number_appendix = len(matches) + 1
-          new_obsolete_name = '%s_%i' % (obsolete_name, number_appendix)
-          setattr(table_name, 'obsolete_name', new_obsolete_name)
+        obsolete_name = getattr(table_name, 'obsolete_name', None)
+        if obsolete_name is not None:
+            existing_obsolete_names = set(getattr(name, 'obsolete_name', name) for name in schema.tables)
+            seq_counter = itertools.count(2)
+            name = obsolete_name
+            while name in existing_obsolete_names:
+                name = obsolete_name + '_%d' % next(seq_counter)
+            if name != obsolete_name:
+                setattr(table_name, 'obsolete_name', name)
         attr.table = reverse.table = table_name
 
         m2m_table = schema.tables.get(table_name)
@@ -4246,7 +4273,8 @@ class EntityMeta(type):
 
         is_subclass = entity._root_ is not entity
         if is_subclass:
-            # if table_name is not None: throw(NotImplementedError)
+            # if table_name is not None: throw(NotImplementedError,
+            #     'Cannot specify table name for entity %r which is subclass of %r' % (entity.__name__, entity._root_.__name__))
             table_name = entity._root_._table_
             entity._table_ = table_name
         elif table_name is None:
@@ -4611,10 +4639,14 @@ class EntityMeta(type):
         avdict = {}
         for attr in real_entity_subclass._attrs_:
             offsets = attr_offsets.get(attr)
-            if offsets is None or attr.is_discriminator: continue
-            avdict[attr] = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
+            if offsets is None:
+                continue
+            if attr.is_discriminator:
+                avdict[attr] = discr_value
+            else:
+                avdict[attr] = attr.parse_value(row, offsets, cache.dbvals_deduplication_cache)
 
-        pkval = tuple(avdict.pop(attr, discr_value) for attr in entity._pk_attrs_)
+        pkval = tuple(avdict.pop(attr) for attr in entity._pk_attrs_)
         assert None not in pkval
         if not entity._pk_is_composite_: pkval = pkval[0]
         return real_entity_subclass, pkval, avdict
@@ -4666,7 +4698,6 @@ class EntityMeta(type):
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
         locals = locals.copy() if locals is not None else {}
-        assert '.0' not in locals
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals, cells)
     def _get_from_identity_map_(entity, pkval, status, for_update=False, undo_funcs=None, obj_to_init=None):
@@ -4956,7 +4987,6 @@ class Entity(with_metaclass(EntityMeta)):
             OrmError, '%s object %s has to be stored in DB before it can be pickled'
                       % (obj._status_.capitalize(), safe_repr(obj)))
         d = {'__class__' : obj.__class__}
-        adict = obj._adict_
         for attr, val in iteritems(obj._vals_):
             if not attr.is_collection: d[attr.name] = val
         return unpickle_entity, (d,)
@@ -4974,7 +5004,7 @@ class Entity(with_metaclass(EntityMeta)):
             if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
         for attr in entity._attrs_:
             val = kwargs.get(attr.name, DEFAULT)
-            avdict[attr] = attr.validate(val, obj, entity, from_db=False)
+            avdict[attr] = attr.validate(val, obj, from_db=False)
         if entity._pk_is_composite_:
             pkval = tuple(imap(avdict.get, entity._pk_attrs_))
             if None in pkval: pkval = None
@@ -5196,10 +5226,22 @@ class Entity(with_metaclass(EntityMeta)):
                     del avdict[attr]
                     continue
 
+        if unpickling:
+            new_vals = avdict
+            new_dbvals = {attr: attr.converters[0].val2dbval(val, obj) if not attr.reverse else val
+                                for attr, val in iteritems(avdict)}
+        else:
+            new_dbvals = avdict
+            new_vals = {attr: attr.converters[0].dbval2val(dbval, obj) if not attr.reverse else dbval
+                              for attr, dbval in iteritems(avdict)}
+
+        for attr, new_val in items_list(new_vals):
+            new_dbval = new_dbvals[attr]
+            old_dbval = get_dbval(attr, NOT_LOADED)
             bit = obj._bits_except_volatile_[attr]
             if rbits & bit:
                 errormsg = 'Please contact PonyORM developers so they can ' \
-                           'reproduce your error and fix a bug: support@ponyorm.com'
+                           'reproduce your error and fix a bug: support@ponyorm.org'
                 assert old_dbval is not NOT_LOADED, errormsg
                 throw(UnrepeatableReadError,
                       'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
@@ -5207,28 +5249,26 @@ class Entity(with_metaclass(EntityMeta)):
 
             if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
             obj._dbvals_[attr] = new_dbval
-            if wbits & bit: del avdict[attr]
+            if wbits & bit:
+                del new_vals[attr]
+
+        for attr, new_val in iteritems(new_vals):
             if attr.is_unique:
                 old_val = get_val(attr)
-                if old_val != new_dbval:
-                    cache.db_update_simple_index(obj, attr, old_val, new_dbval)
+                if old_val != new_val:
+                    cache.db_update_simple_index(obj, attr, old_val, new_val)
 
         for attrs in obj._composite_keys_:
-            if any(attr in avdict for attr in attrs):
-                vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
-                prev_vals = tuple(vals)
+            if any(attr in new_vals for attr in attrs):
+                key_vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
+                prev_key_vals = tuple(key_vals)
                 for i, attr in enumerate(attrs):
-                    if attr in avdict: vals[i] = avdict[attr]
-                new_vals = tuple(vals)
-                if prev_vals != new_vals:
-                    cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
+                    if attr in new_vals: key_vals[i] = new_vals[attr]
+                new_key_vals = tuple(key_vals)
+                if prev_key_vals != new_key_vals:
+                    cache.db_update_composite_index(obj, attrs, prev_key_vals, new_key_vals)
 
-        for attr, new_val in iteritems(avdict):
-            if not attr.reverse:
-                assert len(attr.converters) == 1, attr
-                converter = attr.converters[0]
-                new_val = converter.dbval2val(new_val, obj)
-            obj._vals_[attr] = new_val
+        obj._vals_.update(new_vals)
     def _delete_(obj, undo_funcs=None):
         status = obj._status_
         if status in del_statuses: return
@@ -5886,11 +5926,6 @@ def desc(expr):
         return 'desc(%s)' % expr
     return expr
 
-def raw_sql(sql, result_type=None):
-    globals = sys._getframe(1).f_globals
-    locals = sys._getframe(1).f_locals
-    return RawSQL(sql, globals, locals, result_type)
-
 def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
@@ -6255,6 +6290,7 @@ class Query(object):
         cache.immediate = True
         cache.prepare_connection_for_query_execution()  # may clear cache.query_results
         cursor = database._exec_sql(sql, arguments)
+        cache.query_results.clear()
         return cursor.rowcount
     @cut_traceback
     def __len__(query):

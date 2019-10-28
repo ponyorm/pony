@@ -55,11 +55,11 @@ class TestQuery(unittest.TestCase):
     def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)
-    @raises_exception(TypeError, "Function 'f1' cannot be used this way: f1(s.gpa)")
     def test6(self):
         def f1(x):
-            return x + 1
-        select(s for s in Student if f1(s.gpa) > 3)
+            return float(x) + 1
+        students = select(s for s in Student if f1(s.gpa) > 4.25)[:]
+        self.assertEqual({s.id for s in students}, {3})
     @raises_exception(NotImplementedError, "m1")
     def test7(self):
         class C1(object):
@@ -119,26 +119,21 @@ class TestQuery(unittest.TestCase):
     def test23(self):
         r = max(s.dob.year for s in Student)
         self.assertEqual(r, 2001)
-    @db_session
     def test_first1(self):
         q = select(s for s in Student).order_by(Student.gpa)
         self.assertEqual(q.first(), Student[1])
-    @db_session
     def test_first2(self):
         q = select((s.name, s.group) for s in Student)
         self.assertEqual(q.first(), ('S1', Group[1]))
-    @db_session
     def test_first3(self):
         q = select(s for s in Student)
         self.assertEqual(q.first(), Student[1])
-    @db_session
     def test_closures_1(self):
         def find_by_gpa(gpa):
             return lambda s: s.gpa > gpa
         fn = find_by_gpa(Decimal('3.1'))
         students = list(Student.select(fn))
         self.assertEqual(students, [ Student[2], Student[3] ])
-    @db_session
     def test_closures_2(self):
         def find_by_gpa(gpa):
             return lambda s: s.gpa > gpa
@@ -160,6 +155,15 @@ class TestQuery(unittest.TestCase):
         rollback()
         objects = pickle.loads(data)
         self.assertEqual([obj.id for obj in objects], [3, 2])
+    def test_bulk_delete_clear_query_cache(self):
+        students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students1], [2, 3])
+        Student.select(lambda s: s.id < 3).delete(bulk=True)
+        students2 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students2], [3])
+        rollback()
+        students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students1], [2, 3])
 
 
 if __name__ == '__main__':
