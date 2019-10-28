@@ -219,19 +219,24 @@ class Column(object):
         result = []
         append = result.append
         append(quote_name(column.name))
+
+        def add_default():
+            if column.sql_default not in (None, True, False):
+                append(case('DEFAULT'))
+                append(column.sql_default)
+
         if column.is_pk == 'auto' and column.auto_template and column.converter.py_type in int_types:
             append(case(column.auto_template % dict(type=column.sql_type)))
+            add_default()
         else:
             append(case(column.sql_type))
+            add_default()
             if column.is_pk:
                 if schema.dialect == 'SQLite': append(case('NOT NULL'))
                 append(case('PRIMARY KEY'))
             else:
                 if column.is_unique: append(case('UNIQUE'))
                 if column.is_not_null: append(case('NOT NULL'))
-        if column.sql_default not in (None, True, False):
-            append(case('DEFAULT'))
-            append(column.sql_default)
         if schema.inline_fk_syntax and not schema.named_foreign_keys:
             foreign_key = table.foreign_keys.get((column,))
             if foreign_key is not None:
