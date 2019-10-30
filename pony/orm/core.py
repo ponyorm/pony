@@ -1908,7 +1908,7 @@ class SessionCache(object):
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
-        assert old_val != new_val
+        if old_val == new_val: return
         cache_index = cache.indexes[attr]
         if new_val is not None:
             obj2 = cache_index.setdefault(new_val, obj)
@@ -1917,7 +1917,7 @@ class SessionCache(object):
         if old_val is not None: del cache_index[old_val]
         undo.append((cache_index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
-        assert old_dbval != new_dbval
+        if old_dbval == new_dbval: return
         cache_index = cache.indexes[attr]
         if new_dbval is not None:
             obj2 = cache_index.setdefault(new_dbval, obj)
@@ -1927,10 +1927,10 @@ class SessionCache(object):
                 # attribute which was created or updated lately clashes with one stored in database
         cache_index.pop(old_dbval, None)
     def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
-        assert prev_vals != new_vals
         if None in prev_vals: prev_vals = None
         if None in new_vals: new_vals = None
         if prev_vals is None and new_vals is None: return
+        if prev_vals == new_vals: return
         cache_index = cache.indexes[attrs]
         if new_vals is not None:
             obj2 = cache_index.setdefault(new_vals, obj)
@@ -1941,7 +1941,7 @@ class SessionCache(object):
         if prev_vals is not None: del cache_index[prev_vals]
         undo.append((cache_index, prev_vals, new_vals))
     def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
-        assert prev_vals != new_vals
+        if prev_vals == new_vals: return
         cache_index = cache.indexes[attrs]
         if None not in new_vals:
             obj2 = cache_index.setdefault(new_vals, obj)
