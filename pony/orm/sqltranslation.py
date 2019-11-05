@@ -2753,10 +2753,13 @@ class FuncConcatMonad(FuncMonad):
     def call(monad, *args):
         if len(args) < 2: throw(TranslationError, 'concat() function requires at least two arguments')
         result_ast = [ 'CONCAT' ]
+        translator = monad.translator
         for arg in args:
             t = arg.type
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
+            if translator.database.provider_name == 'cockroach' and not isinstance(arg, StringMixin):
+                arg = arg.to_str()
             result_ast.extend(arg.getsql())
         return ExprMonad.new(unicode, result_ast, nullable=any(arg.nullable for arg in args))
 
@@ -3048,7 +3051,10 @@ class AttrSetMonad(SetMixin, Monad):
                 else: make_aggr = lambda expr_list: [ 'COUNT', None, [ 'COUNT', None ] ]
         elif translator.dialect == 'PostgreSQL':
             row = [ 'ROW' ] + expr_list
-            expr = [ 'CASE', None, [ [ [ 'IS_NULL', row ], [ 'VALUE', None ] ] ], row ]
+            cond = [ 'IS_NULL', row ]
+            if translator.database.provider_name == 'cockroach':
+                cond = [ 'OR' ] + [ [ 'IS_NULL', expr ] for expr in expr_list ]
+            expr = [ 'CASE', None, [ [ cond, [ 'VALUE', None ] ] ], row ]
             make_aggr = lambda expr_list: [ 'COUNT', True, expr ]
         elif translator.row_value_syntax:
             make_aggr = lambda expr_list: [ 'COUNT', True ] + expr_list
