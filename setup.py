@@ -133,6 +133,6 @@ if __name__ == "__main__":
         packages=packages,
         package_data=package_data,
         download_url=download_url,
-        test_suite='setup.test_suite'
+        test_suite='setup.test_suite',
         install_requires=REQUIRES,
     )
