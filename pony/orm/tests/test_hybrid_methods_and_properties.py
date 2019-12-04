@@ -2,10 +2,12 @@ import unittest
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 sep = ' '
+
 
 class Person(db.Entity):
     id = PrimaryKey(int)
@@ -53,8 +55,10 @@ class Person(db.Entity):
     def simple_method(self):
         return self.complex_method()
 
+
 class FakePerson(object):
     pass
+
 
 p = FakePerson()
 p.last_name = '***'
@@ -68,8 +72,6 @@ class Car(db.Entity):
     price = Required(int)
     color = Required(str)
 
-db.generate_mapping(create_tables=True)
-
 
 def simple_func(person):
     return person.full_name
@@ -79,21 +81,28 @@ def complex_func(person):
     return person.complex_method()
 
 
-with db_session:
-    p1 = Person(id=1, first_name='Alexander', last_name='Kozlovsky', favorite_color='white')
-    p2 = Person(id=2, first_name='Alexei', last_name='Malashkevich', favorite_color='green')
-    p3 = Person(id=3, first_name='Vitaliy', last_name='Abetkin')
-    p4 = Person(id=4, first_name='Alexander', last_name='Tischenko', favorite_color='blue')
-
-    c1 = Car(brand='Peugeot', model='306', owner=p1, year=2006, price=14000, color='red')
-    c2 = Car(brand='Honda', model='Accord', owner=p1, year=2007, price=13850, color='white')
-    c3 = Car(brand='Nissan', model='Skyline', owner=p2, year=2008, price=29900, color='black')
-    c4 = Car(brand='Volkswagen', model='Passat', owner=p1, year=2012, price=9400, color='blue')
-    c5 = Car(brand='Koenigsegg', model='CCXR', owner=p4, year=2016, price=4850000, color='white')
-    c6 = Car(brand='Lada', model='Kalina', owner=p4, year=2015, price=5000, color='white')
-
 
 class TestHybridsAndProperties(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            p1 = Person(id=1, first_name='Alexander', last_name='Kozlovsky', favorite_color='white')
+            p2 = Person(id=2, first_name='Alexei', last_name='Malashkevich', favorite_color='green')
+            p3 = Person(id=3, first_name='Vitaliy', last_name='Abetkin')
+            p4 = Person(id=4, first_name='Alexander', last_name='Tischenko', favorite_color='blue')
+
+            c1 = Car(id=1, brand='Peugeot', model='306', owner=p1, year=2006, price=14000, color='red')
+            c2 = Car(id=2, brand='Honda', model='Accord', owner=p1, year=2007, price=13850, color='white')
+            c3 = Car(id=3, brand='Nissan', model='Skyline', owner=p2, year=2008, price=29900, color='black')
+            c4 = Car(id=4, brand='Volkswagen', model='Passat', owner=p1, year=2012, price=9400, color='blue')
+            c5 = Car(id=5, brand='Koenigsegg', model='CCXR', owner=p4, year=2016, price=4850000, color='white')
+            c6 = Car(id=6, brand='Lada', model='Kalina', owner=p4, year=2015, price=5000, color='white')
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     @db_session
     def test1(self):
         persons = select(p.full_name for p in Person if p.has_car)[:]

@@ -3,8 +3,17 @@ from __future__ import absolute_import, print_function, division
 import unittest
 
 from pony.orm.tests.model1 import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestFilter(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        populate_db()
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
     def setUp(self):
         rollback()
         db_session.__enter__()

@@ -1,25 +1,35 @@
 import unittest
 
-from pony import orm
+from pony.orm.tests import setup_database, teardown_database
+from pony.orm import *
+
+db = Database()
+
+
+class Person(db.Entity):
+    name = Required(str)
+    group = Optional(lambda: Group)
+
+
+class Group(db.Entity):
+    title = PrimaryKey(str)
+    persons = Set(Person)
+
+    def __len__(self):
+        return len(self.persons)
+
 
 class Test(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def test_1(self):
-        db = orm.Database('sqlite', ':memory:')
-
-        class Person(db.Entity):
-            name = orm.Required(str)
-            group = orm.Optional(lambda: Group)
-
-        class Group(db.Entity):
-            title = orm.PrimaryKey(str)
-            persons = orm.Set(Person)
-
-            def __len__(self):
-                return len(self.persons)
-
-        db.generate_mapping(create_tables=True)
-
-        with orm.db_session:
+        with db_session:
             p1 = Person(name="Alex")
             p2 = Person(name="Brad")
             p3 = Person(name="Chad")
@@ -34,7 +44,7 @@ class Test(unittest.TestCase):
             g1.persons.add(p3)
             g2.persons.add(p4)
             g2.persons.add(p5)
-            orm.commit()
+            commit()
 
             foxes = Group['Foxes']
             gorillas = Group['Gorillas']

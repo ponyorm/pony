@@ -2,27 +2,32 @@ import sys, unittest
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestVolatile(unittest.TestCase):
     def setUp(self):
-        db = self.db = Database('sqlite', ':memory:')
+        db = self.db = Database()
 
         class Item(self.db.Entity):
             name = Required(str)
             index = Required(int, volatile=True)
 
-        db.generate_mapping(create_tables=True)
+        setup_database(db)
 
         with db_session:
-            Item(name='A', index=1)
-            Item(name='B', index=2)
-            Item(name='C', index=3)
+            Item(id=1, name='A', index=1)
+            Item(id=2, name='B', index=2)
+            Item(id=3, name='C', index=3)
+
+    def tearDown(self):
+        teardown_database(self.db)
 
     @db_session
     def test_1(self):
         db = self.db
         Item = db.Item
-        db.execute('update "Item" set "index" = "index" + 1')
+        db.execute('update "item" set "index" = "index" + 1')
         items = Item.select(lambda item: item.index > 0).order_by(Item.id)[:]
         a, b, c = items
         self.assertEqual(a.index, 2)

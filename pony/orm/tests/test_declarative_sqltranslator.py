@@ -6,8 +6,9 @@ from datetime import date
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Department(db.Entity):
     number = PrimaryKey(int)
@@ -53,43 +54,48 @@ class Room(db.Entity):
     name = PrimaryKey(unicode)
     groups = Set(Group)
 
-db.generate_mapping(create_tables=True)
 
-with db_session:
-    d1 = Department(number=44)
-    d2 = Department(number=43)
-    g1 = Group(id=1, dept=d1)
-    g2 = Group(id=2, dept=d2)
-    s1 = Student(id=1, name='S1', group=g1, scholarship=0)
-    s2 = Student(id=2, name='S2', group=g1, scholarship=100)
-    s3 = Student(id=3, name='S3', group=g2, scholarship=500)
-    c1 = Course(name='Math', semester=1, dept=d1)
-    c2 = Course(name='Economics', semester=1, dept=d1, credits=3)
-    c3 = Course(name='Physics', semester=2, dept=d2)
-    t1 = Teacher(id=101, name="T1")
-    t2 = Teacher(id=102, name="T2")
-    Grade(student=s1, course=c1, value='C', teacher=t2, date=date(2011, 1, 1))
-    Grade(student=s1, course=c3, value='A', teacher=t1, date=date(2011, 2, 1))
-    Grade(student=s2, course=c2, value='B', teacher=t1)
-    r1 = Room(name='Room1')
-    r2 = Room(name='Room2')
-    r3 = Room(name='Room3')
-    g1.rooms = [ r1, r2 ]
-    g2.rooms = [ r2, r3 ]
-    c1.students.add(s1)
-    c1.students.add(s2)
-    c2.students.add(s2)
-
-db2 = Database('sqlite', ':memory:')
+db2 = Database()
 
 class Room2(db2.Entity):
     name = PrimaryKey(unicode)
 
-db2.generate_mapping(create_tables=True)
-
 name1 = 'S1'
 
+
 class TestSQLTranslator(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            d1 = Department(number=44)
+            d2 = Department(number=43)
+            g1 = Group(id=1, dept=d1)
+            g2 = Group(id=2, dept=d2)
+            s1 = Student(id=1, name='S1', group=g1, scholarship=0)
+            s2 = Student(id=2, name='S2', group=g1, scholarship=100)
+            s3 = Student(id=3, name='S3', group=g2, scholarship=500)
+            c1 = Course(name='Math', semester=1, dept=d1)
+            c2 = Course(name='Economics', semester=1, dept=d1, credits=3)
+            c3 = Course(name='Physics', semester=2, dept=d2)
+            t1 = Teacher(id=101, name="T1")
+            t2 = Teacher(id=102, name="T2")
+            Grade(student=s1, course=c1, value='C', teacher=t2, date=date(2011, 1, 1))
+            Grade(student=s1, course=c3, value='A', teacher=t1, date=date(2011, 2, 1))
+            Grade(student=s2, course=c2, value='B', teacher=t1)
+            r1 = Room(name='Room1')
+            r2 = Room(name='Room2')
+            r3 = Room(name='Room3')
+            g1.rooms = [r1, r2]
+            g2.rooms = [r2, r3]
+            c1.students.add(s1)
+            c1.students.add(s2)
+            c2.students.add(s2)
+        setup_database(db2)
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+        teardown_database(db2)
     def setUp(self):
         rollback()
         db_session.__enter__()

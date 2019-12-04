@@ -2,20 +2,30 @@ from __future__ import absolute_import, print_function, division
 
 import unittest
 from pony.orm.core import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Male(db.Entity):
     name = Required(unicode)
     wife = Optional('Female', column='wife')
 
+
 class Female(db.Entity):
     name = Required(unicode)
     husband = Optional('Male')
 
-db.generate_mapping(create_tables=True)
 
 class TestOneToOne(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             db.execute('delete from male')
@@ -115,16 +125,16 @@ class TestOneToOne(unittest.TestCase):
 
     @db_session
     def test_9(self):
-        f4 = Female(name='F4')
-        m4 = Male(name='M4', wife=f4)
+        f4 = Female(id=4, name='F4')
+        m4 = Male(id=4, name='M4', wife=f4)
         flush()
         self.assertEqual(f4._status_, 'inserted')
         self.assertEqual(m4._status_, 'inserted')
 
     @db_session
     def test_10(self):
-        m4 = Male(name='M4')
-        f4 = Female(name='F4', husband=m4)
+        m4 = Male(id=4, name='M4')
+        f4 = Female(id=4, name='F4', husband=m4)
         flush()
         self.assertEqual(f4._status_, 'inserted')
         self.assertEqual(m4._status_, 'inserted')

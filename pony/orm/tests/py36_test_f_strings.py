@@ -1,8 +1,10 @@
 import unittest
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+
+db = Database()
 
 class Person(db.Entity):
     first_name = Required(str)
@@ -11,17 +13,22 @@ class Person(db.Entity):
     value = Required(float)
 
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    Person(id=1, first_name='Alexander', last_name='Tischenko', age=23, value=1.4)
-    Person(id=2, first_name='Alexander', last_name='Kozlovskiy', age=42, value=1.2)
-    Person(id=3, first_name='Arthur', last_name='Pendragon', age=54, value=1.33)
-    Person(id=4, first_name='Okita', last_name='Souji', age=15, value=2.1)
-    Person(id=5, first_name='Musashi', last_name='Miyamoto', age=None, value=0.9)
-    Person(id=6, first_name='Jeanne', last_name="d'Arc", age=30, value=43.212)
-
 class TestFString(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            Person(id=1, first_name='Alexander', last_name='Tischenko', age=23, value=1.4)
+            Person(id=2, first_name='Alexander', last_name='Kozlovskiy', age=42, value=1.2)
+            Person(id=3, first_name='Arthur', last_name='Pendragon', age=54, value=1.33)
+            Person(id=4, first_name='Okita', last_name='Souji', age=15, value=2.1)
+            Person(id=5, first_name='Musashi', last_name='Miyamoto', age=None, value=0.9)
+            Person(id=6, first_name='Jeanne', last_name="d'Arc", age=30, value=43.212)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()

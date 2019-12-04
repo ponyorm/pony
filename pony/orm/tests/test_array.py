@@ -2,10 +2,12 @@ from pony.py23compat import PY2
 
 import unittest
 from pony.orm.tests.testutils import *
+from pony.orm.tests import db_params, setup_database, teardown_database
 
 from pony.orm import *
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Foo(db.Entity):
     id = PrimaryKey(int)
@@ -18,13 +20,22 @@ class Foo(db.Entity):
     array4 = Optional(IntArray)
     array5 = Optional(IntArray, nullable=True)
 
-db.generate_mapping(create_tables=True)
-
-
-with db_session:
-    Foo(id=1, a=1, b=3, c=-2, array1=[10, 20, 30, 40, 50], array2=[1.1, 2.2, 3.3, 4.4, 5.5], array3=['foo', 'bar'])
 
 class Test(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if db_params['provider'] not in ('sqlite', 'postgres'):
+            raise unittest.SkipTest('Arrays are only available for SQLite and PostgreSQL')
+
+        setup_database(db)
+        with db_session:
+            Foo(id=1, a=1, b=3, c=-2, array1=[10, 20, 30, 40, 50], array2=[1.1, 2.2, 3.3, 4.4, 5.5],
+                array3=['foo', 'bar'])
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     @db_session
     def test_1(self):
         foo = select(f for f in Foo if 10 in f.array1)[:]

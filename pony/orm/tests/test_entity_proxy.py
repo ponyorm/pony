@@ -2,23 +2,23 @@ import unittest
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
+
+db = Database()
+
+class Country(db.Entity):
+    id = PrimaryKey(int)
+    name = Required(str)
+    persons = Set("Person")
+
+class Person(db.Entity):
+    id = PrimaryKey(int)
+    name = Required(str)
+    country = Required(Country)
 
 class TestProxy(unittest.TestCase):
     def setUp(self):
-        db = self.db = Database('sqlite', ':memory:')
-
-        class Country(db.Entity):
-            id = PrimaryKey(int)
-            name = Required(str)
-            persons = Set("Person")
-
-        class Person(db.Entity):
-            id = PrimaryKey(int)
-            name = Required(str)
-            country = Required(Country)
-
-        db.generate_mapping(create_tables=True)
-
+        setup_database(db)
         with db_session:
             c1 = Country(id=1, name='Russia')
             c2 = Country(id=2, name='Japan')
@@ -26,11 +26,12 @@ class TestProxy(unittest.TestCase):
             Person(id=2, name='Raikou Minamoto', country=c2)
             Person(id=3, name='Ibaraki Douji', country=c2)
 
+    def tearDown(self):
+        teardown_database(db)
 
     def test_1(self):
-        db = self.db
         with db_session:
-            p = make_proxy(db.Person[2])
+            p = make_proxy(Person[2])
 
         with db_session:
             x1 = db.local_stats[None].db_count  # number of queries
@@ -43,9 +44,8 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x1, x2-1)
 
     def test_2(self):
-        db = self.db
         with db_session:
-            p = make_proxy(db.Person[2])
+            p = make_proxy(Person[2])
             name = p.name
             country = p.country
 
@@ -59,13 +59,12 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x1, x2-1)
 
     def test_3(self):
-        db = self.db
         with db_session:
-            p = db.Person[2]
+            p = Person[2]
             proxy = make_proxy(p)
 
         with db_session:
-            p2 = db.Person[2]
+            p2 = Person[2]
             name1 = 'Tamamo no Mae'
             # It is possible to assign new attribute values to a proxy object
             p2.name = name1
@@ -75,13 +74,12 @@ class TestProxy(unittest.TestCase):
 
 
     def test_4(self):
-        db = self.db
         with db_session:
-            p = db.Person[2]
+            p = Person[2]
             proxy = make_proxy(p)
 
         with db_session:
-            p2 = db.Person[2]
+            p2 = Person[2]
             name1 = 'Tamamo no Mae'
             p2.name = name1
 
@@ -92,9 +90,8 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(name1, name2)
 
     def test_5(self):
-        db = self.db
         with db_session:
-            p = db.Person[2]
+            p = Person[2]
             r = repr(p)
             self.assertEqual(r, 'Person[2]')
 
@@ -114,9 +111,8 @@ class TestProxy(unittest.TestCase):
 
 
     def test_6(self):
-        db = self.db
         with db_session:
-            p = db.Person[2]
+            p = Person[2]
             proxy = make_proxy(p)
             proxy.name = 'Okita Souji'
             # after assignment, the attribute value is the same for the proxy and for the original object
@@ -125,9 +121,8 @@ class TestProxy(unittest.TestCase):
 
 
     def test_7(self):
-        db = self.db
         with db_session:
-            p = db.Person[2]
+            p = Person[2]
             proxy = make_proxy(p)
             proxy.name = 'Okita Souji'
             # after assignment, the attribute value is the same for the proxy and for the original object
@@ -136,11 +131,10 @@ class TestProxy(unittest.TestCase):
 
 
     def test_8(self):
-        db = self.db
         with db_session:
-            c1 = db.Country[1]
+            c1 = Country[1]
             c1_proxy = make_proxy(c1)
-            p2 = db.Person[2]
+            p2 = Person[2]
             self.assertNotEqual(p2.country, c1)
             self.assertNotEqual(p2.country, c1_proxy)
             # proxy can be used in attribute assignment
@@ -150,11 +144,10 @@ class TestProxy(unittest.TestCase):
 
 
     def test_9(self):
-        db = self.db
         with db_session:
-            c2 = db.Country[2]
+            c2 = Country[2]
             c2_proxy = make_proxy(c2)
-            persons = select(p for p in db.Person if p.country == c2_proxy)
+            persons = select(p for p in Person if p.country == c2_proxy)
             self.assertEqual({p.id for p in persons}, {2, 3})
 
 if __name__ == '__main__':

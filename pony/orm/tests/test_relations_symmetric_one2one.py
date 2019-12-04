@@ -4,16 +4,25 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import setup_database, teardown_database, only_for
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Person(db.Entity):
     name = Required(unicode)
     spouse = Optional('Person', reverse='spouse')
 
-db.generate_mapping(create_tables=True)
 
 class TestSymmetricOne2One(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             db.execute('update person set spouse=null')

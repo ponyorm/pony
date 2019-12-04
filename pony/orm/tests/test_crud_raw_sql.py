@@ -4,8 +4,9 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import setup_database, teardown_database, only_for
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -25,9 +26,17 @@ class Bio(db.Entity):
     desc = Required(unicode)
     Student = Required(Student)
 
-db.generate_mapping(create_tables=True)
 
+@only_for('sqlite')
 class TestCrudRawSQL(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             db.execute('delete from Student')

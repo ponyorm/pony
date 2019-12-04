@@ -6,22 +6,30 @@ from datetime import date, datetime, timedelta
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Entity1(db.Entity):
     id = PrimaryKey(int)
     d = Required(date)
     dt = Required(datetime)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    Entity1(id=1, d=date(2009, 10, 20), dt=datetime(2009, 10, 20, 10, 20, 30))
-    Entity1(id=2, d=date(2010, 10, 21), dt=datetime(2010, 10, 21, 10, 21, 31))
-    Entity1(id=3, d=date(2011, 11, 22), dt=datetime(2011, 11, 22, 10, 20, 32))
 
 class TestDate(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            Entity1(id=1, d=date(2009, 10, 20), dt=datetime(2009, 10, 20, 10, 20, 30))
+            Entity1(id=2, d=date(2010, 10, 21), dt=datetime(2010, 10, 21, 10, 21, 31))
+            Entity1(id=3, d=date(2011, 11, 22), dt=datetime(2011, 11, 22, 10, 20, 32))
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()

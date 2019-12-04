@@ -4,8 +4,9 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -30,38 +31,44 @@ class Mark(db.Entity):
     subject = Required(Subject)
     PrimaryKey(student, subject)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g41 = Group(number=41, department=101)
-    g42 = Group(number=42, department=102)
-    g43 = Group(number=43, department=102)
-    g44 = Group(number=44, department=102)
-
-    s1 = Student(id=1, name="Joe", scholarship=None, group=g41)
-    s2 = Student(id=2, name="Bob", scholarship=100, group=g41)
-    s3 = Student(id=3, name="Beth", scholarship=500, group=g41)
-    s4 = Student(id=4, name="Jon", scholarship=500, group=g42)
-    s5 = Student(id=5, name="Pete", scholarship=700, group=g42)
-    s6 = Student(id=6, name="Mary", scholarship=300, group=g44)
-
-    Math = Subject(name="Math")
-    Physics = Subject(name="Physics")
-    History = Subject(name="History")
-
-    g41.subjects = [ Math, Physics, History ]
-    g42.subjects = [ Math, Physics ]
-    g43.subjects = [ Physics ]
-
-    Mark(value=5, student=s1, subject=Math)
-    Mark(value=4, student=s2, subject=Physics)
-    Mark(value=3, student=s2, subject=Math)
-    Mark(value=2, student=s2, subject=History)
-    Mark(value=1, student=s3, subject=History)
-    Mark(value=2, student=s3, subject=Math)
-    Mark(value=2, student=s4, subject=Math)
 
 class TestAttrSetMonad(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g41 = Group(number=41, department=101)
+            g42 = Group(number=42, department=102)
+            g43 = Group(number=43, department=102)
+            g44 = Group(number=44, department=102)
+
+            s1 = Student(id=1, name="Joe", scholarship=None, group=g41)
+            s2 = Student(id=2, name="Bob", scholarship=100, group=g41)
+            s3 = Student(id=3, name="Beth", scholarship=500, group=g41)
+            s4 = Student(id=4, name="Jon", scholarship=500, group=g42)
+            s5 = Student(id=5, name="Pete", scholarship=700, group=g42)
+            s6 = Student(id=6, name="Mary", scholarship=300, group=g44)
+
+            Math = Subject(name="Math")
+            Physics = Subject(name="Physics")
+            History = Subject(name="History")
+
+            g41.subjects = [Math, Physics, History]
+            g42.subjects = [Math, Physics]
+            g43.subjects = [Physics]
+
+            Mark(value=5, student=s1, subject=Math)
+            Mark(value=4, student=s2, subject=Physics)
+            Mark(value=3, student=s2, subject=Math)
+            Mark(value=2, student=s2, subject=History)
+            Mark(value=1, student=s3, subject=History)
+            Mark(value=2, student=s3, subject=Math)
+            Mark(value=2, student=s4, subject=Math)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -81,7 +88,7 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, [Group[41]])
     def test3a(self):
         groups = select(g for g in Group if len(g.students.marks) < 2)[:]
-        self.assertEqual(groups, [Group[42], Group[43], Group[44]])
+        self.assertEqual(set(groups), {Group[42], Group[43], Group[44]})
     def test4(self):
         groups = select(g for g in Group if max(g.students.marks.value) <= 2)[:]
         self.assertEqual(groups, [Group[42]])

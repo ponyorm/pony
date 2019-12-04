@@ -4,20 +4,30 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import teardown_database, setup_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Male(db.Entity):
     name = Required(unicode)
     wife = Optional('Female', column='wife')
 
+
 class Female(db.Entity):
     name = Required(unicode)
     husband = Optional('Male', column='husband')
 
-db.generate_mapping(create_tables=True)
 
 class TestOneToOne2(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             db.execute('update female set husband=null')

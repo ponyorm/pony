@@ -2,8 +2,9 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Group(db.Entity):
     students = Set('Student')
@@ -19,21 +20,27 @@ class Student(db.Entity):
 class Passport(db.Entity):
     student = Optional(Student)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group()
-    g2 = Group()
-
-    p = Passport()
-
-    Student(first_name='Mashu', last_name='Kyrielight', login='Shielder', group=g1)
-    Student(first_name='Okita', last_name='Souji', login='Sakura', group=g1)
-    Student(first_name='Francis', last_name='Drake', group=g2, graduated=True)
-    Student(first_name='Oda', last_name='Nobunaga', group=g2, graduated=True)
-    Student(first_name='William', last_name='Shakespeare', group=g2, graduated=True, passport=p)
 
 class TestExists(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(id=1)
+            g2 = Group(id=2)
+
+            p = Passport(id=1)
+
+            Student(id=1, first_name='Mashu', last_name='Kyrielight', login='Shielder', group=g1)
+            Student(id=2, first_name='Okita', last_name='Souji', login='Sakura', group=g1)
+            Student(id=3, first_name='Francis', last_name='Drake', group=g2, graduated=True)
+            Student(id=4, first_name='Oda', last_name='Nobunaga', group=g2, graduated=True)
+            Student(id=5, first_name='William', last_name='Shakespeare', group=g2, graduated=True, passport=p)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()

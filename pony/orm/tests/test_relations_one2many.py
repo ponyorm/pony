@@ -4,11 +4,12 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestOneToManyRequired(unittest.TestCase):
-
     def setUp(self):
-        db = Database('sqlite', ':memory:', create_db=True)
+        db = Database()
 
         class Student(db.Entity):
             id = PrimaryKey(int)
@@ -23,7 +24,7 @@ class TestOneToManyRequired(unittest.TestCase):
         self.Group = Group
         self.Student = Student
 
-        db.generate_mapping(create_tables=True)
+        setup_database(db)
 
         with db_session:
             g101 = Group(number=101)
@@ -39,6 +40,7 @@ class TestOneToManyRequired(unittest.TestCase):
     def tearDown(self):
         rollback()
         db_session.__exit__()
+        teardown_database(self.db)
 
     @raises_exception(ValueError, 'Attribute Student[1].group is required')
     def test_1(self):

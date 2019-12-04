@@ -4,10 +4,13 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database, only_for
 
+
+@only_for('sqlite')
 class TestOneToOne3(unittest.TestCase):
     def setUp(self):
-        self.db = Database('sqlite', ':memory:')
+        self.db = Database()
 
         class Person(self.db.Entity):
             name = Required(unicode)
@@ -17,14 +20,14 @@ class TestOneToOne3(unittest.TestCase):
             code = Required(unicode)
             person = Required("Person")
 
-        self.db.generate_mapping(create_tables=True)
+        setup_database(self.db)
 
         with db_session:
             p1 = Person(name='John')
             Passport(code='123', person=p1)
 
     def tearDown(self):
-        self.db = None
+        teardown_database(self.db)
 
     @db_session
     def test_1(self):

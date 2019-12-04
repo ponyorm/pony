@@ -7,8 +7,10 @@ from decimal import Decimal
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import teardown_database, setup_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -17,19 +19,26 @@ class Student(db.Entity):
     group = Required('Group')
     dob = Optional(date)
 
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set(Student)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(number=1)
-    Student(id=1, name='S1', group=g1, gpa=3.1)
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2))
 
 class TestQuery(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(number=1)
+            Student(id=1, name='S1', group=g1, gpa=3.1)
+            Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
+            Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2))
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()

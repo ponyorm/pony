@@ -2,26 +2,30 @@ from __future__ import absolute_import, print_function, division
 
 import unittest
 from pony.orm.core import *
+from pony.orm.tests import db_params, teardown_database
+
+db = Database()
+
+
+class Group(db.Entity):
+    number = PrimaryKey(int)
+    subjects = Set("Subject")
+
+
+class Subject(db.Entity):
+    name = PrimaryKey(str)
+    groups = Set(Group)
+
 
 class TestManyToManyNonComposite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        db.bind(**db_params)
+        db.generate_mapping(check_tables=False)
+        db.drop_all_tables(with_all_data=True)
 
     def setUp(self):
-        db = Database('sqlite', ':memory:')
-
-        class Group(db.Entity):
-            number = PrimaryKey(int)
-            subjects = Set("Subject")
-
-        class Subject(db.Entity):
-            name = PrimaryKey(str)
-            groups = Set(Group)
-
-        self.db = db
-        self.Group = Group
-        self.Subject = Subject
-
-        self.db.generate_mapping(create_tables=True)
-
+        db.create_tables()
         with db_session:
            g1 = Group(number=101)
            g2 = Group(number=102)
@@ -31,19 +35,25 @@ class TestManyToManyNonComposite(unittest.TestCase):
            s4 = Subject(name='Subj4')
            g1.subjects = [ s1, s2 ]
 
+    def tearDown(self):
+        teardown_database(db)
+
     def test_1(self):
-        schema = self.db.schema
+        schema = db.schema
         m2m_table_name = 'Group_Subject'
+        if not (db.provider.dialect == 'SQLite' and pony.__version__ < '0.9'):
+            m2m_table_name = m2m_table_name.lower()
         self.assertIn(m2m_table_name, schema.tables)
         m2m_table = schema.tables[m2m_table_name]
-        fkeys = list(m2m_table.foreign_keys.values())
+        if pony.__version__ >= '0.9':
+            fkeys = m2m_table.foreign_keys
+        else:
+            fkeys = set(m2m_table.foreign_keys.values())
         self.assertEqual(len(fkeys), 2)
         for fk in fkeys:
             self.assertEqual(fk.on_delete, 'CASCADE')
 
     def test_2(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name='Subj1')
@@ -51,11 +61,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         with db_session:
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2'})
 
     def test_3(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name='Subj3')
@@ -63,11 +71,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         with db_session:
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2', 'Subj3'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2', 'Subj3'})
 
     def test_4(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name='Subj3')
@@ -75,11 +81,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         with db_session:
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2'})
 
     def test_5(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name='Subj2')
@@ -87,11 +91,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         with db_session:
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1'])
+            self.assertEqual(set(db_subjects), {'Subj1'})
 
-    def test_5(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
+    def test_6(self):
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
@@ -100,12 +102,10 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         with db_session:
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj3', 'Subj4'])
+            self.assertEqual(set(db_subjects), {'Subj3', 'Subj4'})
             self.assertEqual(Group[101].subjects, {Subject['Subj3'], Subject['Subj4']})
 
     def test_7(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name='Subj3')
@@ -116,11 +116,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             self.assertEqual(db.last_sql, last_sql)  # assert no DELETE statement on commit
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2'})
 
     def test_8(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name='Subj1')
@@ -131,11 +129,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             self.assertEqual(db.last_sql, last_sql)  # assert no INSERT statement on commit
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2'})
 
     def test_9(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s1 = Subject.get(name='Subj1')
@@ -147,11 +143,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             self.assertEqual(db.last_sql, last_sql)  # assert no INSERT statement on commit
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2'})
 
     def test_10(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g2 = Group.get(number=102)
             s1 = Subject.get(name='Subj1')
@@ -165,8 +159,6 @@ class TestManyToManyNonComposite(unittest.TestCase):
             self.assertEqual(db_subjects , [])
 
     def test_11(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
@@ -174,11 +166,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         with db_session:
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj2', 'Subj3'])
+            self.assertEqual(set(db_subjects), {'Subj2', 'Subj3'})
 
     def test_12(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
@@ -189,11 +179,9 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             self.assertEqual(db.last_sql, last_sql)  # assert no INSERT statement on commit
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2'})
 
     def test_13(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
@@ -204,12 +192,10 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             self.assertEqual(db.last_sql, last_sql)  # assert no DELETE statement on commit
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
-            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+            self.assertEqual(set(db_subjects), {'Subj1', 'Subj2'})
 
     @db_session
     def test_14(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         g1 = Group[101]
         s1 = Subject['Subj1']
         self.assertTrue(s1 in g1.subjects)
@@ -242,8 +228,6 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
     @db_session
     def test_15(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         g = Group[101]
         e = g.subjects.is_empty()
         self.assertEqual(e, False)
@@ -264,8 +248,6 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
     @db_session
     def test_16(self):
-        db, Group = self.db, self.Group
-
         g = Group[101]
         c = len(g.subjects)
         self.assertEqual(c, 2)
@@ -284,8 +266,6 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
     @db_session
     def test_17(self):
-        db, Group, Subject = self.db, self.Group, self.Subject
-
         g = Group[101]
         s1 = Subject['Subj1']
         s3 = Subject['Subj3']

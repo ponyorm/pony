@@ -1,16 +1,25 @@
 import unittest
 
 from pony import orm
+from pony.orm.tests import setup_database, teardown_database
+
+db = orm.Database()
+
+
+class Person(db.Entity):
+    name = orm.Required(str)
+
 
 class Test(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def test_1(self):
-        db = orm.Database('sqlite', ':memory:')
-
-        class Person(db.Entity):
-            name = orm.Required(str)
-
-        db.generate_mapping(create_tables=True)
-
         with orm.db_session:
             a = Person(name='John')
             a.delete()
