@@ -2062,12 +2062,10 @@ class ArrayMixin(MonadMixin):
             expr_sql = monad.getsql()[0]
             index_sql = index.getsql()[0]
             value = index_sql[1]
-            if from_one and plus_one:
-                if value >= 0:
-                    index_sql = ['VALUE', value + 1]
-                else:
-                    index_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value) + 1]]
-
+            if value >= 0:
+                index_sql = ['VALUE', value + int(from_one and plus_one)]
+            else:
+                index_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value + int(from_one and plus_one))]]
             return index_sql
         elif isinstance(index, NumericMixin):
             expr_sql = monad.getsql()[0]
