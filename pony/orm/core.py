@@ -5768,9 +5768,9 @@ class Query(object):
                     all_func_vartypes.update(func_vartypes)
                 if all_func_vartypes != translator.func_vartypes:
                     return None, vars.copy()
-            for key, attrname in iteritems(translator.getattr_values):
+            for key, val in iteritems(translator.fixed_param_values):
                 assert key in new_vars
-                if attrname != new_vars[key]:
+                if val != new_vars[key]:
                     del database._translator_cache[query_key]
                     return None, vars.copy()
         return translator, new_vars
@@ -5785,7 +5785,7 @@ class Query(object):
         sql_key = HashableDict(
             query._key,
             vartypes=HashableDict(query._translator.vartypes),
-            getattr_values=HashableDict(translator.getattr_values),
+            fixed_param_values=HashableDict(translator.fixed_param_values),
             limit=limit,
             offset=offset,
             distinct=query._distinct,

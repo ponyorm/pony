@@ -4,7 +4,7 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
-from pony.orm.tests import setup_database, teardown_database
+from pony.orm.tests import setup_database, teardown_database, only_for
 
 db = Database()
 
@@ -37,102 +37,198 @@ class TestStringMethods(unittest.TestCase):
         rollback()
         db_session.__exit__()
 
-    def test_getitem_01(self):
-        result = set(select(s for s in Student if s.name[:] == 'Ann'))
-        self.assertEqual(result, {Student[1]})
-
     def test_getitem_1(self):
         result = set(select(s for s in Student if s.name[1] == 'o'))
         self.assertEqual(result, {Student[2], Student[4]})
-
-    def test_getitem_2(self):
         x = 1
         result = set(select(s for s in Student if s.name[x] == 'o'))
         self.assertEqual(result, {Student[2], Student[4]})
 
-    def test_getitem_3(self):
+    def test_getitem_2(self):
         result = set(select(s for s in Student if s.name[-1] == 'n'))
         self.assertEqual(result, {Student[1], Student[4]})
-
-    def test_getitem_4(self):
         x = -1
         result = set(select(s for s in Student if s.name[x] == 'n'))
         self.assertEqual(result, {Student[1], Student[4]})
 
-    def test_getitem_5(self):
+    def test_getitem_3(self):
         result = set(select(s for s in Student if s.name[-2] == 't'))
         self.assertEqual(result, {Student[3], Student[5]})
-
-    @sql_debugging
-    def test_getitem_6(self):
         x = -2
-        select((s.name, s.name[x]) for s in Student).show()
         result = set(select(s for s in Student if s.name[x] == 't'))
         self.assertEqual(result, {Student[3], Student[5]})
 
+    def test_getitem_4(self):
+        result = set(select(s for s in Student if s.name[-s.id] == 'n'))
+        self.assertEqual(result, {Student[1]})
+
     def test_slice_1(self):
-        result = set(select(s for s in Student if s.name[0:3] == "Jon"))
-        self.assertEqual(result, {Student[4]})
+        result = set(select(s for s in Student if s.name[:] == "Ann"))
+        self.assertEqual(result, {Student[1]})
+        result = set(select(s for s in Student if s.name[0:] == "Ann"))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_2(self):
         result = set(select(s for s in Student if s.name[:3] == "Jon"))
         self.assertEqual(result, {Student[4]})
+        result = set(select(s for s in Student if s.name[0:3] == "Jon"))
+        self.assertEqual(result, {Student[4]})
+        x = 0
+        y = 3
+        result = set(select(s for s in Student if s.name[:y] == "Jon"))
+        self.assertEqual(result, {Student[4]})
+        result = set(select(s for s in Student if s.name[x:y] == "Jon"))
+        self.assertEqual(result, {Student[4]})
+        result = set(select(s for s in Student if s.name[x:3] == "Jon"))
+        self.assertEqual(result, {Student[4]})
 
     def test_slice_3(self):
-        x = 3
-        result = set(select(s for s in Student if s.name[:x] == "Jon"))
-        self.assertEqual(result, {Student[4]})
-
-    def test_slice_4(self):
-        x = 3
-        result = set(select(s for s in Student if s.name[0:x] == "Jon"))
-        self.assertEqual(result, {Student[4]})
-
-    def test_slice_5(self):
         result = set(select(s for s in Student if s.name[0:10] == "Ann"))
         self.assertEqual(result, {Student[1]})
-
-    def test_slice_6(self):
-        result = set(select(s for s in Student if s.name[0:] == "Ann"))
+        x = 10
+        result = set(select(s for s in Student if s.name[0:x] == "Ann"))
         self.assertEqual(result, {Student[1]})
-
-    def test_slice_7(self):
-        result = set(select(s for s in Student if s.name[:] == "Ann"))
+        result = set(select(s for s in Student if s.name[:x] == "Ann"))
         self.assertEqual(result, {Student[1]})
 
     def test_slice_8(self):
         result = set(select(s for s in Student if s.name[1:] == "nn"))
         self.assertEqual(result, {Student[1]})
-
-    def test_slice_9(self):
         x = 1
         result = set(select(s for s in Student if s.name[x:] == "nn"))
         self.assertEqual(result, {Student[1]})
 
     def test_slice_10(self):
-        x = 0
-        result = set(select(s for s in Student if s.name[x:3] == "Ann"))
-        self.assertEqual(result, {Student[1]})
-
-    def test_slice_11(self):
         result = set(select(s for s in Student if s.name[1:3] == "et"))
         self.assertEqual(result, {Student[3], Student[5]})
-
-    def test_slice_12(self):
         x = 1
         y = 3
         result = set(select(s for s in Student if s.name[x:y] == "et"))
         self.assertEqual(result, {Student[3], Student[5]})
 
-    def test_slice_13(self):
+    def test_slice_11(self):
         x = 10
         y = 20
         result = set(select(s for s in Student if s.name[x:y] == ''))
         self.assertEqual(result, {Student[1], Student[2], Student[3], Student[4], Student[5]})
 
-    def test_slice_14(self):
+    def test_slice_12(self):
         result = set(select(s for s in Student if s.name[-2:] == "nn"))
         self.assertEqual(result, {Student[1]})
+
+    def test_slice_13(self):
+        result = set(select(s for s in Student if s.name[:-1] == "Ann"))
+        self.assertEqual(result, {Student[1]})
+        result = set(select(s for s in Student if s.name[0:-1] == "Ann"))
+        self.assertEqual(result, {Student[1]})
+        x = 0
+        y = -1
+        result = set(select(s for s in Student if s.name[x:y] == "Ann"))
+        self.assertEqual(result, {Student[1]})
+
+    def test_slice_14(self):
+        result = set(select(s for s in Student if s.name[-4:-2] == "th"))
+        self.assertEqual(result, {Student[4]})
+        x = -4
+        y = -2
+        result = set(select(s for s in Student if s.name[x:y] == "th"))
+        self.assertEqual(result, {Student[4]})
+
+    def test_slice_15(self):
+        result = set(select(s for s in Student if s.name[4:-2] == "th"))
+        self.assertEqual(result, {Student[4]})
+        x = 4
+        y = -2
+        result = set(select(s for s in Student if s.name[x:y] == "th"))
+        self.assertEqual(result, {Student[4]})
+
+    def test_slice_16(self):
+        result = list(select(s.name[-2:3] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'nn', 'ob', 't', 't'])
+        x = -2
+        y = 3
+        result = list(select(s.name[x:y] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'nn', 'ob', 't', 't'])
+
+    def test_slice_17(self):
+        result = list(select(s.name[s.id:5] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'b', 'h', 'nn', 't'])
+        x = 5
+        result = list(select(s.name[s.id:x] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'b', 'h', 'nn', 't'])
+
+    def test_slice_18(self):
+        result = list(select(s.name[-s.id:5] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['Pete', 'eth', 'n', 'ob', 't'])
+        x = 5
+        result = list(select(s.name[-s.id:x] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['Pete', 'eth', 'n', 'ob', 't'])
+
+    def test_slice_19a(self):
+        result = list(select(s.name[s.id:] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'b', 'h', 'nn', 'than'])
+
+    def test_slice_19b(self):
+        result = list(select(s.name[s.id:-1] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', '', '', 'n', 'tha'])
+        x = -1
+        result = list(select(s.name[s.id:x] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', '', '', 'n', 'tha'])
+
+    def test_slice_19c(self):
+        result = list(select(s.name[s.id:-2] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', '', '', '', 'th'])
+        x = -2
+        result = list(select(s.name[s.id:x] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', '', '', '', 'th'])
+
+    def test_slice_20a(self):
+        result = list(select(s.name[-s.id:] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['Pete', 'eth', 'n', 'ob', 'than'])
+
+    def test_slice_20b(self):
+        result = list(select(s.name[-s.id:-1] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'Pet', 'et', 'o', 'tha'])
+        x = -1
+        result = list(select(s.name[-s.id:x] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'Pet', 'et', 'o', 'tha'])
+
+    def test_slice_20c(self):
+        result = list(select(s.name[-s.id:-2] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', '', 'Pe', 'e', 'th'])
+        x = -2
+        result = list(select(s.name[-s.id:x] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', '', 'Pe', 'e', 'th'])
+
+    def test_slice_21(self):
+        result = list(select(s.name[1:s.id] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'et', 'ete', 'o', 'ona'])
+        x = 1
+        result = list(select(s.name[x:s.id] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'et', 'ete', 'o', 'ona'])
+
+    def test_slice_22(self):
+        result = list(select(s.name[-3:s.id] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'A', 'Bo', 'et', 'ete'])
+        x = -3
+        result = list(select(s.name[x:s.id] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'A', 'Bo', 'et', 'ete'])
+
+    def test_slice_23(self):
+        result = list(select(s.name[s.id:s.id+3] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'b', 'h', 'nn', 'tha'])
+
+    def test_slice_24(self):
+        result = list(select(s.name[-s.id*2:-s.id] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', 'B', 'B', 'Jona', 'n'])
+
+    def test_slice_25(self):
+        result = list(select(s.name[s.id:-s.id+3] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['', '', '', 'n', 'tha'])
+
+    def test_slice_26(self):
+        result = list(select(s.name[-s.id:s.id+3] for s in Student).without_distinct())
+        self.assertEqual(sorted(result), ['Pete', 'eth', 'n', 'ob', 'tha'])
 
     def test_nonzero(self):
         result = set(select(s for s in Student if s.foo))
