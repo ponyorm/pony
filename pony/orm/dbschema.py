@@ -409,8 +409,6 @@ class Column(object):
                 append(schema.names_row(fk.parent_col_names))
                 if fk.on_delete:
                     append('ON DELETE %s' % fk.on_delete)
-                if fk.on_delete:
-                    append('ON DELETE %s' % fk.on_delete)
         return ' '.join(result)
 
     def get_alter_ops(column):
@@ -602,7 +600,6 @@ class ForeignKey(Constraint):
         fk.parent_table = parent_table
         fk.parent_col_names = parent_col_names
         fk.on_delete = on_delete
-        fk.on_delete = on_delete
 
         if index_name is not False:
             child_columns_len = len(col_names)
@@ -640,8 +637,6 @@ class ForeignKey(Constraint):
         append('REFERENCES')
         append(quote_name(fk.parent_table.name))
         append(schema.names_row(fk.parent_col_names))
-        if fk.on_delete:
-            append('ON DELETE %s' % fk.on_delete)
         if fk.on_delete:
             append('ON DELETE %s' % fk.on_delete)
         return ' '.join(cmd)
