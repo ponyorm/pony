@@ -2885,7 +2885,7 @@ def minmax(monad, sqlop, *args):
         args = list(args)
         for i, arg in enumerate(args):
             if arg.type is bool:
-                args[i] = NumericExprMonad(int, [ 'TO_INT', arg.getsql() ], nullable=arg.nullable)
+                args[i] = NumericExprMonad(int, [ 'TO_INT', arg.getsql()[0] ], nullable=arg.nullable)
     sql = [ sqlop, None ] + [ arg.getsql()[0] for arg in args ]
     return ExprMonad.new(t, sql, nullable=any(arg.nullable for arg in args))
 
