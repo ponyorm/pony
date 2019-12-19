@@ -472,7 +472,10 @@ class SQLBuilder(object):
         assert distinct in (None, True, False)
         if not distinct:
             if not expr_list: return ['COUNT(*)']
-            return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
+            if builder.dialect == 'PostgreSQL':
+                return 'COUNT(', builder.ROW(*expr_list), ')'
+            else:
+                return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
         if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
         if len(expr_list) == 1:
             return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
