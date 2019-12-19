@@ -76,7 +76,7 @@ class PGSQLBuilder(SQLBuilder):
     def DATE_SUB(builder, expr, delta):
         return '(', builder(expr), ' - ', builder(delta), ')'
     def DATE_DIFF(builder, expr1, expr2):
-        return builder(expr1), ' - ', builder(expr2)
+        return '((', builder(expr1), ' - ', builder(expr2), ") * interval '1 day')"
     def DATETIME_ADD(builder, expr, delta):
         return '(', builder(expr), ' + ', builder(delta), ')'
     def DATETIME_SUB(builder, expr, delta):
