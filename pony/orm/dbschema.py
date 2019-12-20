@@ -121,6 +121,7 @@ class Table(DBObject):
         schema.names[name] = table
         table.schema = schema
         table.name = name
+        table._name = None # Foreign keys need the old name to remap to
         table.prev = table.new = None
         table.column_list = []
         table.column_dict = {}
@@ -405,7 +406,10 @@ class Column(object):
             if fk is not None:
                 parent_table = fk.parent_table
                 append('REFERENCES')
-                append(quote_name(parent_table.name))
+                if parent_table._name is None:
+                    append(quote_name(parent_table.name))
+                else:
+                    append(quote_name(parent_table._name))
                 append(schema.names_row(fk.parent_col_names))
                 if fk.on_delete:
                     append('ON DELETE %s' % fk.on_delete)
@@ -635,7 +639,10 @@ class ForeignKey(Constraint):
         append('FOREIGN KEY')
         append(schema.names_row(fk.col_names))
         append('REFERENCES')
-        append(quote_name(fk.parent_table.name))
+        if fk.parent_table._name is None:
+            append(quote_name(fk.parent_table.name))
+        else:
+            append(quote_name(fk.parent_table._name))
         append(schema.names_row(fk.parent_col_names))
         if fk.on_delete:
             append('ON DELETE %s' % fk.on_delete)

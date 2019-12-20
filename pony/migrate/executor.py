@@ -71,11 +71,13 @@ class Executor(object):
                 for prev_attr in prev_entity._new_attrs_:
                     new_attr = prev_attr.new_attr
                     if new_attr is not None and not (prev_attr.is_collection or new_attr.is_collection):
-                        assert len(prev_attr.columns) == len(new_attr.columns)
-                        assert len(prev_attr.column_objects) == len(new_attr.column_objects)
-                        for prev_col, new_col in zip(prev_attr.column_objects, new_attr.column_objects):
-                            prev_col.new = new_col
-                            new_col.prev = prev_col
+                        # one-to-one pairs will have column_objects both equal to None
+                        if prev_attr.column_objects is not None and new_attr.column_objects is not None:
+                            assert len(prev_attr.columns) == len(new_attr.columns)
+                            assert len(prev_attr.column_objects) == len(new_attr.column_objects)
+                            for prev_col, new_col in zip(prev_attr.column_objects, new_attr.column_objects):
+                                prev_col.new = new_col
+                                new_col.prev = prev_col
 
         for prev_constraint in self.prev_schema.constraints.values():
             new_constrant = self.new_schema.constraints.get(prev_constraint.name)

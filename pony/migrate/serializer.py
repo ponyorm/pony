@@ -239,7 +239,7 @@ class Serializer(object):
         if isinstance(value, decimal.Decimal):
             return self.serialize_basic(value, 'from decimal import Decimal')
         if isinstance(value, functools.partial):
-             return self.serialize_partial(value)
+            return self.serialize_partial(value)
         if isinstance(value, (types.FunctionType, types.BuiltinFunctionType)):
             return self.serialize_function(value)
         if isinstance(value, collections.Iterable):
