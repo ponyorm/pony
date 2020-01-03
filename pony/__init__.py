@@ -12,7 +12,7 @@ def detect_mode():
     try: import google.appengine
     except ImportError: pass
     else:
-        if os.environ.get('SERVER_SOFTWARE', '').startswith('Development'):
+        if os.getenv('SERVER_SOFTWARE', '').startswith('Development'):
             return 'GAE-LOCAL'
         return 'GAE-SERVER'
 
@@ -23,6 +23,9 @@ def detect_mode():
     main = sys.modules['__main__']
 
     if not hasattr(main, '__file__'): # console
+        return 'INTERACTIVE'
+
+    if os.getenv('IPYTHONENABLE', '') == 'True':
         return 'INTERACTIVE'
 
     if getattr(main, 'INTERACTIVE_MODE_AVAILABLE', False): # pycharm console
