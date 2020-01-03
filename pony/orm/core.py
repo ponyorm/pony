@@ -1745,7 +1745,7 @@ class SessionCache(object):
         cache.objects_to_save = []
         cache.saved_objects = []
         cache.query_results = {}
-        cache.dbvals_deduplication_cache = {}
+        cache.dbvals_deduplication_cache = defaultdict(dict)
         cache.modified = False
         cache.db_session = db_session = local.db_session
         cache.immediate = db_session is not None and db_session.immediate
