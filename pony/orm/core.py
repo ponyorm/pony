@@ -1129,7 +1129,8 @@ class Database(object):
                         on_delete = 'SET NULL'
                     else:
                         on_delete = None
-                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index, on_delete)
+                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index,
+                                          on_delete, interleave=attr.interleave)
                 elif attr.index and attr.columns:
                     if isinstance(attr.py_type, Array) and provider.dialect != 'PostgreSQL':
                         pass  # GIN indexes are supported only in PostgreSQL
@@ -2016,7 +2017,7 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'reverse_index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic', 'fk_name', 'type_has_empty_value'
+                'optimistic', 'fk_name', 'type_has_empty_value', 'interleave'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -2088,6 +2089,7 @@ class Attribute(object):
         attr.sql_default = kwargs.pop('sql_default', None)
         attr.py_check = kwargs.pop('py_check', None)
         attr.hidden = kwargs.pop('hidden', False)
+        attr.interleave = kwargs.pop('interleave', None)
         attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
@@ -2140,6 +2142,12 @@ class Attribute(object):
             elif attr.is_unique: throw(TypeError, 'Unique attribute %s cannot be of type float' % attr)
         if attr.is_volatile and (attr.is_pk or attr.is_collection): throw(TypeError,
             '%s attribute %s cannot be volatile' % (attr.__class__.__name__, attr))
+
+        if attr.interleave is not None:
+            if attr.is_collection: throw(TypeError,
+                '`interleave` option cannot be specified for %s attribute %r' % (attr.__class__.__name__, attr))
+            if attr.interleave not in (True, False): throw(TypeError,
+                '`interleave` option value should be True, False or None. Got: %r' % attr.interleave)
     def linked(attr):
         reverse = attr.reverse
         if attr.cascade_delete is None:
@@ -3749,6 +3757,21 @@ class EntityMeta(type):
             attr._init_(entity, name)
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
+
+        interleave_attrs = []
+        for attr in new_attrs:
+            if attr.interleave is not None:
+                if attr.interleave:
+                    interleave_attrs.append(attr)
+        entity._interleave_ = None
+        if interleave_attrs:
+            if len(interleave_attrs) > 1: throw(TypeError,
+                'only one attribute may be marked as interleave. Got: %s'
+                % ', '.join(repr(attr) for attr in interleave_attrs))
+            interleave = interleave_attrs[0]
+            if not interleave.is_relation: throw(TypeError,
+                'Interleave attribute should be part of relationship. Got: %r' % attr)
+            entity._interleave_ = interleave
 
         indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:

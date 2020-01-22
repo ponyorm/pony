@@ -142,8 +142,18 @@ class Table(DBObject):
             for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
                 if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
                 cmd.append(schema.indent+foreign_key.get_sql() + ',')
-        cmd[-1] = cmd[-1][:-1]
-        cmd.append(')')
+        interleave_fks = [ fk for fk in table.foreign_keys.values() if fk.interleave ]
+        if interleave_fks:
+            assert len(interleave_fks) == 1
+            fk = interleave_fks[0]
+            cmd.append(schema.indent+fk.get_sql())
+            cmd.append(case(') INTERLEAVE IN PARENT %s (%s)') % (
+                quote_name(fk.parent_table.name),
+                ', '.join(quote_name(col.name) for col in fk.child_columns)
+            ))
+        else:
+            cmd[-1] = cmd[-1][:-1]
+            cmd.append(')')
         for name, value in sorted(table.options.items()):
             option = table.format_option(name, value)
             if option: cmd.append(option)
@@ -186,12 +196,14 @@ class Table(DBObject):
         if index and index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
             return index
         return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
-    def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns, index_name=None, on_delete=False):
+    def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns, index_name=None, on_delete=False,
+                        interleave=False):
         if fk_name is None:
             provider = table.schema.provider
             child_column_names = tuple(column.name for column in child_columns)
             fk_name = provider.get_default_fk_name(table.name, parent_table.name, child_column_names)
-        return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns, index_name, on_delete)
+        return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns, index_name, on_delete,
+                                     interleave=interleave)
 
 class Column(object):
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
@@ -329,7 +341,8 @@ class DBIndex(Constraint):
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns, index_name, on_delete):
+    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns, index_name, on_delete,
+                 interleave=False):
         schema = parent_table.schema
         if schema is not child_table.schema: throw(DBSchemaError,
             'Parent and child tables of foreign_key cannot belong to different schemata')
@@ -356,6 +369,7 @@ class ForeignKey(Constraint):
         foreign_key.child_table = child_table
         foreign_key.child_columns = child_columns
         foreign_key.on_delete = on_delete
+        foreign_key.interleave = interleave
 
         if index_name is not False:
             child_columns_len = len(child_columns)
