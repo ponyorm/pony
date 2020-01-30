@@ -81,12 +81,12 @@ class CRProvider(PGProvider):
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):
         assert not cache.in_transaction
+        db_session = cache.db_session
+        if db_session is not None and db_session.ddl:
+            cache.immediate = False
         if cache.immediate and connection.autocommit:
             connection.autocommit = False
             if core.local.debug: log_orm('SWITCH FROM AUTOCOMMIT TO TRANSACTION MODE')
-        db_session = cache.db_session
-        if db_session is not None and db_session.serializable:
-            pass
         elif not cache.immediate and not connection.autocommit:
             connection.autocommit = True
             if core.local.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
