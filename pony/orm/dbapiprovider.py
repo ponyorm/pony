@@ -45,34 +45,43 @@ class     NotSupportedError(DatabaseError): pass
 @decorator
 def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     dbapi_module = provider.dbapi_module
+    should_retry = False
     try:
-        if provider.dialect != 'SQLite':
-            return func(provider, *args, **kwargs)
-        else:
-            provider.local_exceptions.keep_traceback = True
-            try: return func(provider, *args, **kwargs)
-            finally: provider.local_exceptions.keep_traceback = False
-    except dbapi_module.NotSupportedError as e: raise NotSupportedError(e)
-    except dbapi_module.ProgrammingError as e:
-        if provider.dialect == 'PostgreSQL':
-            msg = str(e)
-            if msg.startswith('operator does not exist:') and ' json ' in msg:
-                msg += ' (Note: use column type `jsonb` instead of `json`)'
-                raise ProgrammingError(e, msg, *e.args[1:])
-        raise ProgrammingError(e)
-    except dbapi_module.InternalError as e: raise InternalError(e)
-    except dbapi_module.IntegrityError as e: raise IntegrityError(e)
-    except dbapi_module.OperationalError as e:
-        if provider.dialect == 'SQLite': provider.restore_exception()
-        raise OperationalError(e)
-    except dbapi_module.DataError as e: raise DataError(e)
-    except dbapi_module.DatabaseError as e: raise DatabaseError(e)
-    except dbapi_module.InterfaceError as e:
-        if e.args == (0, '') and getattr(dbapi_module, '__name__', None) == 'MySQLdb':
-            throw(InterfaceError, e, 'MySQL server misconfiguration')
-        raise InterfaceError(e)
-    except dbapi_module.Error as e: raise Error(e)
-    except dbapi_module.Warning as e: raise Warning(e)
+        try:
+            if provider.dialect != 'SQLite':
+                return func(provider, *args, **kwargs)
+            else:
+                provider.local_exceptions.keep_traceback = True
+                try: return func(provider, *args, **kwargs)
+                finally: provider.local_exceptions.keep_traceback = False
+        except dbapi_module.NotSupportedError as e: raise NotSupportedError(e)
+        except dbapi_module.ProgrammingError as e:
+            if provider.dialect == 'PostgreSQL':
+                msg = str(e)
+                if msg.startswith('operator does not exist:') and ' json ' in msg:
+                    msg += ' (Note: use column type `jsonb` instead of `json`)'
+                    raise ProgrammingError(e, msg, *e.args[1:])
+            raise ProgrammingError(e)
+        except dbapi_module.InternalError as e: raise InternalError(e)
+        except dbapi_module.IntegrityError as e: raise IntegrityError(e)
+        except dbapi_module.OperationalError as e:
+            if provider.dialect == 'PostgreSQL' and e.pgcode == '40001':
+                should_retry = True
+            if provider.dialect == 'SQLite':
+                provider.restore_exception()
+            raise OperationalError(e)
+        except dbapi_module.DataError as e: raise DataError(e)
+        except dbapi_module.DatabaseError as e: raise DatabaseError(e)
+        except dbapi_module.InterfaceError as e:
+            if e.args == (0, '') and getattr(dbapi_module, '__name__', None) == 'MySQLdb':
+                throw(InterfaceError, e, 'MySQL server misconfiguration')
+            raise InterfaceError(e)
+        except dbapi_module.Error as e: raise Error(e)
+        except dbapi_module.Warning as e: raise Warning(e)
+    except Exception as e:
+        if should_retry:
+            e.should_retry = True
+        raise
 
 def unexpected_args(attr, args):
     throw(TypeError, 'Unexpected positional argument{} for attribute {}: {}'.format(

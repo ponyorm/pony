@@ -530,14 +530,18 @@ class DBSessionContextManager(object):
                         return result
                     except:
                         exc_type, exc, tb = sys.exc_info()
-                        retry_exceptions = db_session.retry_exceptions
-                        if not callable(retry_exceptions):
-                            do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                        if getattr(exc, 'should_retry', False):
+                            do_retry = True
                         else:
-                            assert exc is not None  # exc can be None in Python 2.6
-                            do_retry = retry_exceptions(exc)
+                            retry_exceptions = db_session.retry_exceptions
+                            if not callable(retry_exceptions):
+                                do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                            else:
+                                assert exc is not None  # exc can be None in Python 2.6
+                                do_retry = retry_exceptions(exc)
                         if not do_retry:
                             raise
+                        rollback()
                     finally:
                         db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
