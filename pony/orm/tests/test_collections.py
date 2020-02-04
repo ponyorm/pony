@@ -5,8 +5,18 @@ import unittest
 
 from pony.orm.tests.testutils import raises_exception
 from pony.orm.tests.model1 import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestCollections(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        populate_db()
+
+    @classmethod
+    def tearDownClass(cls):
+        db.drop_all_tables(with_all_data=True)
 
     @db_session
     def test_setwrapper_len(self):

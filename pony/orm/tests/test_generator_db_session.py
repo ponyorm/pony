@@ -5,14 +5,16 @@ import unittest
 from pony.orm.core import *
 from pony.orm.core import local
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestGeneratorDbSession(unittest.TestCase):
     def setUp(self):
-        db = Database('sqlite', ':memory:')
+        db = Database()
         class Account(db.Entity):
             id = PrimaryKey(int)
             amount = Required(int)
-        db.generate_mapping(create_tables=True)
+        setup_database(db)
 
         self.db = db
         self.Account = Account
@@ -23,6 +25,7 @@ class TestGeneratorDbSession(unittest.TestCase):
             a3 = Account(id=3, amount=3000)
 
     def tearDown(self):
+        teardown_database(self.db)
         assert local.db_session is None
         self.db = self.Account = None
 

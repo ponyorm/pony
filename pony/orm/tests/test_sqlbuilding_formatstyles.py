@@ -6,6 +6,7 @@ from pony.orm.sqlbuilding import SQLBuilder
 from pony.orm.dbapiprovider import DBAPIProvider
 from pony.orm.tests.testutils import TestPool
 
+
 class TestFormatStyles(unittest.TestCase):
     def setUp(self):
         self.key1 = 'KEY1'

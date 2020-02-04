@@ -257,7 +257,7 @@ class SQLTranslator(ASTTranslator):
         translator.vartypes = vartypes
         translator.namespace_stack = [{}] if not parent_translator else [ parent_translator.namespace.copy() ]
         translator.func_extractors_map = {}
-        translator.getattr_values = {}
+        translator.fixed_param_values = {}
         translator.func_vartypes = {}
         translator.left_join = left_join
         translator.optimize = optimize
@@ -657,7 +657,9 @@ class SQLTranslator(ASTTranslator):
                           aggr_func_name=None, aggr_func_distinct=None, sep=None,
                           for_update=False, nowait=False, skip_locked=False, is_not_null_checks=False):
         attr_offsets = None
-        if distinct is None: distinct = translator.distinct
+        if distinct is None:
+            if not translator.order:
+                distinct = translator.distinct
         ast_transformer = lambda ast: ast
         if for_update:
             sql_ast = [ 'SELECT_FOR_UPDATE', nowait, skip_locked ]
@@ -1839,17 +1841,37 @@ class StringMixin(MonadMixin):
         assert issubclass(monad.type, basestring), monad.type
     __add__ = make_string_binop('+', 'CONCAT')
     def __getitem__(monad, index):
+        root_translator = monad.translator.root_translator
+        dialect = root_translator.database.provider.dialect
+
+        def param_to_const(monad, is_start=True):
+            if isinstance(monad, ParamMonad):
+                key = monad.paramkey[0]
+                if key in root_translator.fixed_param_values:
+                    index_value = root_translator.fixed_param_values[key]
+                else:
+                    index_value = root_translator.vars[key]
+                    if index_value is None:
+                        index_value = 0 if is_start else -1
+                    root_translator.fixed_param_values[key] = index_value
+                return ConstMonad.new(index_value)
+            return monad
+
         if isinstance(index, ListMonad): throw(TypeError, "String index must be of 'int' type. Got 'tuple' in {EXPR}")
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
-            if start is None and stop is None: return monad
-            if isinstance(monad, StringConstMonad) \
-               and (start is None or isinstance(start, NumericConstMonad)) \
-               and (stop is None or isinstance(stop, NumericConstMonad)):
-                if start is not None: start = start.value
-                if stop is not None: stop = stop.value
-                return ConstMonad.new(monad.value[start:stop])
+            start = param_to_const(start, is_start=True)
+            stop = param_to_const(stop, is_start=False)
+            start_value = stop_value = None
+            if start is None: start_value = 0
+            if stop_value is None: stop_value = -1
+            if isinstance(start, ConstMonad): start_value = start.value
+            if isinstance(stop, ConstMonad): stop_value = stop.value
+            if start_value == 0 and stop_value == -1:
+                return monad
+            if isinstance(monad, StringConstMonad) and start_value is not None and stop_value is not None:
+                return ConstMonad.new(monad.value[start_value:stop_value])
 
             if start is not None and start.type is not int:
                 throw(TypeError, "Invalid type of start index (expected 'int', got %r) in string slice {EXPR}" % type2str(start.type))
@@ -1857,46 +1879,34 @@ class StringMixin(MonadMixin):
                 throw(TypeError, "Invalid type of stop index (expected 'int', got %r) in string slice {EXPR}" % type2str(stop.type))
             expr_sql = monad.getsql()[0]
 
-            if start is None: start = ConstMonad.new(0)
+            start_sql = None if start is None else start.getsql()[0]
+            stop_sql = None if stop is None else stop.getsql()[0]
+            sql = [ 'STRING_SLICE', expr_sql, start_sql, stop_sql ]
+            return StringExprMonad(monad.type, sql, nullable=
+                monad.nullable or start is not None and start.nullable or stop is not None and stop.nullable)
 
-            if isinstance(start, NumericConstMonad):
-                if start.value < 0: throw(NotImplementedError, 'Negative indices are not supported in string slice {EXPR}')
-                start_sql = [ 'VALUE', start.value + 1 ]
-            else:
-                start_sql = start.getsql()[0]
-                start_sql = [ 'ADD', start_sql, [ 'VALUE', 1 ] ]
-
-            if stop is None:
-                len_sql = None
-            elif isinstance(stop, NumericConstMonad):
-                if stop.value < 0: throw(NotImplementedError, 'Negative indices are not supported in string slice {EXPR}')
-                if isinstance(start, NumericConstMonad):
-                    len_sql = [ 'VALUE', stop.value - start.value ]
-                else:
-                    len_sql = [ 'SUB', [ 'VALUE', stop.value ], start.getsql()[0] ]
-            else:
-                stop_sql = stop.getsql()[0]
-                if isinstance(start, NumericConstMonad):
-                    len_sql = [ 'SUB', stop_sql, [ 'VALUE', start.value ] ]
-                else:
-                    len_sql = [ 'SUB', stop_sql, start.getsql()[0] ]
-
-            sql = [ 'SUBSTR', expr_sql, start_sql, len_sql ]
-            return StringExprMonad(monad.type, sql,
-                                   nullable=monad.nullable or start.nullable or stop is not None and stop.nullable)
-
+        index = param_to_const(index)
         if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
             return ConstMonad.new(monad.value[index.value])
         if index.type is not int: throw(TypeError,
             'String indices must be integers. Got %r in expression {EXPR}' % type2str(index.type))
         expr_sql = monad.getsql()[0]
+
         if isinstance(index, NumericConstMonad):
             value = index.value
-            if value >= 0: value += 1
-            index_sql = [ 'VALUE', value ]
+            if dialect == 'PostgreSQL' and value < 0:
+                index_sql = [ 'LENGTH', expr_sql ]
+                if value < -1:
+                    index_sql = [ 'SUB', index_sql, [ 'VALUE', -(value + 1) ] ]
+            else:
+                if value >= 0: value += 1
+                index_sql = [ 'VALUE', value ]
         else:
             inner_sql = index.getsql()[0]
-            index_sql = [ 'ADD', inner_sql, [ 'CASE', None, [ (['GE', inner_sql, [ 'VALUE', 0 ]], [ 'VALUE', 1 ]) ], [ 'VALUE', 0 ] ] ]
+            then = ['ADD', inner_sql, ['VALUE', 1]]
+            else_ = [ 'ADD', ['LENGTH', expr_sql], then ] if dialect == 'PostgreSQL' else inner_sql
+            index_sql = [ 'IF', [ 'GE', inner_sql, [ 'VALUE', 0 ] ], then, else_ ]
+
         sql = [ 'SUBSTR', expr_sql, index_sql, [ 'VALUE', 1 ] ]
         return StringExprMonad(monad.type, sql, nullable=monad.nullable)
     def negate(monad):
@@ -2060,12 +2070,10 @@ class ArrayMixin(MonadMixin):
             expr_sql = monad.getsql()[0]
             index_sql = index.getsql()[0]
             value = index_sql[1]
-            if from_one and plus_one:
-                if value >= 0:
-                    index_sql = ['VALUE', value + 1]
-                else:
-                    index_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value) + 1]]
-
+            if value >= 0:
+                index_sql = ['VALUE', value + int(from_one and plus_one)]
+            else:
+                index_sql = ['SUB', ['ARRAY_LENGTH', expr_sql], ['VALUE', abs(value + int(from_one and plus_one))]]
             return index_sql
         elif isinstance(index, NumericMixin):
             expr_sql = monad.getsql()[0]
@@ -2753,10 +2761,13 @@ class FuncConcatMonad(FuncMonad):
     def call(monad, *args):
         if len(args) < 2: throw(TranslationError, 'concat() function requires at least two arguments')
         result_ast = [ 'CONCAT' ]
+        translator = monad.translator
         for arg in args:
             t = arg.type
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
+            if translator.database.provider_name == 'cockroach' and not isinstance(arg, StringMixin):
+                arg = arg.to_str()
             result_ast.extend(arg.getsql())
         return ExprMonad.new(unicode, result_ast, nullable=any(arg.nullable for arg in args))
 
@@ -2773,11 +2784,11 @@ class FuncGetattrMonad(FuncMonad):
         elif isinstance(name_monad, ParamMonad):
             translator = monad.translator.root_translator
             key = name_monad.paramkey[0]
-            if key in translator.getattr_values:
-                attrname = translator.getattr_values[key]
+            if key in translator.fixed_param_values:
+                attrname = translator.fixed_param_values[key]
             else:
                 attrname = translator.vars[key]
-                translator.getattr_values[key] = attrname
+                translator.fixed_param_values[key] = attrname
         else: throw(TranslationError, 'Expression `{EXPR}` cannot be translated into SQL '
                                       'because %s will be different for each row' % ast2src(name_monad.node))
         if not isinstance(attrname, basestring):
@@ -2882,7 +2893,7 @@ def minmax(monad, sqlop, *args):
         args = list(args)
         for i, arg in enumerate(args):
             if arg.type is bool:
-                args[i] = NumericExprMonad(int, [ 'TO_INT', arg.getsql() ], nullable=arg.nullable)
+                args[i] = NumericExprMonad(int, [ 'TO_INT', arg.getsql()[0] ], nullable=arg.nullable)
     sql = [ sqlop, None ] + [ arg.getsql()[0] for arg in args ]
     return ExprMonad.new(t, sql, nullable=any(arg.nullable for arg in args))
 
@@ -3048,7 +3059,10 @@ class AttrSetMonad(SetMixin, Monad):
                 else: make_aggr = lambda expr_list: [ 'COUNT', None, [ 'COUNT', None ] ]
         elif translator.dialect == 'PostgreSQL':
             row = [ 'ROW' ] + expr_list
-            expr = [ 'CASE', None, [ [ [ 'IS_NULL', row ], [ 'VALUE', None ] ] ], row ]
+            cond = [ 'IS_NULL', row ]
+            if translator.database.provider_name == 'cockroach':
+                cond = [ 'OR' ] + [ [ 'IS_NULL', expr ] for expr in expr_list ]
+            expr = [ 'CASE', None, [ [ cond, [ 'VALUE', None ] ] ], row ]
             make_aggr = lambda expr_list: [ 'COUNT', True, expr ]
         elif translator.row_value_syntax:
             make_aggr = lambda expr_list: [ 'COUNT', True ] + expr_list

@@ -76,7 +76,7 @@ class PGSQLBuilder(SQLBuilder):
     def DATE_SUB(builder, expr, delta):
         return '(', builder(expr), ' - ', builder(delta), ')'
     def DATE_DIFF(builder, expr1, expr2):
-        return builder(expr1), ' - ', builder(expr2)
+        return '((', builder(expr1), ' - ', builder(expr2), ") * interval '1 day')"
     def DATETIME_ADD(builder, expr, delta):
         return '(', builder(expr), ' + ', builder(delta), ')'
     def DATETIME_SUB(builder, expr, delta):
@@ -95,7 +95,7 @@ class PGSQLBuilder(SQLBuilder):
     def JSON_QUERY(builder, expr, path):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return '(', builder(expr), " #> ", path_sql, ')'
-    json_value_type_mapping = {bool: 'boolean', int: 'int', float: 'real'}
+    json_value_type_mapping = {bool: 'boolean', int: 'int', float: 'double precision'}
     def JSON_VALUE(builder, expr, path, type):
         if type is ormtypes.Json: return builder.JSON_QUERY(expr, path)
         path_sql, has_params, has_wildcards = builder.build_json_path(path)

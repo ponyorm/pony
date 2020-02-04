@@ -5,21 +5,27 @@ import unittest
 from pony.orm.core import *
 import pony.orm.decompiling
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Person(db.Entity):
     name = Required(unicode)
     age = Required(int)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    p1 = Person(name='John', age=22)
-    p2 = Person(name='Mary', age=18)
-    p3 = Person(name='Mike', age=25)
 
 class TestFrames(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            p1 = Person(id=1, name='John', age=22)
+            p2 = Person(id=2, name='Mary', age=18)
+            p3 = Person(id=3, name='Mike', age=25)
+
+    @classmethod
+    def tearDownClass(cls):
+        db.drop_all_tables(with_all_data=True)
 
     @db_session
     def test_select(self):

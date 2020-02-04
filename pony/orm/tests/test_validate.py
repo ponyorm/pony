@@ -3,30 +3,40 @@ import unittest, warnings
 from pony.orm import *
 from pony.orm import core
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import db_params, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Person(db.Entity):
     id = PrimaryKey(int)
     name = Required(str)
     tel = Optional(str)
 
-db.generate_mapping(check_tables=False)
 
-with db_session:
-    db.execute("""
-        create table Person(
-            id int primary key,
-            name text,
-            tel text
-        )
-    """)
+table_name = 'person'
 
 class TestValidate(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        db.bind(**db_params)
+        db.generate_mapping(check_tables=False)
+        db.drop_all_tables(with_all_data=True)
+        with db_session(ddl=True):
+            db.execute("""
+                create table "%s"(
+                    id int primary key,
+                    name text,
+                    tel text
+                )
+            """ % table_name)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
 
     @db_session
     def setUp(self):
-        db.execute('delete from Person')
+        db.execute('delete from "%s"' % table_name)
         registry = getattr(core, '__warningregistry__', {})
         for key in list(registry):
             if type(key) is not tuple: continue
@@ -38,7 +48,7 @@ class TestValidate(unittest.TestCase):
     def test_1a(self):
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', DatabaseContainsIncorrectEmptyValue)
-            db.insert('Person', id=1, name='', tel='111')
+            db.insert(table_name, id=1, name='', tel='111')
             p = Person.get(id=1)
             self.assertEqual(p.name, '')
 
@@ -48,14 +58,14 @@ class TestValidate(unittest.TestCase):
     def test_1b(self):
         with warnings.catch_warnings():
             warnings.simplefilter('error', DatabaseContainsIncorrectEmptyValue)
-            db.insert('Person', id=1, name='', tel='111')
+            db.insert(table_name, id=1, name='', tel='111')
             p = Person.get(id=1)
 
     @db_session
     def test_2a(self):
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', DatabaseContainsIncorrectEmptyValue)
-            db.insert('Person', id=1, name=None, tel='111')
+            db.insert(table_name, id=1, name=None, tel='111')
             p = Person.get(id=1)
             self.assertEqual(p.name, None)
 
@@ -65,7 +75,7 @@ class TestValidate(unittest.TestCase):
     def test_2b(self):
         with warnings.catch_warnings():
             warnings.simplefilter('error', DatabaseContainsIncorrectEmptyValue)
-            db.insert('Person', id=1, name=None, tel='111')
+            db.insert(table_name, id=1, name=None, tel='111')
             p = Person.get(id=1)
 
 

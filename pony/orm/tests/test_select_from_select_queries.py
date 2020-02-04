@@ -3,13 +3,16 @@ import unittest
 from pony.orm import *
 from pony.orm.tests.testutils import *
 from pony.py23compat import PYPY2
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Group(db.Entity):
     number = PrimaryKey(int)
     major = Required(str)
     students = Set('Student')
+
 
 class Student(db.Entity):
     first_name = Required(unicode)
@@ -23,6 +26,7 @@ class Student(db.Entity):
     def full_name(self):
         return self.first_name + ' ' + self.last_name
 
+
 class Course(db.Entity):
     name = Required(unicode)
     semester = Required(int)
@@ -30,22 +34,27 @@ class Course(db.Entity):
     PrimaryKey(name, semester)
     students = Set('Student')
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(number=123, major='Computer Science')
-    g2 = Group(number=456, major='Graphic Design')
-    s1 = Student(id=1, first_name='John', last_name='Smith', age=20, group=g1, scholarship=0)
-    s2 = Student(id=2, first_name='Alex', last_name='Green', age=24, group=g1, scholarship=100)
-    s3 = Student(id=3, first_name='Mary', last_name='White', age=23, group=g1, scholarship=500)
-    s4 = Student(id=4, first_name='John', last_name='Brown', age=20, group=g2, scholarship=400)
-    s5 = Student(id=5, first_name='Bruce', last_name='Lee', age=22, group=g2, scholarship=300)
-    c1 = Course(name='Math', semester=1, credits=10, students=[s1, s2, s4])
-    c2 = Course(name='Computer Science', semester=1, credits=20, students=[s2, s3])
-    c3 = Course(name='3D Modeling', semester=2, credits=15, students=[s3, s5])
-
 
 class TestSelectFromSelect(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(number=123, major='Computer Science')
+            g2 = Group(number=456, major='Graphic Design')
+            s1 = Student(id=1, first_name='John', last_name='Smith', age=20, group=g1, scholarship=0)
+            s2 = Student(id=2, first_name='Alex', last_name='Green', age=24, group=g1, scholarship=100)
+            s3 = Student(id=3, first_name='Mary', last_name='White', age=23, group=g1, scholarship=500)
+            s4 = Student(id=4, first_name='John', last_name='Brown', age=20, group=g2, scholarship=400)
+            s5 = Student(id=5, first_name='Bruce', last_name='Lee', age=22, group=g2, scholarship=300)
+            c1 = Course(name='Math', semester=1, credits=10, students=[s1, s2, s4])
+            c2 = Course(name='Computer Science', semester=1, credits=20, students=[s2, s3])
+            c3 = Course(name='3D Modeling', semester=2, credits=15, students=[s3, s5])
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     @db_session
     def test_1(self):  # basic select from another query
         q = select(s for s in Student if s.scholarship > 0)
@@ -375,7 +384,7 @@ class TestSelectFromSelect(unittest.TestCase):
     def test_44(self):
         q = select(s for s in Student).order_by(Student.first_name).limit(3, offset=1)
         q2 = select(s.first_name for s in q)
-        self.assertEqual(set(q2), {'Bruce', 'John', 'Mary'})
+        self.assertEqual(list(q2), ['Bruce', 'John', 'John'])
 
     @db_session
     def test_45(self):
@@ -386,7 +395,7 @@ class TestSelectFromSelect(unittest.TestCase):
 
     @db_session
     def test_46(self):
-        q = select((c, count(c.students)) for c in Course).order_by(-2).limit(2)
+        q = select((c, count(c.students)) for c in Course).order_by(-2, 1).limit(2)
         q2 = select((c.name, c.credits, m) for c, m in q).limit(1, offset=1)
         self.assertEqual(set(q2), {('3D Modeling', 15, 2)})
 

@@ -530,14 +530,18 @@ class DBSessionContextManager(object):
                         return result
                     except:
                         exc_type, exc, tb = sys.exc_info()
-                        retry_exceptions = db_session.retry_exceptions
-                        if not callable(retry_exceptions):
-                            do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                        if getattr(exc, 'should_retry', False):
+                            do_retry = True
                         else:
-                            assert exc is not None  # exc can be None in Python 2.6
-                            do_retry = retry_exceptions(exc)
+                            retry_exceptions = db_session.retry_exceptions
+                            if not callable(retry_exceptions):
+                                do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                            else:
+                                assert exc is not None  # exc can be None in Python 2.6
+                                do_retry = retry_exceptions(exc)
                         if not do_retry:
                             raise
+                        rollback()
                     finally:
                         db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
@@ -1125,7 +1129,8 @@ class Database(object):
                         on_delete = 'SET NULL'
                     else:
                         on_delete = None
-                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index, on_delete)
+                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index,
+                                          on_delete, interleave=attr.interleave)
                 elif attr.index and attr.columns:
                     if isinstance(attr.py_type, Array) and provider.dialect != 'PostgreSQL':
                         pass  # GIN indexes are supported only in PostgreSQL
@@ -1745,7 +1750,7 @@ class SessionCache(object):
         cache.objects_to_save = []
         cache.saved_objects = []
         cache.query_results = {}
-        cache.dbvals_deduplication_cache = {}
+        cache.dbvals_deduplication_cache = defaultdict(dict)
         cache.modified = False
         cache.db_session = db_session = local.db_session
         cache.immediate = db_session is not None and db_session.immediate
@@ -2012,7 +2017,7 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'reverse_index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic', 'fk_name', 'type_has_empty_value'
+                'optimistic', 'fk_name', 'type_has_empty_value', 'interleave'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -2084,6 +2089,7 @@ class Attribute(object):
         attr.sql_default = kwargs.pop('sql_default', None)
         attr.py_check = kwargs.pop('py_check', None)
         attr.hidden = kwargs.pop('hidden', False)
+        attr.interleave = kwargs.pop('interleave', None)
         attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
@@ -2136,6 +2142,12 @@ class Attribute(object):
             elif attr.is_unique: throw(TypeError, 'Unique attribute %s cannot be of type float' % attr)
         if attr.is_volatile and (attr.is_pk or attr.is_collection): throw(TypeError,
             '%s attribute %s cannot be volatile' % (attr.__class__.__name__, attr))
+
+        if attr.interleave is not None:
+            if attr.is_collection: throw(TypeError,
+                '`interleave` option cannot be specified for %s attribute %r' % (attr.__class__.__name__, attr))
+            if attr.interleave not in (True, False): throw(TypeError,
+                '`interleave` option value should be True, False or None. Got: %r' % attr.interleave)
     def linked(attr):
         reverse = attr.reverse
         if attr.cascade_delete is None:
@@ -3745,6 +3757,21 @@ class EntityMeta(type):
             attr._init_(entity, name)
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
+
+        interleave_attrs = []
+        for attr in new_attrs:
+            if attr.interleave is not None:
+                if attr.interleave:
+                    interleave_attrs.append(attr)
+        entity._interleave_ = None
+        if interleave_attrs:
+            if len(interleave_attrs) > 1: throw(TypeError,
+                'only one attribute may be marked as interleave. Got: %s'
+                % ', '.join(repr(attr) for attr in interleave_attrs))
+            interleave = interleave_attrs[0]
+            if not interleave.is_relation: throw(TypeError,
+                'Interleave attribute should be part of relationship. Got: %r' % attr)
+            entity._interleave_ = interleave
 
         indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:
@@ -5741,9 +5768,9 @@ class Query(object):
                     all_func_vartypes.update(func_vartypes)
                 if all_func_vartypes != translator.func_vartypes:
                     return None, vars.copy()
-            for key, attrname in iteritems(translator.getattr_values):
+            for key, val in iteritems(translator.fixed_param_values):
                 assert key in new_vars
-                if attrname != new_vars[key]:
+                if val != new_vars[key]:
                     del database._translator_cache[query_key]
                     return None, vars.copy()
         return translator, new_vars
@@ -5758,7 +5785,7 @@ class Query(object):
         sql_key = HashableDict(
             query._key,
             vartypes=HashableDict(query._translator.vartypes),
-            getattr_values=HashableDict(translator.getattr_values),
+            fixed_param_values=HashableDict(translator.fixed_param_values),
             limit=limit,
             offset=offset,
             distinct=query._distinct,

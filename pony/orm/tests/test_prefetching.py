@@ -4,8 +4,10 @@ from datetime import date
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Student(db.Entity):
     name = Required(str)
@@ -17,36 +19,45 @@ class Student(db.Entity):
     mentor = Optional('Teacher')
     biography = Optional(LongStr)
 
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     major = Required(str, lazy=True)
     students = Set(Student)
 
+
 class Course(db.Entity):
     name = Required(str, unique=True)
     students = Set(Student)
+
 
 class Teacher(db.Entity):
     name = Required(str)
     students = Set(Student)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(number=1, major='Math')
-    g2 = Group(number=2, major='Computer Sciense')
-    c1 = Course(name='Math')
-    c2 = Course(name='Physics')
-    c3 = Course(name='Computer Science')
-    t1 = Teacher(name='T1')
-    t2 = Teacher(name='T2')
-    Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='S1 bio', mentor=t1)
-    Student(id=2, name='S2', group=g1, gpa=4.2, scholarship=100, dob=date(2000, 1, 1), biography='S2 bio')
-    Student(id=3, name='S3', group=g1, gpa=4.7, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
-    Student(id=4, name='S4', group=g2, gpa=3.2, biography='S4 bio', courses=[c1, c3], mentor=t2)
-    Student(id=5, name='S5', group=g2, gpa=4.5, biography='S5 bio', courses=[c1, c3])
 
 class TestPrefetching(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(number=1, major='Math')
+            g2 = Group(number=2, major='Computer Sciense')
+            c1 = Course(name='Math')
+            c2 = Course(name='Physics')
+            c3 = Course(name='Computer Science')
+            t1 = Teacher(name='T1')
+            t2 = Teacher(name='T2')
+            Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='S1 bio', mentor=t1)
+            Student(id=2, name='S2', group=g1, gpa=4.2, scholarship=100, dob=date(2000, 1, 1), biography='S2 bio')
+            Student(id=3, name='S3', group=g1, gpa=4.7, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
+            Student(id=4, name='S4', group=g2, gpa=3.2, biography='S4 bio', courses=[c1, c3], mentor=t2)
+            Student(id=5, name='S5', group=g2, gpa=4.5, biography='S5 bio', courses=[c1, c3])
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def test_1(self):
         with db_session:
             s1 = Student.select().first()
@@ -115,11 +126,14 @@ class TestPrefetching(unittest.TestCase):
         with db_session:
             s1 = Student.select().prefetch(Student.biography).first()
         self.assertEqual(s1.biography, 'S1 bio')
-        self.assertEqual(db.last_sql,
-'''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."mentor", "s"."biography"
-FROM "Student" "s"
+        table_name = 'Student' if db.provider.dialect == 'SQLite' and pony.__version__ < '0.9' else 'student'
+        expected_sql = '''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."mentor", "s"."biography"
+FROM "%s" "s"
 ORDER BY 1
-LIMIT 1''')
+LIMIT 1''' % table_name
+        if db.provider.dialect == 'SQLite' and pony.__version__ >= '0.9':
+            expected_sql = expected_sql.replace('"', '`')
+        self.assertEqual(db.last_sql, expected_sql)
 
     def test_13(self):
         db.merge_local_stats()

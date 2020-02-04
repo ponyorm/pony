@@ -6,12 +6,13 @@ from pony.orm import *
 from pony import orm
 from pony.utils import cached_property
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import db_params, setup_database, teardown_database
 
 class Test(unittest.TestCase):
 
     @cached_property
     def db(self):
-        return orm.Database('sqlite', ':memory:')
+        return orm.Database()
 
     def setUp(self):
         db = self.db
@@ -30,7 +31,7 @@ class Test(unittest.TestCase):
             hobbies = orm.Set(Hobby)
             genres = orm.Set(Genre)
 
-        db.generate_mapping(check_tables=True, create_tables=True)
+        setup_database(db)
 
         with orm.db_session:
             pop = Genre(name='Pop')
@@ -38,7 +39,10 @@ class Test(unittest.TestCase):
             Hobby(name='Swimming')
 
         pony.options.INNER_JOIN_SYNTAX = True
-    
+
+    def tearDown(self):
+        teardown_database(self.db)
+
     @db_session
     def test_no_caching(self):
         for attr_name, attr_type in zip(['name', 'age'], [basestring, int]):

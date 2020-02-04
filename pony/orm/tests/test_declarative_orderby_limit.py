@@ -4,24 +4,31 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Student(db.Entity):
     name = Required(unicode)
     scholarship = Optional(int)
     group = Required(int)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    Student(id=1, name="B", scholarship=None, group=41)
-    Student(id=2, name="C", scholarship=700, group=41)
-    Student(id=3, name="A", scholarship=500, group=42)
-    Student(id=4, name="D", scholarship=500, group=43)
-    Student(id=5, name="E", scholarship=700, group=42)
 
 class TestOrderbyLimit(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            Student(id=1, name="B", scholarship=None, group=41)
+            Student(id=2, name="C", scholarship=700, group=41)
+            Student(id=3, name="A", scholarship=500, group=42)
+            Student(id=4, name="D", scholarship=500, group=43)
+            Student(id=5, name="E", scholarship=700, group=42)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -119,7 +126,11 @@ class TestOrderbyLimit(unittest.TestCase):
     def test20(self):
         q = select(s for s in Student).limit(offset=2)
         self.assertEqual(set(q), {Student[3], Student[4], Student[5]})
-        self.assertTrue('LIMIT -1 OFFSET 2' in db.last_sql)
+        last_sql = db.last_sql
+        if db.provider.dialect == 'PostgreSQL':
+            self.assertTrue('LIMIT null OFFSET 2' in last_sql)
+        else:
+            self.assertTrue('LIMIT -1 OFFSET 2' in last_sql)
 
     def test21(self):
         q = select(s for s in Student).limit(0, offset=2)

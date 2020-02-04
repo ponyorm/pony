@@ -4,11 +4,19 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import db_params, teardown_database
+
 
 class TestInheritance(unittest.TestCase):
+    def setUp(self):
+        self.db = Database(**db_params)
+
+    def tearDown(self):
+        if self.db.schema:
+            teardown_database(self.db)
 
     def test_0(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             id = PrimaryKey(int)
 
@@ -17,7 +25,7 @@ class TestInheritance(unittest.TestCase):
         self.assertEqual(Entity1._discriminator_, None)
 
     def test_1(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             id = PrimaryKey(int)
         class Entity2(Entity1):
@@ -43,7 +51,7 @@ class TestInheritance(unittest.TestCase):
     @raises_exception(ERDiagramError, "Multiple inheritance graph must be diamond-like. "
         "Entity Entity3 inherits from Entity1 and Entity2 entities which don't have common base class.")
     def test_2(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = PrimaryKey(int)
         class Entity2(db.Entity):
@@ -55,7 +63,7 @@ class TestInheritance(unittest.TestCase):
                                       'because both entities inherit from Entity1. '
                                       'To fix this, move attribute definition to base class')
     def test_3a(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             id = PrimaryKey(int)
         class Entity2(Entity1):
@@ -64,7 +72,7 @@ class TestInheritance(unittest.TestCase):
             a = Required(int)
 
     def test3b(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             id = PrimaryKey(int)
         class Entity2(Entity1):
@@ -80,7 +88,7 @@ class TestInheritance(unittest.TestCase):
 
     @raises_exception(ERDiagramError, "Name 'a' hides base attribute Entity1.a")
     def test_4(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             id = PrimaryKey(int)
             a = Required(int)
@@ -89,14 +97,14 @@ class TestInheritance(unittest.TestCase):
 
     @raises_exception(ERDiagramError, "Primary key cannot be redefined in derived classes")
     def test_5(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = PrimaryKey(int)
         class Entity2(Entity1):
             b = PrimaryKey(int)
 
     def test_6(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = Discriminator(str)
             b = Required(int)
@@ -109,7 +117,7 @@ class TestInheritance(unittest.TestCase):
     @raises_exception(TypeError, "Discriminator value for entity Entity1 "
                                  "with custom discriminator column 'a' of 'int' type is not set")
     def test_7(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = Discriminator(int)
             b = Required(int)
@@ -117,7 +125,7 @@ class TestInheritance(unittest.TestCase):
             c = Required(int)
 
     def test_8(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             _discriminator_ = 1
             a = Discriminator(int)
@@ -127,8 +135,8 @@ class TestInheritance(unittest.TestCase):
             c = Required(int)
         db.generate_mapping(create_tables=True)
         with db_session:
-            x = Entity1(b=10)
-            y = Entity2(b=10, c=20)
+            x = Entity1(id=1, b=10)
+            y = Entity2(id=2, b=10, c=20)
         with db_session:
             x = Entity1[1]
             y = Entity1[2]
@@ -138,7 +146,7 @@ class TestInheritance(unittest.TestCase):
             self.assertEqual(y.a, 2)
 
     def test_9(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             _discriminator_ = '1'
             a = Discriminator(int)
@@ -148,8 +156,8 @@ class TestInheritance(unittest.TestCase):
             c = Required(int)
         db.generate_mapping(create_tables=True)
         with db_session:
-            x = Entity1(b=10)
-            y = Entity2(b=10, c=20)
+            x = Entity1(id=1, b=10)
+            y = Entity2(id=2, b=10, c=20)
         with db_session:
             x = Entity1[1]
             y = Entity1[2]
@@ -160,7 +168,7 @@ class TestInheritance(unittest.TestCase):
 
     @raises_exception(TypeError, "Incorrect discriminator value is set for Entity2 attribute 'a' of 'int' type: 'zzz'")
     def test_10(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             _discriminator_ = 1
             a = Discriminator(int)
@@ -170,7 +178,7 @@ class TestInheritance(unittest.TestCase):
             c = Required(int)
 
     def test_11(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             _discriminator_ = 1
             a = Discriminator(int)
@@ -179,7 +187,7 @@ class TestInheritance(unittest.TestCase):
 
     @raises_exception(ERDiagramError, 'Invalid use of attribute Entity1.a in entity Entity2')
     def test_12(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = Required(int)
         class Entity2(db.Entity):
@@ -187,7 +195,7 @@ class TestInheritance(unittest.TestCase):
             composite_index(Entity1.a, b)
 
     def test_13(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = Required(int)
         class Entity2(Entity1):
@@ -197,7 +205,7 @@ class TestInheritance(unittest.TestCase):
                           [ (Entity2.id,), (Entity2.a, Entity2.b) ])
 
     def test_14(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             d = Discriminator(str)
             a = Required(int)
@@ -208,7 +216,7 @@ class TestInheritance(unittest.TestCase):
                           [ (Entity2.id,), (Entity2.d, Entity2.a, Entity2.b) ])
 
     def test_15(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             d = Discriminator(str)
             a = Required(int)
@@ -219,7 +227,7 @@ class TestInheritance(unittest.TestCase):
                          [ (Entity2.id,), (Entity2.d, Entity2.id, Entity2.a, Entity2.b) ])
 
     def test_16(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = Required(int)
         class Entity2(Entity1):
@@ -229,7 +237,7 @@ class TestInheritance(unittest.TestCase):
                          [ (Entity2.id,), (Entity2.classtype, Entity2.id, Entity2.a, Entity2.b) ])
 
     def test_17(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             t = Discriminator(str)
             a = Required(int)
@@ -241,24 +249,24 @@ class TestInheritance(unittest.TestCase):
                          [ (Entity1.id,), (Entity1.t, Entity1.a, Entity1.b) ])
 
     def test_18(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = Required(int)
-        class Entity2(db.Entity1):
+        class Entity2(Entity1):
             b = Required(int)
         class Entity3(Entity1):
             c = Required(int)
         db.generate_mapping(create_tables=True)
         with db_session:
-            x = Entity1(a=10)
-            y = Entity2(a=20, b=30)
-            z = Entity3(a=40, c=50)
+            x = Entity1(id=1, a=10)
+            y = Entity2(id=2, a=20, b=30)
+            z = Entity3(id=3, a=40, c=50)
         with db_session:
             result = select(e for e in Entity1 if e.b == 30 or e.c == 50)
             self.assertEqual([ e.id for e in result ], [ 2, 3 ])
 
     def test_discriminator_1(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Entity1(db.Entity):
             a = Discriminator(str)
             b = Required(int)
@@ -283,7 +291,7 @@ class TestInheritance(unittest.TestCase):
 
     @raises_exception(TypeError, "Invalid discriminator attribute value for Foo. Expected: 'Foo', got: 'Baz'")
     def test_discriminator_2(self):
-        db = Database('sqlite', ':memory:')
+        db = self.db
         class Foo(db.Entity):
             id = PrimaryKey(int)
             a = Discriminator(str)

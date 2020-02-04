@@ -8,8 +8,9 @@ from decimal import Decimal
 from pony.orm.core import *
 from pony.orm.sqltranslation import IncomparableTypesError
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Student(db.Entity):
     id = PrimaryKey(int)
@@ -25,29 +26,31 @@ class Group(db.Entity):
     students = Set(Student)
 
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(number=1)
-    g2 = Group(number=2)
-
-    Student(id=1, name="AA", dob=date(1981, 1, 1), last_visit=datetime(2011, 1, 1, 11, 11, 11),
-                   scholarship=Decimal("0"), phd=True, group=g1)
-
-    Student(id=2, name="BB", dob=date(1982, 2, 2), last_visit=datetime(2011, 2, 2, 12, 12, 12),
-                   scholarship=Decimal("202.2"), phd=True, group=g1)
-
-    Student(id=3, name="CC", dob=date(1983, 3, 3), last_visit=datetime(2011, 3, 3, 13, 13, 13),
-                   scholarship=Decimal("303.3"), phd=False, group=g1)
-
-    Student(id=4, name="DD", dob=date(1984, 4, 4), last_visit=datetime(2011, 4, 4, 14, 14, 14),
-                   scholarship=Decimal("404.4"), phd=False, group=g2)
-
-    Student(id=5, name="EE", dob=date(1985, 5, 5), last_visit=datetime(2011, 5, 5, 15, 15, 15),
-                   scholarship=Decimal("505.5"), phd=False, group=g2)
-
-
 class TestFuncMonad(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(number=1)
+            g2 = Group(number=2)
+
+            Student(id=1, name="AA", dob=date(1981, 1, 1), last_visit=datetime(2011, 1, 1, 11, 11, 11),
+                    scholarship=Decimal("0"), phd=True, group=g1)
+
+            Student(id=2, name="BB", dob=date(1982, 2, 2), last_visit=datetime(2011, 2, 2, 12, 12, 12),
+                    scholarship=Decimal("202.2"), phd=True, group=g1)
+
+            Student(id=3, name="CC", dob=date(1983, 3, 3), last_visit=datetime(2011, 3, 3, 13, 13, 13),
+                    scholarship=Decimal("303.3"), phd=False, group=g1)
+
+            Student(id=4, name="DD", dob=date(1984, 4, 4), last_visit=datetime(2011, 4, 4, 14, 14, 14),
+                    scholarship=Decimal("404.4"), phd=False, group=g2)
+
+            Student(id=5, name="EE", dob=date(1985, 5, 5), last_visit=datetime(2011, 5, 5, 15, 15, 15),
+                    scholarship=Decimal("505.5"), phd=False, group=g2)
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -130,7 +133,10 @@ class TestFuncMonad(unittest.TestCase):
         self.assertEqual(result, {Student[3], Student[4], Student[5]})
     def test_concat_1(self):
         result = set(select(concat(s.name, ':', s.dob.year, ':', s.scholarship) for s in Student))
-        self.assertEqual(result, {'AA:1981:0', 'BB:1982:202.2', 'CC:1983:303.3', 'DD:1984:404.4', 'EE:1985:505.5'})
+        if db.provider.dialect == 'PostgreSQL':
+            self.assertEqual(result, {'AA:1981:0.00', 'BB:1982:202.20', 'CC:1983:303.30', 'DD:1984:404.40', 'EE:1985:505.50'})
+        else:
+            self.assertEqual(result, {'AA:1981:0', 'BB:1982:202.2', 'CC:1983:303.3', 'DD:1984:404.4', 'EE:1985:505.5'})
     @raises_exception(TranslationError, 'Invalid argument of concat() function: g.students')
     def test_concat_2(self):
         result = set(select(concat(g.number, g.students) for g in Group))

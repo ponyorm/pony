@@ -4,8 +4,9 @@ import unittest
 
 
 from pony.orm.core import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Department(db.Entity):
     number = PrimaryKey(int)
@@ -27,33 +28,40 @@ class Course(db.Entity):
     department = Required(Department)
     students = Set('Student')
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    d1 = Department(number=1)
-    d2 = Department(number=2)
-    d3 = Department(number=3)
-
-    g1 = Group(number=101, department=d1)
-    g2 = Group(number=102, department=d1)
-    g3 = Group(number=201, department=d2)
-
-    c1 = Course(name='C1', department=d1)
-    c2 = Course(name='C2', department=d1)
-    c3 = Course(name='C3', department=d2)
-    c4 = Course(name='C4', department=d2)
-    c5 = Course(name='C5', department=d3)
-
-    s1 = Student(name='S1', group=g1, courses=[c1, c2])
-    s2 = Student(name='S2', group=g1, courses=[c1, c3])
-    s3 = Student(name='S3', group=g1, courses=[c2, c3])
-
-    s4 = Student(name='S4', group=g2, courses=[c1, c2])
-    s5 = Student(name='S5', group=g2, courses=[c1, c2])
-
-    s6 = Student(name='A', group=g3, courses=[c5])
 
 class TestMultiset(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+        with db_session:
+            d1 = Department(number=1)
+            d2 = Department(number=2)
+            d3 = Department(number=3)
+
+            g1 = Group(number=101, department=d1)
+            g2 = Group(number=102, department=d1)
+            g3 = Group(number=201, department=d2)
+
+            c1 = Course(name='C1', department=d1)
+            c2 = Course(name='C2', department=d1)
+            c3 = Course(name='C3', department=d2)
+            c4 = Course(name='C4', department=d2)
+            c5 = Course(name='C5', department=d3)
+
+            s1 = Student(name='S1', group=g1, courses=[c1, c2])
+            s2 = Student(name='S2', group=g1, courses=[c1, c3])
+            s3 = Student(name='S3', group=g1, courses=[c2, c3])
+
+            s4 = Student(name='S4', group=g2, courses=[c1, c2])
+            s5 = Student(name='S5', group=g2, courses=[c1, c2])
+
+            s6 = Student(name='A', group=g3, courses=[c5])
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
 
     @db_session
     def test_multiset_repr_1(self):
@@ -137,6 +145,7 @@ class TestMultiset(unittest.TestCase):
             multiset_2 = d.groups.students
             multiset_1 = pickle.loads(s)
             self.assertEqual(multiset_1, multiset_2)
+
 
 if __name__ == '__main__':
     unittest.main()

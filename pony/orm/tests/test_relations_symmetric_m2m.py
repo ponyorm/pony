@@ -2,15 +2,25 @@ from __future__ import absolute_import, print_function, division
 
 import unittest
 from pony.orm.core import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Person(db.Entity):
     name = Required(unicode)
     friends = Set('Person', reverse='friends')
-db.generate_mapping(create_tables=True)
+
 
 class TestSymmetricM2M(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             for p in Person.select(): p.delete()

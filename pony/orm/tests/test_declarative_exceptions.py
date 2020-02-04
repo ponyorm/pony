@@ -8,8 +8,9 @@ from decimal import Decimal
 from pony.orm.core import *
 from pony.orm.sqltranslation import IncomparableTypesError
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -34,16 +35,20 @@ class Course(db.Entity):
     PrimaryKey(name, semester)
     students = Set(Student)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    d1 = Department(number=44)
-    g1 = Group(number=101, dept=d1)
-    Student(name='S1', group=g1)
-    Student(name='S2', group=g1)
-    Student(name='S3', group=g1)
 
 class TestSQLTranslatorExceptions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            d1 = Department(number=44)
+            g1 = Group(number=101, dept=d1)
+            Student(name='S1', group=g1)
+            Student(name='S2', group=g1)
+            Student(name='S3', group=g1)
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -118,9 +123,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
                                  % unicode.__name__)
     def test19(self):
         select(s for s in Student if s.name[1:'a'] == 'A')
-    @raises_exception(NotImplementedError, "Negative indices are not supported in string slice s.name[-1:1]")
-    def test20(self):
-        select(s for s in Student if s.name[-1:1] == 'A')
     @raises_exception(TypeError, "String indices must be integers. Got '%s' in expression s.name['a']" % unicode.__name__)
     def test21(self):
         select(s.name for s in Student if s.name['a'] == 'h')

@@ -110,9 +110,9 @@ def flat(tree):
         x = stack_pop()
         if isinstance(x, basestring): result_append(x)
         else:
-            try: stack_extend(reversed(x))
+            try: stack_extend(x)
             except TypeError: result_append(x)
-    return result
+    return result[::-1]
 
 def flat_conditions(conditions):
     result = []
@@ -472,7 +472,10 @@ class SQLBuilder(object):
         assert distinct in (None, True, False)
         if not distinct:
             if not expr_list: return ['COUNT(*)']
-            return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
+            if builder.dialect == 'PostgreSQL':
+                return 'COUNT(', builder.ROW(*expr_list), ')'
+            else:
+                return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
         if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
         if len(expr_list) == 1:
             return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
@@ -520,6 +523,93 @@ class SQLBuilder(object):
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
         return 'substr(', builder(expr), ', ', builder(start), ', ', builder(len), ')'
+    def STRING_SLICE(builder, expr, start, stop):
+        if start is None:
+            start = [ 'VALUE', 0 ]
+
+        if start[0] == 'VALUE':
+            start_value = start[1]
+            if builder.dialect == 'PostgreSQL' and start_value < 0:
+                index_sql = [ 'LENGTH', expr ]
+                if start_value < -1:
+                    index_sql = [ 'SUB', index_sql, [ 'VALUE', -(start_value + 1) ] ]
+            else:
+                if start_value >= 0: start_value += 1
+                index_sql = [ 'VALUE', start_value ]
+        else:
+            inner_sql = start
+            then = [ 'ADD', inner_sql, [ 'VALUE', 1 ] ]
+            else_ = [ 'ADD', [ 'LENGTH', expr ], then ] if builder.dialect == 'PostgreSQL' else inner_sql
+            index_sql = [ 'IF', [ 'GE', inner_sql, [ 'VALUE', 0 ] ], then, else_ ]
+
+        if stop is None:
+            len_sql = None
+        elif stop[0] == 'VALUE':
+            stop_value = stop[1]
+            if start[0] == 'VALUE':
+                start_value = start[1]
+                if start_value >= 0 and stop_value >= 0:
+                    len_sql = [ 'VALUE', stop_value - start_value ]
+                elif start_value < 0 and stop_value < 0:
+                    len_sql = [ 'VALUE', stop_value - start_value ]
+                elif start_value >= 0 and stop_value < 0:
+                    len_sql = [ 'SUB', [ 'LENGTH', expr ], [ 'VALUE', start_value - stop_value ]]
+                    len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+                elif start_value < 0 and stop_value >= 0:
+                    len_sql = [ 'SUB', [ 'VALUE', stop_value + 1 ], index_sql ]
+                    len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+                else:
+                    assert False  # pragma: nocover1
+            else:
+                start_sql = [ 'COALESCE', start, [ 'VALUE', 0 ] ]
+                if stop_value >= 0:
+                    start_positive = [ 'SUB', stop, start_sql ]
+                    start_negative = [ 'SUB', [ 'VALUE', stop_value + 1 ], index_sql ]
+                else:
+                    start_positive = [ 'SUB', [ 'LENGTH', expr ], [ 'ADD', start_sql, [ 'VALUE', -stop_value ] ] ]
+                    start_negative = [ 'SUB', stop, start_sql]
+                len_sql = [ 'IF', [ 'GE', start_sql, [ 'VALUE', 0 ] ], start_positive, start_negative ]
+                len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+        else:
+            stop_sql = [ 'COALESCE', stop, [ 'VALUE', -1 ] ]
+            if start[0] == 'VALUE':
+                start_value = start[1]
+                start_sql = [ 'VALUE', start_value ]
+                if start_value >= 0:
+                    stop_positive = [ 'SUB', stop_sql, start_sql ]
+                    stop_negative = [ 'SUB', [ 'LENGTH', expr ], [ 'SUB', start_sql, stop_sql ] ]
+                else:
+                    stop_positive = [ 'SUB', [ 'ADD', stop_sql, [ 'VALUE', 1 ] ], index_sql ]
+                    stop_negative = [ 'SUB', stop_sql, start_sql]
+                len_sql = [ 'IF', [ 'GE', stop_sql, [ 'VALUE', 0 ] ], stop_positive, stop_negative ]
+                len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+            else:
+                start_sql = [ 'COALESCE', start, [ 'VALUE', 0 ] ]
+                both_positive = [ 'SUB', stop_sql, start_sql ]
+                both_negative = both_positive
+                start_positive = [ 'SUB', [ 'LENGTH', expr ], [ 'SUB', start_sql, stop_sql ] ]
+                stop_positive = [ 'SUB', [ 'ADD', stop_sql, [ 'VALUE', 1 ] ], index_sql ]
+                len_sql = [ 'CASE', None, [
+                    (
+                        [ 'AND', [ 'GE', start_sql, [ 'VALUE', 0 ] ], [ 'GE', stop_sql, [ 'VALUE', 0 ] ] ],
+                        both_positive
+                    ),
+                    (
+                        [ 'AND', [ 'LT', start_sql, [ 'VALUE', 0 ] ], [ 'LT', stop_sql, [ 'VALUE', 0 ] ] ],
+                        both_negative
+                    ),
+                    (
+                        [ 'AND', [ 'GE', start_sql, [ 'VALUE', 0 ] ], [ 'LT', stop_sql, [ 'VALUE', 0 ] ] ],
+                        start_positive
+                    ),
+                    (
+                        [ 'AND', [ 'LT', start_sql, [ 'VALUE', 0 ] ], [ 'GE', stop_sql, [ 'VALUE', 0 ] ] ],
+                        stop_positive
+                    ),
+                ]]
+                len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+        sql = [ 'SUBSTR', expr, index_sql, len_sql ]
+        return builder(sql)
     def CASE(builder, expr, cases, default=None):
         if expr is None and default is not None and default[0] == 'CASE' and default[1] is None:
             cases2, default2 = default[2:]
@@ -534,6 +624,8 @@ class SQLBuilder(object):
             result.extend((' else ', builder(default)))
         result.append(' end')
         return result
+    def IF(builder, cond, then, else_):
+        return builder.CASE(None, [(cond, then)], else_)
     def TRIM(builder, expr, chars=None):
         if chars is None: return 'trim(', builder(expr), ')'
         return 'trim(', builder(expr), ', ', builder(chars), ')'

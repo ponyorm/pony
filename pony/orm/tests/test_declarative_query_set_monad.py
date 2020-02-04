@@ -4,8 +4,9 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Group(db.Entity):
     id = PrimaryKey(int)
@@ -24,20 +25,25 @@ class Course(db.Entity):
     PrimaryKey(name, semester)
     students = Set('Student')
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(id=1)
-    g2 = Group(id=2)
-    s1 = Student(id=1, name='S1', age=20, group=g1, scholarship=0)
-    s2 = Student(id=2, name='S2', age=23, group=g1, scholarship=100)
-    s3 = Student(id=3, name='S3', age=23, group=g2, scholarship=500)
-    c1 = Course(name='C1', semester=1, students=[s1, s2])
-    c2 = Course(name='C2', semester=1, students=[s2, s3])
-    c3 = Course(name='C3', semester=2, students=[s3])
-
 
 class TestQuerySetMonad(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(id=1)
+            g2 = Group(id=2)
+            s1 = Student(id=1, name='S1', age=20, group=g1, scholarship=0)
+            s2 = Student(id=2, name='S2', age=23, group=g1, scholarship=100)
+            s3 = Student(id=3, name='S3', age=23, group=g2, scholarship=500)
+            c1 = Course(name='C1', semester=1, students=[s1, s2])
+            c2 = Course(name='C2', semester=1, students=[s2, s3])
+            c3 = Course(name='C3', semester=2, students=[s3])
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()

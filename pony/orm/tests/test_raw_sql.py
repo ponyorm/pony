@@ -6,8 +6,10 @@ from datetime import date
 
 from pony.orm import *
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import setup_database, teardown_database, only_for
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Person(db.Entity):
     id = PrimaryKey(int)
@@ -15,14 +17,21 @@ class Person(db.Entity):
     age = Required(int)
     dob = Required(date)
 
-db.generate_mapping(create_tables=True)
 
-with db_session:
-    Person(id=1, name='John', age=30, dob=date(1985, 1, 1))
-    Person(id=2, name='Mike', age=32, dob=date(1983, 5, 20))
-    Person(id=3, name='Mary', age=20, dob=date(1995, 2, 15))
-
+@only_for('sqlite')
 class TestRawSQL(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            Person(id=1, name='John', age=30, dob=date(1985, 1, 1))
+            Person(id=2, name='Mike', age=32, dob=date(1983, 5, 20))
+            Person(id=3, name='Mary', age=20, dob=date(1995, 2, 15))
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     @db_session
     def test_1(self):
         # raw_sql result can be treated as a logical expression

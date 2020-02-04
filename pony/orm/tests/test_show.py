@@ -6,8 +6,10 @@ from datetime import date
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -26,21 +28,29 @@ class Course(db.Entity):
     name = Required(unicode, unique=True)
     students = Set(Student)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(number=1)
-    g2 = Group(number=2)
-    c1 = Course(name='Math')
-    c2 = Course(name='Physics')
-    c3 = Course(name='Computer Science')
-    Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='some text')
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
 
 normal_stdout = sys.stdout
 
+
 class TestShow(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+        with db_session:
+            g1 = Group(number=1)
+            g2 = Group(number=2)
+            c1 = Course(name='Math')
+            c2 = Course(name='Physics')
+            c3 = Course(name='Computer Science')
+            Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='some text')
+            Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
+            Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -69,6 +79,7 @@ number
 1~~~~~
 2~~~~~
 ''')
+
 
 if __name__ == '__main__':
     unittest.main()

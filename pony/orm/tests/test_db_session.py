@@ -7,18 +7,24 @@ from itertools import count
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestDBSession(unittest.TestCase):
     def setUp(self):
-        self.db = Database('sqlite', ':memory:')
+        self.db = Database()
         class X(self.db.Entity):
             a = PrimaryKey(int)
             b = Optional(int)
         self.X = X
-        self.db.generate_mapping(create_tables=True)
+        setup_database(self.db)
         with db_session:
             x1 = X(a=1, b=1)
             x2 = X(a=2, b=2)
+
+    def tearDown(self):
+        if self.db.provider.dialect != 'SQLite':
+            teardown_database(self.db)
 
     @raises_exception(TypeError, "Pass only keyword arguments to db_session or use db_session as decorator")
     def test_db_session_1(self):
@@ -375,7 +381,8 @@ class TestDBSession(unittest.TestCase):
             connection.close()
             1/0
 
-db = Database('sqlite', ':memory:')
+
+db = Database()
 
 class Group(db.Entity):
     id = PrimaryKey(int)
@@ -387,17 +394,21 @@ class Student(db.Entity):
     picture = Optional(buffer, lazy=True)
     group = Required('Group')
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(id=1, major='Math')
-    g2 = Group(id=2, major='Physics')
-    s1 = Student(id=1, name='S1', group=g1)
-    s2 = Student(id=2, name='S2', group=g1)
-    s3 = Student(id=3, name='S3', group=g2)
-
-
 class TestDBSessionScope(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(id=1, major='Math')
+            g2 = Group(id=2, major='Physics')
+            s1 = Student(id=1, name='S1', group=g1)
+            s2 = Student(id=2, name='S2', group=g1)
+            s3 = Student(id=3, name='S3', group=g2)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
 

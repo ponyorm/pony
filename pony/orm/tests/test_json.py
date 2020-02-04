@@ -5,19 +5,21 @@ import unittest
 from pony.orm import *
 from pony.orm.tests.testutils import raises_exception, raises_if
 from pony.orm.ormtypes import Json, TrackedValue, TrackedList, TrackedDict
+from pony.orm.tests import setup_database, teardown_database
 
+db = Database()
 
-db = Database('sqlite', ':memory:')
 
 class Product(db.Entity):
     name = Required(str)
     info = Optional(Json)
     tags = Optional(Json)
 
-db.generate_mapping(create_tables=True)
-
 
 class TestJson(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
 
     def setUp(self):
         with db_session:
@@ -64,6 +66,9 @@ class TestJson(unittest.TestCase):
                 },
                 tags=['Tablets', 'Apple', 'Retina'])
 
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
 
     def test(self):
         with db_session:
@@ -613,12 +618,20 @@ class TestJson(unittest.TestCase):
     @db_session
     def test_str_cast(self):
         p = get(coalesce(str(p.name), 'empty') for p in Product)
-        self.assertTrue('AS text' in db.last_sql)
+        last_sql = db.last_sql
+        if db.provider.dialect == 'PostgreSQL':
+            self.assertTrue(')::text' in last_sql)
+        else:
+            self.assertTrue('AS text' in db.last_sql)
 
     @db_session
     def test_int_cast(self):
         p = get(coalesce(int(p.info['os']['version']), 0) for p in Product)
-        self.assertTrue('as integer' in db.last_sql)
+        last_sql = db.last_sql
+        if db.provider.dialect == 'PostgreSQL':
+            self.assertTrue(')::int' in last_sql)
+        else:
+            self.assertTrue('as integer' in last_sql)
 
 
     def test_nonzero(self):

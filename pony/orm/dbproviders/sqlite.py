@@ -81,6 +81,12 @@ class SQLiteBuilder(SQLBuilder):
     def INSERT(builder, table_name, columns, values, returning=None):
         if not values: return 'INSERT INTO %s DEFAULT VALUES' % builder.quote_name(table_name)
         return SQLBuilder.INSERT(builder, table_name, columns, values, returning)
+    def STRING_SLICE(builder, expr, start, stop):
+        if start is None:
+            start = [ 'VALUE', None ]
+        if stop is None:
+            stop = [ 'VALUE', None ]
+        return "py_string_slice(", builder(expr), ', ', builder(start), ', ', builder(stop), ")"
     def TODAY(builder):
         return "date('now', 'localtime')"
     def NOW(builder):
@@ -616,6 +622,15 @@ def py_array_slice(array, start, stop):
 def py_make_array(*items):
     return dumps(items)
 
+def py_string_slice(s, start, end):
+    if s is None:
+        return None
+    if isinstance(start, basestring):
+        start = int(start)
+    if isinstance(end, basestring):
+        end = int(end)
+    return s[start:end]
+
 class SQLitePool(Pool):
     def __init__(pool, filename, create_db, **kwargs): # called separately in each thread
         pool.filename = filename
@@ -649,6 +664,8 @@ class SQLitePool(Pool):
         create_function('py_array_length', 1, py_array_length)
         create_function('py_array_slice', 3, py_array_slice)
         create_function('py_make_array', -1, py_make_array)
+
+        create_function('py_string_slice', 3, py_string_slice)
 
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
