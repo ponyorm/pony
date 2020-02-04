@@ -44,7 +44,7 @@ class FlowGraph:
             block = self.newBlock()
 
         # Note: If the current block ends with an unconditional control
-        # transfer, then it is techically incorrect to add an implicit
+        # transfer, then it is technically incorrect to add an implicit
         # transfer to the block graph. Doing so results in code generation
         # for unreachable blocks.  That doesn't appear to be very common
         # with Python code and since the built-in compiler doesn't optimize
