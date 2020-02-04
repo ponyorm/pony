@@ -110,9 +110,9 @@ def flat(tree):
         x = stack_pop()
         if isinstance(x, basestring): result_append(x)
         else:
-            try: stack_extend(reversed(x))
+            try: stack_extend(x)
             except TypeError: result_append(x)
-    return result
+    return result[::-1]
 
 def flat_conditions(conditions):
     result = []
