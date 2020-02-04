@@ -1,3 +1,25 @@
+# PonyORM release 0.7.12 (2020-02-04)
+
+## Features
+
+* CockroachDB support added
+* CI testing for SQLite, PostgreSQL & CockroachDB
+
+## Bugfixes
+
+* Fix translation of getting array items with negative indexes
+* Fix string getitem translation for slices and negative indexes
+* PostgreSQL DISTINCT bug fixed for queries with ORDER BY clause
+* Fix date difference syntax in PostgreSQL
+* Fix casting json to dobule in PostgreSQL
+* Fix count by several columns in PostgreSQL
+* Fix PostgreSQL MIN and MAX expressions on boolean columns
+* Fix determination of interactive mode in PyCharm
+* Fix column definition when `sql_default` is specified: DEFAULT should be before NOT NULL
+* Relax checks on updating in-memory cache indexes (don't throw CacheIndexError on valid cases)
+* Fix deduplication logic for attribute values
+
+
 # PonyORM release 0.7.11 (2019-10-23)
 
 ## Features
