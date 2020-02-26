@@ -1,3 +1,8 @@
+# Downloads
+[![Downloads](https://pepy.tech/badge/pony)](https://pepy.tech/project/pony) [![Downloads](https://pepy.tech/badge/pony/month)](https://pepy.tech/project/pony/month) [![Downloads](https://pepy.tech/badge/pony/week)](https://pepy.tech/project/pony/week)
+
+# Tests
+
 #### PostgreSQL
 Python 2 <a href="http://jenkins.agilecode.io:8111/viewType.html?buildTypeId=GithubPonyORMCi_Python2postgres&guest=1">
 <img src="http://jenkins.agilecode.io:8111/app/rest/builds/buildType:(id:GithubPonyORMCi_Python2postgres)/statusIcon"/>
