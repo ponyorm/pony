@@ -1,3 +1,8 @@
+# PonyORM release 0.7.13 (2020-03-03)
+
+This release does not contains new features or bugfixes. Its goal is to test automatic release building and uploading
+
+
 # PonyORM release 0.7.12 (2020-02-04)
 
 ## Features
