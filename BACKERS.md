@@ -15,3 +15,4 @@ Pony ORM is Apache 2.0 licensed open source project. If you would like to suppor
 - Johnathan Nader
 - Andrei Rachalouski
 - Juan Pablo Scaletti
+- Marcus Birkenkrahe

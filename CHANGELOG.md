@@ -1,7 +1,6 @@
 # PonyORM release 0.7.13 (2020-03-03)
 
-This release does not contains new features or bugfixes. Its goal is to test automatic release building and uploading
-
+This release contains no new features or bugfixes. The only reason for this release is to test our CI/CD process.
 
 # PonyORM release 0.7.12 (2020-02-04)
 
