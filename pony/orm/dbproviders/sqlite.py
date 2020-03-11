@@ -635,6 +635,7 @@ class SQLitePool(Pool):
     def __init__(pool, filename, create_db, **kwargs): # called separately in each thread
         pool.filename = filename
         pool.create_db = create_db
+        pool.row_factory = kwargs.pop("row_factory")
         pool.kwargs = kwargs
         pool.con = None
     def _connect(pool):
@@ -643,6 +644,7 @@ class SQLitePool(Pool):
             throw(IOError, "Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename, isolation_level=None, **pool.kwargs)
         con.text_factory = _text_factory
+        con.row_factory = pool.row_factory
 
         def create_function(name, num_params, func):
             func = keep_exception(func)
