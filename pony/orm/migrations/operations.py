@@ -913,7 +913,8 @@ class RenameEntity(BaseOperation):
 
         table = entity.table
         new_name = schema.get_table_name(entity)
-        vdb.schema.rename_table(table, new_name)
+        if table.name != new_name:
+            vdb.schema.rename_table(table, new_name)
 
     def serialize(self, imports):
         super(RenameEntity, self).serialize(imports)
