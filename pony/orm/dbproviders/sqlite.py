@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
 import os.path, sys, re, json
@@ -709,7 +709,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
                 last_sql = op
                 schema.provider.execute(cursor, op)
                 if verbose:
-                    print(op, end='\n')
+                    print(op)
         except Exception as e:
             schema.errors += 1
             if last_sql:

@@ -122,7 +122,7 @@ class AddAttribute(BaseOperation):
             table.created = False
             schema.tables_to_create.append(table)
 
-        schema.m2m_to_create.clear()
+        schema.m2m_to_create[:] = []
 
     def serialize(self, imports):
         super(AddAttribute, self).serialize(imports)
@@ -328,7 +328,7 @@ class AddEntity(BaseOperation):
                 table = schema.create_m2m_table(attr, r_attr)
                 table.created = False
                 schema.tables_to_create.append(table)
-            schema.m2m_to_create.clear()
+            schema.m2m_to_create[:] = []
         else:
             for attr in entity.new_attrs.values():
                 AddAttribute.apply_to_schema(vdb, attr)
