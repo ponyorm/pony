@@ -635,7 +635,7 @@ class SQLitePool(Pool):
     def __init__(pool, filename, create_db, **kwargs): # called separately in each thread
         pool.filename = filename
         pool.create_db = create_db
-        pool.row_factory = kwargs.pop("row_factory")
+        pool.row_factory = kwargs.pop("row_factory", None)
         pool.kwargs = kwargs
         pool.con = None
     def _connect(pool):
