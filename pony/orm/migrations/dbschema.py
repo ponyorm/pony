@@ -1,10 +1,12 @@
+from __future__ import print_function
+from pony.py23compat import basestring
+
 import sys
 from collections import OrderedDict
 from pony.utils import throw
 from pony.orm.migrations.virtuals import Required, Set, Optional, Discriminator
 from pony.orm.dbapiprovider import Name, obsolete
 from pony.orm.sqlbuilding import SQLBuilder
-from pony.py23compat import basestring
 from pony.orm.core import MigrationError, MappingError, SchemaError
 
 
@@ -1317,7 +1319,7 @@ class Schema(object):
         for attr1, attr2 in schema.m2m_to_create:
             table = schema.create_m2m_table(attr1, attr2)
             table.created = True
-        schema.m2m_to_create.clear()
+        schema.m2m_to_create[:] = []
         return schema
 
     def create_m2m_table(self, attr1, attr2):
@@ -1694,11 +1696,11 @@ class Schema(object):
                 last_sql = op
                 schema.provider.execute(cursor, op)
                 if verbose:
-                    print(op, end='\n')
+                    print(op)
         except Exception as e:
             schema.errors += 1
             if last_sql:
-                print('Last SQL: %r' % last_sql, file=sys.stderr, end='\n')
+                print('Last SQL: %r' % last_sql, file=sys.stderr)
             raise
 
     @staticmethod

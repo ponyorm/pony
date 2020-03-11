@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import sys
 from pony.orm.migrations import Migration
 from pony.orm.migrations.operations import *

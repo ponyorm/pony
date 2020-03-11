@@ -746,7 +746,7 @@ class BlobConverter(Converter):
         if not isinstance(val, buffer):
             try: val = buffer(val)
             except: pass
-        elif PY2 and converter.attr is not None and converter.attr.is_part_of_unique_index:
+        elif PY2 and converter.attr is not None and converter.attr.real_attr.is_part_of_unique_index:
             try: hash(val)
             except TypeError:
                 val = buffer(val)
