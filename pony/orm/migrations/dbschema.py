@@ -1610,7 +1610,7 @@ class Schema(object):
                     if attr.provided.kwargs.get('column') or attr.provided.kwargs.get('columns'):
                         # throw(NotImplementedError, 'Optional to Optional link with provided columns on both sides')
                         return schema.add_fk_refs(attr, table)
-                    elif attr == min(attr, r_attr, key=lambda a: (a.name, a.entity.name)) and not (
+                    elif attr == min(attr, r_attr, key=lambda a: (a.entity.name, a.name)) and not (
                             r_attr.provided.kwargs.get('column') or r_attr.provided.kwargs.get('columns')
                     ):
                         return schema.add_fk_refs(attr, table)
