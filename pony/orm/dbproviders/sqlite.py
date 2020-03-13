@@ -40,36 +40,21 @@ class SQLiteSchema(dbschema.DBSchema):
 
 
 class SQLiteVirtualForeignKey(vdbschema.ForeignKey):
-    @vdbschema.sql_op
-    def get_create_sql(self, using_obsolete_names=False):
+    def get_inline_sql(self, using_obsolete_names=False, inside_column=False):
         quotate = self.provider.quote_name
         result = []
-        result.append('FOREIGN KEY')
-        if using_obsolete_names:
-            result.append('(%s)' % (', '.join(quotate(obsolete(col.name)) for col in self.cols_from)))
-        else:
-            result.append('(%s)' % (', '.join(quotate(col.name) for col in self.cols_from)))
+        if not inside_column:
+            result.append('FOREIGN KEY')
+            if using_obsolete_names:
+                result.append('(%s)' % (', '.join(quotate(obsolete(col.name)) for col in self.cols_from)))
+            else:
+                result.append('(%s)' % (', '.join(quotate(col.name) for col in self.cols_from)))
         result.append('REFERENCES')
         result.append(quotate(self.table_to.name))
         if using_obsolete_names:
             result.append('(%s)' % (', '.join(quotate(obsolete(col.name)) for col in self.cols_to)))
         else:
             result.append('(%s)' % (', '.join(quotate(col.name) for col in self.cols_to)))
-        if self.on_delete:
-            result.append('ON DELETE')
-            result.append(self.on_delete)
-        return ' '.join(result)
-
-    @vdbschema.sql_op
-    def get_inline_sql(self, using_obsolete_names=False):
-        quotate = self.provider.quote_name
-        assert len(self.cols_from) == 1
-        result = ['REFERENCES']
-        result.append(quotate(self.table_to.name))
-        if using_obsolete_names:
-            result.append('(%s)' % (', '.join(quotate(col.name) for col in self.cols_to)))
-        else:
-            result.append('(%s)' % (', '.join(quotate(obsolete(col.name)) for col in self.cols_to)))
         if self.on_delete:
             result.append('ON DELETE')
             result.append(self.on_delete)
@@ -126,15 +111,15 @@ class SQLiteVirtualTable(vdbschema.Table):
             header = 'CREATE TABLE %s (\n  ' % quote(self.name)
         body = []
         for col in self.columns.values():
-            body.extend([op.sql for op in col.get_inline_sql(using_obsolete_names)])
+            body.append(col.get_inline_sql(using_obsolete_names))
         if len(self.primary_key.cols) > 1:
-            body.extend([op.sql for op in self.primary_key.get_inline_sql(using_obsolete_names)])
+            body.append(self.primary_key.get_inline_sql(using_obsolete_names))
         for ck in self.keys:
             if ck.is_pk:
-                body.extend([op.sql for op in ck.get_inline_sql(using_obsolete_names)])
+                body.append(ck.get_inline_sql(using_obsolete_names))
         for fk in self.foreign_keys:
             if len(fk.cols_from) > 1:
-                body.extend([op.sql for op in fk.get_create_sql(using_obsolete_names)])
+                body.append(fk.get_inline_sql(using_obsolete_names))
         body = ',\n  '.join(body)
 
         return header + body + '\n)'
@@ -146,9 +131,8 @@ class SQLiteVirtualColumn(vdbschema.Column):
         self.old_name = None
         self.cast = None
 
-    @vdbschema.sql_op
     def get_inline_sql(self, using_obsolete_names=False, ignore_pk=False, without_name=False):
-        line = super(SQLiteVirtualColumn, self).get_inline_sql(using_obsolete_names, ignore_pk, without_name)[0].sql
+        line = super(SQLiteVirtualColumn, self).get_inline_sql(using_obsolete_names, ignore_pk, without_name)
         if self.check_constraint:
             line += ' CHECK (%s)' % self.check_constraint.check
         return line

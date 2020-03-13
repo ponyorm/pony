@@ -149,15 +149,15 @@ class Table(DBObject):
             header = 'CREATE TABLE %s (\n  ' % quote(self.name)
         body = []
         for col in self.columns.values():
-            body.extend([op.sql for op in col.get_inline_sql(using_obsolete_names)])
+            body.append(col.get_inline_sql(using_obsolete_names))
         if len(self.primary_key.cols) > 1:
-            body.extend([op.sql for op in self.primary_key.get_inline_sql(using_obsolete_names)])
+            body.append(self.primary_key.get_inline_sql(using_obsolete_names))
         for key in self.keys:
-            body.extend([op.sql for op in key.get_inline_sql(using_obsolete_names)])
+            body.append(key.get_inline_sql(using_obsolete_names))
         if not self.schema.unique_cls.inline_syntax:
             for con in self.constraints:
                 if isinstance(con, UniqueConstraint):
-                    body.extend([op.sql for op in con.get_create_sql(using_obsolete_names)])
+                    body.append(con.get_inline_sql(using_obsolete_names))
                     con.created = True
         body = ',\n  '.join(body)
         return header + body + '\n)'
@@ -250,7 +250,6 @@ class Column(DBObject):
             throw(MappingError, "Too many columns were specified for %r" % attr)
         return col
 
-    @sql_op
     def get_inline_sql(self, using_obsolete_names=False, ignore_pk=False, without_name=False):
         quote = self.provider.quote_name
         obs_if = lambda n: obsolete(n) if using_obsolete_names else n
@@ -270,7 +269,7 @@ class Column(DBObject):
         unq = self.unique_constraint
         if unq and len(unq.cols) == 1 and not unq.created and unq.inline_syntax:
             unq.created = True
-            result.extend([op.sql for op in unq.get_inline_sql()])
+            result.append(unq.get_inline_sql(inside_column=True))
         if self.initial is not None or self.sql_default is not None:
             if self.initial is not None:
                 val = self.initial
@@ -281,7 +280,7 @@ class Column(DBObject):
         if schema.inline_reference:
             for fk in self.table.foreign_keys:
                 if len(fk.cols_from) == 1 and fk.cols_from[0].name == self.name:
-                    result.append(fk.get_inline_sql(using_obsolete_names)[0].sql)
+                    result.append(fk.get_inline_sql(using_obsolete_names, inside_column=True))
         # SQLite bug: PK might be null
         if not self.nullable and (not self.is_pk or self.provider.dialect == 'SQLite') and \
                 not self.unique_constraint:
@@ -296,7 +295,7 @@ class Column(DBObject):
     def get_add_sql(self):
         result = [self.table.get_alter_prefix()]
         result.append('ADD COLUMN')
-        result.append(self.get_inline_sql(ignore_pk=True)[0].sql)
+        result.append(self.get_inline_sql(ignore_pk=True))
         return ' '.join(result)
 
     @sql_op
@@ -456,7 +455,7 @@ class ForeignKey(DBObject):
         result.append(quote(new_name))
         return ' '.join(result)
 
-    def get_inline_sql(self):
+    def get_inline_sql(self, using_obsolete_names=False, inside_column=False):
         raise NotImplementedError
 
 
@@ -525,8 +524,7 @@ class Key(Constraint):
             return False
         return True
 
-    @sql_op
-    def get_pk_create_sql(self, using_obsolete_names=False):
+    def get_pk_inline_sql(self, using_obsolete_names=False):
         quote = self.provider.quote_name
         result = ['PRIMARY KEY']
         if using_obsolete_names:
@@ -535,8 +533,7 @@ class Key(Constraint):
             result.append('(%s)' % (', '.join(quote(col.name) for col in self.cols)))
         return ' '.join(result)
 
-    @sql_op
-    def get_key_create_sql(self, using_obsolete_names=False):
+    def get_key_inline_sql(self, using_obsolete_names=False):
         quote = self.provider.quote_name
         obs_if = lambda n: obsolete(n) if using_obsolete_names else n
         result = ['CONSTRAINT']
@@ -559,10 +556,10 @@ class Key(Constraint):
         result.append('(%s)' % ', '.join(quote(col.name) for col in self.cols))
         return ' '.join(result)
 
-    def get_inline_sql(self, using_obsolete_names=False):
+    def get_inline_sql(self, using_obsolete_names=False, inside_column=False):
         if self.is_pk:
-            return self.get_pk_create_sql(using_obsolete_names)
-        return self.get_key_create_sql(using_obsolete_names)
+            return self.get_pk_inline_sql(using_obsolete_names)
+        return self.get_key_inline_sql(using_obsolete_names)
 
 
 class Index(DBObject):
@@ -646,8 +643,7 @@ class UniqueConstraint(Constraint):
             return False
         return True
 
-    @sql_op
-    def get_inline_sql(self):
+    def get_inline_sql(self, using_obsolete_names=False, inside_column=False):
         quote = self.provider.quote_name
         result = ['CONSTRAINT']
         if not isinstance(self.name, tuple):
@@ -655,18 +651,8 @@ class UniqueConstraint(Constraint):
         else:
             result.append(quote(self.name[1]))
         result.append('UNIQUE')
-        return ' '.join(result)
-
-    @sql_op
-    def get_create_sql(self, using_obsolete_names=False):
-        quote = self.provider.quote_name
-        result = ['CONSTRAINT']
-        if not isinstance(self.name, tuple):
-            result.append(quote(self.name))
-        else:
-            result.append(quote(self.name[1]))
-        result.append('UNIQUE')
-        result.append('(%s)' % ', '.join(quote(col.name) for col in self.cols))
+        if not inside_column:
+            result.append('(%s)' % ', '.join(quote(col.name) for col in self.cols))
         return ' '.join(result)
 
     @sql_op
@@ -708,8 +694,7 @@ class CheckConstraint(Constraint):
     def exists(self, provider, connection, case_sensitive=True):
         return provider.chk_exists(connection, self.table.name, self.name, case_sensitive)
 
-    @sql_op
-    def get_inline_sql(self):
+    def get_inline_sql(self, using_obsolete_names=False, inside_column=False):
         quote = self.provider.quote_name
         result = ['CONSTRAINT']
         if not isinstance(self.name, tuple):
