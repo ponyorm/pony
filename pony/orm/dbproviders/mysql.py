@@ -53,7 +53,7 @@ class MySQLVirtualColumn(vdbschema.Column):
     def modify(self):
         result = [self.table.get_alter_prefix()]
         result.append(self.get_alter_prefix())
-        result.extend([op.sql for op in self.get_inline_sql(without_name=True)])
+        result.append(self.get_inline_sql(without_name=True))
         return ' '.join(result)
 
     @vdbschema.sql_op
@@ -75,7 +75,7 @@ class MySQLVirtualColumn(vdbschema.Column):
     def get_set_default_sql(self):
         result = [self.table.get_alter_prefix()]
         result.append(self.get_alter_prefix())
-        result.extend([op.sql for op in self.get_inline_sql(without_name=True)])
+        result.append(self.get_inline_sql(without_name=True))
         return ' '.join(result)
 
     @vdbschema.sql_op
@@ -85,7 +85,7 @@ class MySQLVirtualColumn(vdbschema.Column):
         result.append('CHANGE')
         result.append(quote(self.name))
         result.append(quote(new_name))
-        result.extend([op.sql for op in self.get_inline_sql(without_name=True)])
+        result.append(self.get_inline_sql(without_name=True))
         return ' '.join(result)
 
 

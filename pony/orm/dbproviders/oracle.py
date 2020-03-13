@@ -121,9 +121,9 @@ class OraVirtualColumn(vdbschema.Column):
         if provided_name:
             name = self.provider.normalize_name(provided_name)
             result.append(self.provider.quote_name(name))
-            result.append(self.get_inline_sql(ignore_pk=True, without_name=True)[0].sql)
+            result.append(self.get_inline_sql(ignore_pk=True, without_name=True))
         else:
-            result.append(self.get_inline_sql(ignore_pk=True)[0].sql)
+            result.append(self.get_inline_sql(ignore_pk=True))
         return ' '.join(result)
 
     @vdbschema.sql_op
@@ -157,7 +157,7 @@ class OraVirtualColumn(vdbschema.Column):
         result = [
             self.table.get_alter_prefix(),
             self.get_alter_prefix(),
-            self.get_inline_sql(without_name=True)[0].sql
+            self.get_inline_sql(without_name=True)
         ]
         return ' '.join(result)
 
