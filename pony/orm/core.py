@@ -4661,6 +4661,9 @@ class EntityProxy(object):
         elif isinstance(other, entity):
             return pkval == other._pkval_
         return False
+    
+    def __hash__(self):
+        return hash(self._obj_pk_)
 
     def __ne__(self, other):
         return not self.__eq__(other)
