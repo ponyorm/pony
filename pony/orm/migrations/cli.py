@@ -380,15 +380,14 @@ def upgrade(db, args):
 
     if args['sql_only']:
         for op in ops:
-            print(op.get_sql())
+            print(op)
         return
     last_sql = None
     try:
         with db_session(ddl=True):
             connection = db.get_connection()
             cursor = connection.cursor()
-            for op in ops:
-                sql = op.get_sql()
+            for sql in ops:
                 last_sql = sql
                 db.vdb.provider.execute(cursor, sql)
                 if args['verbose']:

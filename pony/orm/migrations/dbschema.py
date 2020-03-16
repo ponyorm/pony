@@ -1838,7 +1838,8 @@ class Schema(object):
                     if index.exists(provider, connection):
                         throw(UpgradeError,
                               'Pony wants to create index %r but this name is already taken' % new_index_name)
-        return schema.ops
+
+        return schema.prepare_sql(connection)
 
     def downgrade(schema, connection):
         tables = list(sorted(schema.tables.values(), key=lambda x: x.is_m2m))
