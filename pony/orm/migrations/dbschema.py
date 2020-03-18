@@ -114,14 +114,14 @@ class Table(DBObject):
     def create(self):
         assert not self.created
         self.created = True
-        return [op.sql for op in self.get_create_sql()]
+        return self.get_create_sql()
 
     def create_constraints(self):
         result = []
         for constraint in self.constraints:
             if not constraint.created:
                 constraint.created = True
-                result.extend([op.sql for op in constraint.get_add_sql()])
+                result.extend(constraint.get_add_sql())
         return result
 
     def create_indexes(self):
@@ -129,7 +129,7 @@ class Table(DBObject):
         for index in self.indexes:
             if not index.created:
                 index.created = True
-                result.extend([op.sql for op in index.get_create_sql()])
+                result.extend(index.get_create_sql())
         return result
 
     def create_fkeys(self):
@@ -137,7 +137,7 @@ class Table(DBObject):
         for fk in self.foreign_keys:
             if not fk.created:
                 fk.created = True
-                result.extend([op.sql for op in fk.get_create_sql()])
+                result.extend(fk.get_create_sql())
         return result
 
     @sql_op
@@ -1670,7 +1670,7 @@ class Schema(object):
         schema.tables_to_create = []
 
         for op in schema.ops:
-            sql_ops.append(op.get_sql())
+            sql_ops.append(op)
 
         schema.ops = []
         return sql_ops
@@ -1680,21 +1680,25 @@ class Schema(object):
 
         if sql_only:
             for op in sql_ops:
-                print(op)
+                print(op.get_sql())
             return
 
         last_sql = None
         try:
             cursor = connection.cursor()
             for op in sql_ops:
-                last_sql = op
-                schema.provider.execute(cursor, op)
+                last_sql = op.get_sql()
+                last_obj = op.obj
+                schema.provider.execute(cursor, op.sql)
                 if verbose:
-                    print(op)
+                    print(last_sql)
         except Exception as e:
             schema.errors += 1
             if last_sql:
-                print('Last SQL: %r' % last_sql, file=sys.stderr)
+                print('Last SQL: %s' % last_sql, file=sys.stderr)
+            if last_obj:
+                print('last object: %s %s' % (last_obj.typename, last_obj.name),
+                      file=sys.stderr)
             raise
 
     @staticmethod

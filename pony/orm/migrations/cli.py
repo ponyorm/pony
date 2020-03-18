@@ -380,18 +380,18 @@ def upgrade(db, args):
 
     if args['sql_only']:
         for op in ops:
-            print(op)
+            print(op.get_sql())
         return
     last_sql = None
     try:
         with db_session(ddl=True):
             connection = db.get_connection()
             cursor = connection.cursor()
-            for sql in ops:
-                last_sql = sql
-                db.vdb.provider.execute(cursor, sql)
+            for op in ops:
+                last_sql = op.get_sql()
+                db.vdb.provider.execute(cursor, op.sql)
                 if args['verbose']:
-                    print(sql)
+                    print(last_sql)
             db.vdb.provider.execute(cursor, schema.set_pony_version_sql())
     except Exception as e:
         print('During applying upgrade occurred exception %r' % e, file=sys.stderr)

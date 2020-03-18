@@ -552,6 +552,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
     def rename_foreign_key(schema, fk, new_fk_name):
         throw(NotImplementedError, 'Renaming foreign key is not implemented for SQLite')
 
+    @vdbschema.sql_op
     def table_recreation_sql(schema, table, affection):
         quote = schema.provider.quote_name
         old_colnames, new_colnames = [], []
@@ -589,7 +590,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
         tmp_name = '_tmp_%s' % table.name
         table.name = tmp_name
         table.created = False
-        sql_ops = [''.join(table.create())]
+        sql_ops = [''.join([op.sql for op in table.create()])]
         insert_sql = ['INSERT INTO %s' % quote(table.name)]
         insert_sql.append('(%s)' % ', '.join(new_colnames))
         insert_sql.append('SELECT')
@@ -622,23 +623,23 @@ class SQLiteVirtualSchema(vdbschema.Schema):
             sql_ops.extend(table.create_indexes())
 
         for op in schema.ops:
-            sql_ops.append(op.sql)
+            sql_ops.append(op)
 
         for table_name, affection in schema.affected_tables.items():
             for index in affection.removed_indexes:
-                sql_ops.extend([op.sql for op in index.get_drop_sql()])
+                sql_ops.extend(index.get_drop_sql())
                 # if index.new_name:
                 #     index.name = index.new_name
                 #     index.new_name = None
 
             for index in affection.changed_indexes:
-                sql_ops.extend([op.sql for op in index.get_drop_sql()])
+                sql_ops.extend(index.get_drop_sql())
                 affection.added_indexes.append(index)
 
             table = schema.tables[table_name]
             if not affection.should_recreate():
                 for col in affection.added_columns:
-                    sql_ops.extend([op.sql for op in col.get_add_sql()])
+                    sql_ops.extend(col.get_add_sql())
             else:
                 schema.legacy = schema.provider.server_version[:2] >= (3, 25)
                 sql = "select name, type, sql " \
@@ -659,7 +660,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
 
                 sql_ops.extend(schema.table_recreation_sql(table, affection))
                 for col, old_val, new_val in affection.change_col_values:
-                    sql_ops.extend([op.sql for op in col.get_update_value_sql(old_val, new_val)])
+                    sql_ops.extend(col.get_update_value_sql(old_val, new_val))
 
                 for name, obj_type, sql in res:
                     if obj_type == 'index' and name in index_names:
@@ -668,7 +669,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
 
             for index in affection.added_indexes:
                 if table_name not in [table.name for table in schema.tables_to_create]:
-                    sql_ops.extend([op.sql for op in index.get_create_sql()])
+                    sql_ops.extend(index.get_create_sql())
 
         schema.affected_tables = defaultdict(TableAffection)
         schema.tables_to_create = []
@@ -680,7 +681,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
 
         if sql_only:
             for op in sql_ops:
-                print(op)
+                print(op.get_sql())
             for _, _, sql in schema.subordinates:
                 print(sql)
             return
@@ -693,14 +694,17 @@ class SQLiteVirtualSchema(vdbschema.Schema):
                 schema.provider.execute(cursor, 'PRAGMA legacy_alter_table = true')
 
             for op in sql_ops:
-                last_sql = op
-                schema.provider.execute(cursor, op)
+                last_sql = op.get_sql()
+                last_obj = op.obj
+                schema.provider.execute(cursor, op.sql)
                 if verbose:
-                    print(op)
+                    print(last_sql)
         except Exception as e:
             schema.errors += 1
             if last_sql:
                 print('Last SQL: %r' % last_sql, file=sys.stderr)
+            if last_obj:
+                print('last object: %s %s' % (last_obj.typename, last_obj.name), file=sys.stderr)
             raise
 
         for name, obj_type, table_name, sql in schema.subordinates:
