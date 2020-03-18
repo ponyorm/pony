@@ -183,9 +183,9 @@ class OraVirtualTable(vdbschema.Table):
     def create_trigger_and_sequence(self):
         result = []
         if self.pk_sequence:
-            result.extend([op.sql for op in self.pk_sequence.get_create_sql()])
+            result.extend(self.pk_sequence.get_create_sql())
         if self.pk_trigger:
-            result.extend([op.sql for op in self.pk_trigger.get_create_sql()])
+            result.extend(self.pk_trigger.get_create_sql())
         return result
 
 
