@@ -895,7 +895,7 @@ class Schema(object):
         schema.tables.pop(table.name)
         schema.ops.extend(table.get_drop_sql())
 
-    def rename_table(schema, table, new_name):
+    def rename_table(schema, table, new_name, ignore_indexes=False):
         del schema.tables[table.name]
         new_table_name = new_name if isinstance(new_name, basestring) else new_name[1]
         schema.ops.extend(table.get_rename_sql(new_table_name))
@@ -906,11 +906,12 @@ class Schema(object):
                 continue  # name was provided
             fk_new_name = schema.get_default_fk_name(table, fk.cols_from)
             schema.rename_foreign_key(fk, fk_new_name)
-        for index in table.indexes:
-            if provided_name(index):
-                continue
-            index_new_name = schema.get_default_index_name(table, index.cols)
-            schema.rename_index(index, index_new_name)
+        if not ignore_indexes:  # Upgrade case: m2m tables for 0.7 have wrong indexes, we update them manually
+            for index in table.indexes:
+                if provided_name(index):
+                    continue
+                index_new_name = schema.get_default_index_name(table, index.cols)
+                schema.rename_index(index, index_new_name)
         for col in table.columns.values():
             unq = col.unique_constraint
             if unq:
@@ -973,10 +974,10 @@ class Schema(object):
         func(table)
         schema.tables[table.name] = table
 
-    def rename_column(schema, column, new_name):
-        return schema.rename_columns([column], [new_name])
+    def rename_column(schema, column, new_name, ignore_indexes=False):
+        return schema.rename_columns([column], [new_name], ignore_indexes)
 
-    def rename_columns(schema, columns, new_names):
+    def rename_columns(schema, columns, new_names, ignore_indexes=False):
         table = columns[0].table
         for i, new_name in enumerate(new_names):
             col = columns[i]
@@ -993,11 +994,12 @@ class Schema(object):
             new_fk_name = schema.get_default_fk_name(table, fk.cols_from)
             schema.rename_foreign_key(fk, new_fk_name)
 
-        for index in table.indexes:
-            if provided_name(index):
-                continue
-            new_index_name = schema.get_default_index_name(table, index.cols)
-            schema.rename_index(index, new_index_name)
+        if not ignore_indexes:
+            for index in table.indexes:
+                if provided_name(index):
+                    continue
+                new_index_name = schema.get_default_index_name(table, index.cols)
+                schema.rename_index(index, new_index_name)
 
         for col in columns:
             unq = col.unique_constraint
@@ -1736,7 +1738,7 @@ class Schema(object):
                     schema.tables.pop(table.name)
                     table.name = old_name
                     schema.tables[table.name] = table
-                    schema.rename_table(table, new_name)
+                    schema.rename_table(table, new_name, ignore_indexes=True)
                     if table.exists(provider, connection):
                         throw(UpgradeError, 'Pony wants to rename table %r to %r but this name is already taken' %
                               (old_name, new_name))
@@ -1748,7 +1750,7 @@ class Schema(object):
                     table.columns.pop(new_col_name)
                     col.name = old_col_name
                     table.columns[old_col_name] = col
-                    schema.rename_column(col, new_col_name)
+                    schema.rename_column(col, new_col_name, ignore_indexes=table.is_m2m)
                     if col.exists(provider, connection):
                         throw(UpgradeError, 'Pony wants to rename column %r.%r to %r.%r but this name is already taken'%
                               (table.name, old_col_name, table.name, new_col_name))
@@ -1766,7 +1768,6 @@ class Schema(object):
                                   (old_idx_name, new_idx_name))
 
             if provider.dialect != 'SQLite':
-
                 for fk in table.foreign_keys:
                     old_fk_name = obsolete(fk.name)
                     new_fk_name = fk.name
@@ -1788,7 +1789,7 @@ class Schema(object):
                         schema.rename_key(key, new_key_name)
                         # TODO check for these keys also?
 
-                # In Pony 0.9+ we don't add UNIQUE keyword in column definition, we create named UNIQUE constraint or index
+                # In Pony 0.9+ we dont add UNIQUE keyword in column def, we create named UNIQUE constraint or index
                 # We should rename old names
                 for con in table.constraints:
                     if not con.typename == 'Unique constraint' or len(con.cols) != 1:
