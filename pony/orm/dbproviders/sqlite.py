@@ -282,19 +282,20 @@ class SQLiteVirtualSchema(vdbschema.Schema):
             table.columns.pop(column.name)
             schema.affected_tables[table.name].removed_columns.append(column)
 
-    def rename_table(schema, table, new_name):
+    def rename_table(schema, table, new_name, ignore_indexes=False):
         del schema.tables[table.name]
         schema.ops.extend(table.get_rename_sql(new_name))
         table.name = new_name
         schema.tables[new_name] = table
-        for index in table.indexes:
-            index_new_name = schema.get_default_index_name(table, index.cols)
-            if index.name == index_new_name:
-                continue
-            schema.affected_tables[table.name].changed_indexes.append(index)
-            if not index.old_name:
-                index.old_name = index.name
-            index.name = index_new_name
+        if not ignore_indexes:
+            for index in table.indexes:
+                index_new_name = schema.get_default_index_name(table, index.cols)
+                if index.name == index_new_name:
+                    continue
+                schema.affected_tables[table.name].changed_indexes.append(index)
+                if not index.old_name:
+                    index.old_name = index.name
+                index.name = index_new_name
         for col in table.columns.values():
             unq = col.unique_constraint
             if unq:
@@ -312,10 +313,10 @@ class SQLiteVirtualSchema(vdbschema.Schema):
         obj.name = new_name
         schema.ops.extend(obj.get_create_sql())
 
-    def rename_column(schema, column, new_name):
-        return schema.rename_columns([column], [new_name])
+    def rename_column(schema, column, new_name, ignore_indexes=False):
+        return schema.rename_columns([column], [new_name], ignore_indexes)
 
-    def rename_columns(schema, columns, new_names):
+    def rename_columns(schema, columns, new_names, ignore_indexes=False):
         assert len(columns) == len(new_names)
         table = columns[0].table
         for i, new_name in enumerate(new_names):
@@ -327,14 +328,15 @@ class SQLiteVirtualSchema(vdbschema.Schema):
         for column in columns:
             for fk in schema.find_subordinate_fks(column):
                 schema.affected_tables[column.table.name].changed_fks.append(fk)
-            for index in schema.find_subordinate_index(column):
-                if not getattr(index.name, 'provided', True):
-                    new_index_name = schema.get_default_index_name(table, index.cols)
-                    if index.name != new_index_name:
-                        if not index.old_name:
-                            index.old_name = index.name
-                        index.name = new_index_name
-                    schema.affected_tables[column.table.name].changed_indexes.append(index)
+            if not ignore_indexes:
+                for index in schema.find_subordinate_index(column):
+                    if not getattr(index.name, 'provided', True):
+                        new_index_name = schema.get_default_index_name(table, index.cols)
+                        if index.name != new_index_name:
+                            if not index.old_name:
+                                index.old_name = index.name
+                            index.name = new_index_name
+                        schema.affected_tables[column.table.name].changed_indexes.append(index)
 
         for fk in table.foreign_keys:
             if provided_name(fk):
@@ -343,12 +345,13 @@ class SQLiteVirtualSchema(vdbschema.Schema):
             if new_fk_name != fk.name:
                 schema.affected_tables[table.name].changed_fks.append(fk)
 
-        for index in table.indexes:
-            if provided_name(index):
-                continue
-            new_index_name = schema.get_default_index_name(table, index.cols)
-            if new_index_name != index.name:
-                schema.affected_tables[table.name].changed_indexes.append(index)
+        if not ignore_indexes:
+            for index in table.indexes:
+                if provided_name(index):
+                    continue
+                new_index_name = schema.get_default_index_name(table, index.cols)
+                if new_index_name != index.name:
+                    schema.affected_tables[table.name].changed_indexes.append(index)
 
         for col in table.columns.values():
             unq = col.unique_constraint
