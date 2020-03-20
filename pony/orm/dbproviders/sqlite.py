@@ -681,7 +681,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
 
         if sql_only:
             for op in sql_ops:
-                print(op.get_sql())
+                print(op.sql)
             for _, _, sql in schema.subordinates:
                 print(sql)
             return
@@ -694,7 +694,7 @@ class SQLiteVirtualSchema(vdbschema.Schema):
                 schema.provider.execute(cursor, 'PRAGMA legacy_alter_table = true')
 
             for op in sql_ops:
-                last_sql = op.get_sql()
+                last_sql = op.sql
                 last_obj = op.obj
                 schema.provider.execute(cursor, op.sql)
                 if verbose:
