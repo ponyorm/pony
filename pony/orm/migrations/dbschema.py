@@ -19,9 +19,6 @@ class SQLOperation(object):
         self.obj = obj
         self.sql = sql
 
-    def get_sql(self):
-        return self.sql
-
     def __repr__(self):
         return '<SQLOperation(%r)>' % self.sql
 
@@ -1639,7 +1636,7 @@ class Schema(object):
     def prepare_sql(schema):
         sql_ops = []
         # for drop_op in schema.drop_ops:
-        #     sql_ops.append(drop_op.get_sql())
+        #     sql_ops.append(drop_op.sql)
         #
         # schema.drop_ops = []
 
@@ -1680,14 +1677,14 @@ class Schema(object):
 
         if sql_only:
             for op in sql_ops:
-                print(op.get_sql())
+                print(op.sql)
             return
 
         last_sql = None
         try:
             cursor = connection.cursor()
             for op in sql_ops:
-                last_sql = op.get_sql()
+                last_sql = op.sql
                 last_obj = op.obj
                 schema.provider.execute(cursor, op.sql)
                 if verbose:

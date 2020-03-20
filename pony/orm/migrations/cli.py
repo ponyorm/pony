@@ -380,7 +380,7 @@ def upgrade(db, args):
 
     if args['sql_only']:
         for op in ops:
-            print(op.get_sql())
+            print(op.sql)
         return
     last_sql = None
     try:
@@ -388,7 +388,7 @@ def upgrade(db, args):
             connection = db.get_connection()
             cursor = connection.cursor()
             for op in ops:
-                last_sql = op.get_sql()
+                last_sql = op.sql
                 db.vdb.provider.execute(cursor, op.sql)
                 if args['verbose']:
                     print(last_sql)
@@ -423,7 +423,7 @@ def downgrade(db, args):
 
     if args['sql_only']:
         for op in ops:
-            print(op.get_sql())
+            print(op.sql)
         return
     last_sql = None
     try:
@@ -431,7 +431,7 @@ def downgrade(db, args):
             connection = db.get_connection()
             cursor = connection.cursor()
             for op in ops:
-                sql = op.get_sql()
+                sql = op.sql
                 last_sql = sql
                 db.vdb.provider.execute(cursor, sql)
                 if args['verbose']:
