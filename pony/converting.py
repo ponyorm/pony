@@ -201,13 +201,14 @@ def _extract_time_parts(groupdict):
     return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 def str2timedelta(s):
+    negative = s.startswith('-')
     if '.' in s:
         s, fractional = s.split('.')
         microseconds = int((fractional + '000000')[:6])
     else: microseconds = 0
     h, m, s = imap(int, s.split(':'))
     td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
-    return -td if h < 0 else td
+    return -td if negative else td
 
 def timedelta2str(td):
     total_seconds = td.days * (24 * 60 * 60) + td.seconds
