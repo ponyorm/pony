@@ -159,13 +159,6 @@ class TestKeys(unittest.TestCase):
         class Entity1(db.Entity):
             a = PrimaryKey(int, volatile=True)
 
-    @raises_exception(TypeError, 'Set attribute Entity1.b cannot be volatile')
-    def test_volatile_set(self):
-        db = self.db = Database(**db_params)
-        class Entity1(db.Entity):
-            a = PrimaryKey(int)
-            b = Set('Entity2', volatile=True)
-
     @raises_exception(TypeError, 'Volatile attribute Entity1.b cannot be part of primary key')
     def test_volatile_composite_pk(self):
         db = self.db = Database(**db_params)
