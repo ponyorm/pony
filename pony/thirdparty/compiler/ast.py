@@ -245,9 +245,7 @@ class Bitor(Node):
         return tuple(flatten(self.nodes))
 
     def getChildNodes(self):
-        nodelist = []
-        nodelist.extend(flatten_nodes(self.nodes))
-        return tuple(nodelist)
+        return tuple(flatten_nodes(self.nodes))
 
     def __repr__(self):
         return "Bitor(%s)" % (repr(self.nodes),)
