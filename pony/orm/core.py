@@ -2140,7 +2140,7 @@ class Attribute(object):
         if attr.py_type == float:
             if attr.is_pk: throw(TypeError, 'PrimaryKey attribute %s cannot be of type float' % attr)
             elif attr.is_unique: throw(TypeError, 'Unique attribute %s cannot be of type float' % attr)
-        if attr.is_volatile and (attr.is_pk or attr.is_collection): throw(TypeError,
+        if attr.is_volatile and attr.is_pk: throw(TypeError,
             '%s attribute %s cannot be volatile' % (attr.__class__.__name__, attr))
 
         if attr.interleave is not None:
@@ -2150,6 +2150,8 @@ class Attribute(object):
                 '`interleave` option value should be True, False or None. Got: %r' % attr.interleave)
     def linked(attr):
         reverse = attr.reverse
+        if reverse.is_volatile:
+            attr.is_volatile = True
         if attr.cascade_delete is None:
             attr.cascade_delete = attr.is_collection and reverse.is_required
         elif attr.cascade_delete:
@@ -2867,7 +2869,7 @@ class Set(Collection):
                     else:
                         phantoms = setdata2 - items
                         if setdata2.added: phantoms -= setdata2.added
-                        if phantoms: throw(UnrepeatableReadError,
+                        if phantoms and not attr.is_volatile: throw(UnrepeatableReadError,
                             'Phantom object %s disappeared from collection %s.%s'
                             % (safe_repr(phantoms.pop()), safe_repr(obj2), attr.name))
                     items -= setdata2
@@ -2889,7 +2891,8 @@ class Set(Collection):
         assert obj._status_ not in del_statuses
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
-        elif setdata.is_fully_loaded: return setdata
+        elif setdata.is_fully_loaded and not attr.is_volatile:
+            return setdata
         entity = attr.entity
         reverse = attr.reverse
         rentity = reverse.entity
@@ -2968,7 +2971,7 @@ class Set(Collection):
                 else:
                     phantoms = setdata2 - items
                     if setdata2.added: phantoms -= setdata2.added
-                    if phantoms: throw(UnrepeatableReadError,
+                    if phantoms and not attr.is_volatile: throw(UnrepeatableReadError,
                         'Phantom object %s disappeared from collection %s.%s'
                         % (safe_repr(phantoms.pop()), safe_repr(obj2), attr.name))
                 items -= setdata2
@@ -3125,7 +3128,7 @@ class Set(Collection):
         for obj in objects:
             setdata = obj._vals_.get(attr)
             if setdata is None: setdata = obj._vals_[attr] = SetData()
-            elif setdata.is_fully_loaded: throw(UnrepeatableReadError,
+            elif setdata.is_fully_loaded and not attr.is_volatile: throw(UnrepeatableReadError,
                 'Phantom object %s appeared in collection %s.%s' % (safe_repr(item), safe_repr(obj), attr.name))
             setdata.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
