@@ -299,7 +299,11 @@ def attr_difference(attr1, attr2):
                 col = attr2.columns[0]
                 provider = col.provider
                 cast_sql = provider.cast_sql.format(colname='{colname}', sql_type=col.converter.get_sql_type())
-            return ChangeColumnType(attr1.entity.name, attr1.name, {'py_type': attr2.py_type}, cast_sql=cast_sql)
+            new_options = {'py_type': attr2.py_type}
+            if option_diff('max_len') or option_diff('precision') or option_diff('scale') or \
+                option_diff('size') or option_diff('unsigned') or option_diff('sql_type'):
+                new_options.update(kw2)
+            return ChangeColumnType(attr1.entity.name, attr1.name, new_options, cast_sql=cast_sql)
         elif option_diff('max_len') or option_diff('precision') or option_diff('scale') or \
                 option_diff('size') or option_diff('unsigned') or option_diff('sql_type'):
             new_options = kw2.copy()
