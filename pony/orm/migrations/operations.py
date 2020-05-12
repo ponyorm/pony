@@ -201,6 +201,45 @@ class AddRelation(BaseOperation):
         )
 
 
+class AddSymmetricRelation(BaseOperation):
+    def __init__(self, entity_name, attr, sql=None):
+        self.entity_name = entity_name
+        self.attr = attr
+        self.sql = sql
+
+    def apply(self, vdb):
+        from pony.orm import core
+        entity = vdb.entities.get(self.entity_name)
+        if entity is None:
+            throw(core.MigrationError, 'Entity %r was not found' % self.entity_name)
+        self.attr.entity = entity
+        entity.add_attr(self.attr)
+        self.attr.symmetric = True
+        self.attr.reverse = self.attr
+
+        if not vdb.vdb_only:
+            if self.sql:
+                vdb.schema.add_sql(self.sql)
+            else:
+                self.apply_to_schema(vdb, self.attr)
+
+    @staticmethod
+    def apply_to_schema(vdb, attr):
+        schema = vdb.schema
+        table_name = schema.get_m2m_table_name(attr, attr)
+        if table_name in schema.tables:
+            return
+        table = schema.create_m2m_table(attr, attr)
+        table.created = False
+        schema.tables_to_create.append(table)
+
+    def serialize(self, imports):
+        super(AddSymmetricRelation, self).serialize(imports)
+        return 'AddSymmetricRelation(entity_name=%r, attr=%s%s)' % (
+            self.entity_name, self.attr.serialize(imports), '' if not self.sql else ', sql=%r' % self.sql
+        )
+
+
 class RemoveAttribute(BaseOperation):
     def __init__(self, entity_name, attr_name, sql=None):
         self.entity_name = entity_name
