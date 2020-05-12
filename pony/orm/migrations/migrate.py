@@ -215,7 +215,10 @@ def entity_difference(entity1, entity2, vdb1, vdb2, rename_map):
                 r_entity_name = reverse.entity.name
                 prev_r_entity = vdb1.entities.get(r_entity_name)
                 if reverse.name not in prev_r_entity.attrs:
-                    return AddRelation(entity2.name, attr2, r_entity_name, reverse)
+                    if attr2 is reverse:
+                        return AddSymmetricRelation(entity2.name, attr2)
+                    else:
+                        return AddRelation(entity2.name, attr2, r_entity_name, reverse)
             else:
                 return AddAttribute(entity2.name, attr2.clone())
 
