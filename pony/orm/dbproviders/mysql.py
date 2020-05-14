@@ -431,6 +431,8 @@ class MySQLProvider(DBAPIProvider):
 
     fk_types = { 'SERIAL' : 'BIGINT UNSIGNED' }
 
+    implicit_fk_indexes = True
+
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
