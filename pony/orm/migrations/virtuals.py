@@ -365,6 +365,7 @@ class VirtualAttribute(object):
         kwargs.pop('py_check', None)
         kwargs.pop('volatile', None)
         self.index = kwargs.pop('index', None)
+        self.reverse_index = kwargs.pop('reverse_index', None)
         self.fk_name = kwargs.pop('fk_name', None)
         self.m2m_table_name = kwargs.pop('table', None)
         self.check = kwargs.pop('check', None)  # todo validate isinstance(check, basestring) and len(cols) == 1
