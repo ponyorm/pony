@@ -1358,7 +1358,12 @@ class Schema(object):
             fk = table.schema.fk_cls(table, table_from, fk_cols_from, fk_cols_to, fk_name)
             fk.on_delete = 'CASCADE'
 
-            index_name = self.get_index_name(attr, table, fk_cols_from)
+            index_name = self.get_index_name(
+                attr,
+                table,
+                fk_cols_from,
+                symmetric=(attr.reverse == attr and self_reference)
+            )
             new_index = self.index_cls(table, fk_cols_from, index_name)
             return pk_cols
 
@@ -1447,7 +1452,9 @@ class Schema(object):
         name = Name(col_name, obsolete_name=obsolete_col_name)
         return self.provider.normalize_name(name)
 
-    def get_index_name(self, attr, table, cols):
+    def get_index_name(self, attr, table, cols, symmetric=False):
+        if symmetric and attr.reverse_index and isinstance(attr.reverse.index, (basestring, tuple)):
+            return attr.reverse_index
         if attr.index and isinstance(attr.index, (basestring, tuple)):
             return attr.index
         return self.get_default_index_name(table, cols)
