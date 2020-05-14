@@ -1321,10 +1321,10 @@ class Schema(object):
         attr1.m2m_table = attr2.m2m_table = table
         pk_cols = []
 
-        def make_m2m_columns(table, attr, self_reference=False):
+        def make_m2m_columns(table, attr, same_entity=False):
             fk_cols_from, fk_cols_to = [], []
             pk_cols = []
-            symmetric = attr.reverse is attr and self_reference  # only last columns
+            symmetric = attr.reverse is attr and same_entity  # only last columns
             entity = attr.entity
             table_from = self.tables[self.get_table_name(attr.reverse.entity.get_root())]
             if len(table_from.primary_key.cols) == 1:
@@ -1338,7 +1338,7 @@ class Schema(object):
             if provided_col_names:
                 if len(provided_col_names) != len(table_from.primary_key.cols):
                     throw(MappingError, 'Invalid number of columns for %s.%s' % (entity.name, attr.name))
-            elif self_reference:
+            elif same_entity:
                 provided_col_names = [col.name + '_2' for col in attr.m2m_columns]
 
             for i, col in enumerate(table_from.primary_key.cols):
@@ -1357,19 +1357,19 @@ class Schema(object):
             fk_name = table.schema.get_fk_name(attr, table, fk_cols_from)
             fk = table.schema.fk_cls(table, table_from, fk_cols_from, fk_cols_to, fk_name)
             fk.on_delete = 'CASCADE'
-
-            index_name = self.get_index_name(
-                attr,
-                table,
-                fk_cols_from,
-                symmetric=(attr.reverse == attr and self_reference)
-            )
-            new_index = self.index_cls(table, fk_cols_from, index_name)
+            if attr.index or attr.reverse_index or not self.provider.implicit_fk_indexes:
+                index_name = self.get_index_name(
+                    attr,
+                    table,
+                    fk_cols_from,
+                    symmetric=(attr.reverse == attr and same_entity)
+                )
+                new_index = self.index_cls(table, fk_cols_from, index_name)
             return pk_cols
 
-        def add_m2m_cols(table, attr, pk_cols, self_reference=False):
+        def add_m2m_cols(table, attr, pk_cols, same_entity=False):
             # linking primary columns with links from m2m table
-            cols = make_m2m_columns(table, attr.reverse, self_reference)
+            cols = make_m2m_columns(table, attr.reverse, same_entity)
             for i, attrname in enumerate(attr.entity.primary_key):
                 pk_attr = attr.entity.get_attr(attrname)
                 for col in pk_attr.columns:
@@ -1378,7 +1378,7 @@ class Schema(object):
                 attr.m2m_columns.extend(cols)
                 attr.converters.extend(col.converter for col in cols)
             else:
-                if not self_reference:
+                if not same_entity:
                     attr.m2m_columns = cols
                 else:
                     attr.reverse_m2m_columns = cols
@@ -1387,9 +1387,9 @@ class Schema(object):
         if attr1.entity.name > attr2.entity.name:
             attr1, attr2 = attr2, attr1
         add_m2m_cols(table, attr1, pk_cols)
-        add_m2m_cols(table, attr2, pk_cols, self_reference=attr1.entity == attr2.entity)
+        add_m2m_cols(table, attr2, pk_cols, same_entity=attr1.entity == attr2.entity)
         # self_reference flag should be specified only for second part of self referenced link
-        self.key_cls(table, pk_cols, True)
+        self.key_cls(table, pk_cols, is_pk=True)
         return table
 
     def get_default_m2m_table_name(self, attr1, attr2):

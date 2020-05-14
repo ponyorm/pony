@@ -154,6 +154,8 @@ class DBAPIProvider(object):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
+    implicit_fk_indexes = False
+
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         call_on_connect = kwargs.pop('pony_call_on_connect', None)
