@@ -1636,7 +1636,7 @@ class Schema(object):
             table.columns[column.name] = column
             return [column], None, None
 
-    def prepare_sql(schema, connection):
+    def prepare_sql(schema):
         sql_ops = []
         # for drop_op in schema.drop_ops:
         #     sql_ops.append(drop_op.get_sql())
@@ -1676,7 +1676,7 @@ class Schema(object):
         return sql_ops
 
     def apply(schema, connection, verbose, sql_only):
-        sql_ops = schema.prepare_sql(connection)
+        sql_ops = schema.prepare_sql()
 
         if sql_only:
             for op in sql_ops:
