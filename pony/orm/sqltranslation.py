@@ -1427,6 +1427,8 @@ class Monad(with_metaclass(MonadMeta)):
         monad.mixin_init()
     def mixin_init(monad):
         pass
+    def to_single_cell_value(monad):
+        return monad
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): throw(TypeError)
@@ -2840,14 +2842,16 @@ class FuncCoalesceMonad(FuncMonad):
     func = coalesce
     def call(monad, *args):
         if len(args) < 2: throw(TranslationError, 'coalesce() function requires at least two arguments')
-        arg = args[0]
+        arg = args[0].to_single_cell_value()
         t = arg.type
         result = [ [ sql ] for sql in arg.getsql() ]
         for arg in args[1:]:
+            arg = arg.to_single_cell_value()
             if arg.type is not t:
-                t = coerce_types(t, arg.type)
-                if t is None:
+                t2 = coerce_types(t, arg.type)
+                if t2 is None:
                     throw(TypeError, 'All arguments of coalesce() function should have the same type')
+                t = t2
             for i, sql in enumerate(arg.getsql()):
                 result[i].append(sql)
         sql = [ [ 'COALESCE' ] + coalesce_args for coalesce_args in result ]
@@ -3357,6 +3361,8 @@ class QuerySetMonad(SetMixin, Monad):
         monad.subtranslator = subtranslator
         monad.item_type = item_type
         monad.limit = monad.offset = None
+    def to_single_cell_value(monad):
+        return ExprMonad.new(monad.item_type, monad.getsql()[0])
     def requires_distinct(monad, joined=False):
         assert False
     def call_limit(monad, limit=None, offset=None):
@@ -3564,7 +3570,7 @@ class QuerySetMonad(SetMixin, Monad):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
         return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
     def getsql(monad):
-        return monad.subtranslator.construct_subquery_ast(monad.limit, monad.offset)
+        return [ monad.subtranslator.construct_subquery_ast(monad.limit, monad.offset) ]
 
 def find_or_create_having_ast(sections):
     groupby_offset = None
