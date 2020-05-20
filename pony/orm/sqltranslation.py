@@ -901,9 +901,8 @@ class SQLTranslator(ASTTranslator):
             namespace = None
         if namespace is not None:
             translator.namespace_stack.append(namespace)
-
-        with translator:
-            try:
+        try:
+            with translator:
                 translator.dispatch(func_ast)
                 if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
                 else: nodes = (func_ast,)
@@ -929,10 +928,10 @@ class SQLTranslator(ASTTranslator):
                             else: translator.having_conditions.extend(m.getsql())
                 translator.vars = None
                 return translator
-            finally:
-                if namespace is not None:
-                    ns = translator.namespace_stack.pop()
-                    assert ns is namespace
+        finally:
+            if namespace is not None:
+                ns = translator.namespace_stack.pop()
+                assert ns is namespace
     def preGenExpr(translator, node):
         inner_tree = node.code
         translator_cls = translator.__class__
