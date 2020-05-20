@@ -2845,7 +2845,10 @@ class FuncCoalesceMonad(FuncMonad):
         t = arg.type
         result = [ [ sql ] for sql in arg.getsql() ]
         for arg in args[1:]:
-            if arg.type is not t: throw(TypeError, 'All arguments of coalesce() function should have the same type')
+            if arg.type is not t:
+                t = coerce_types(t, arg.type)
+                if t is None:
+                    throw(TypeError, 'All arguments of coalesce() function should have the same type')
             for i, sql in enumerate(arg.getsql()):
                 result[i].append(sql)
         sql = [ [ 'COALESCE' ] + coalesce_args for coalesce_args in result ]
