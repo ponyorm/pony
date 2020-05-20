@@ -910,8 +910,9 @@ class SQLTranslator(ASTTranslator):
                     translator.inside_order_by = True
                     new_order = []
                     for node in nodes:
-                        if isinstance(node.monad, SetMixin):
-                            t = node.monad.type.item_type
+                        monad = node.monad.to_single_cell_value()
+                        if isinstance(monad, SetMixin):
+                            t = monad.type.item_type
                             if isinstance(type(t), type): t = t.__name__
                             throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
                                                     % (t, ast2src(node)))
