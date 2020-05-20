@@ -2569,9 +2569,9 @@ class HybridFuncMonad(Monad):
                 root_translator.vartypes.update(func_vartypes)
                 root_translator.vars.update(func_vars)
 
+        func_ast = copy_ast(func_ast)
         stack = translator.namespace_stack
         stack.append(name_mapping)
-        func_ast = copy_ast(func_ast)
         try:
             prev_code_key = translator.code_key
             translator.code_key = func_id
@@ -2584,7 +2584,8 @@ class HybridFuncMonad(Monad):
                 msg = e.args[0] + ' (inside %s)' % (monad.func_name)
                 e.args = (msg,)
             raise
-        stack.pop()
+        finally:
+            stack.pop()
         return func_ast.monad
 
 class HybridMethodMonad(HybridFuncMonad):
