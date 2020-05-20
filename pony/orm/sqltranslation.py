@@ -221,11 +221,9 @@ class SQLTranslator(ASTTranslator):
         try:
             translator.init(tree, parent_translator, code_key, filter_num, extractors, vars, vartypes, left_join, optimize)
         except UseAnotherTranslator as e:
-            assert local.translators
-            t = local.translators.pop()
-            assert t is e.translator
+            translator = e.translator
             raise
-        else:
+        finally:
             assert local.translators
             t = local.translators.pop()
             assert t is translator
