@@ -1,7 +1,7 @@
 import unittest
 
 from pony import orm
-from pony.orm.tests import setup_database, teardown_database
+from pony.orm.tests import setup_database, teardown_database, skip_for
 
 db = orm.Database()
 
@@ -22,6 +22,10 @@ class Baz(db.Entity):
 
 buf = orm.buffer(b'123')
 
+@skip_for('mysql')
+# In MySQL BLOB column cannot be part of key without specifying length:
+# 1170, "BLOB/TEXT column 'b' used in key specification without a key length"
+# todo: We need to add possibility to specify key prefix length in key definition
 class Test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
