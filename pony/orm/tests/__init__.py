@@ -70,3 +70,29 @@ def only_for(providers):
             raise TypeError
         return result
     return decorator
+
+def skip_for(providers):
+    if not isinstance(providers, (list, tuple)):
+        providers = [providers]
+    def decorator(x):
+        if isinstance(x, type) and issubclass(x, unittest.TestCase):
+            @classmethod
+            def setUpClass(cls):
+                raise unittest.SkipTest('%s tests are skipped for %s provider%s' % (
+                    cls.__name__, ', '.join(providers), '' if len(providers) < 2 else 's'
+                ))
+            if db_params['provider'] in providers:
+                x.setUpClass = setUpClass
+            result = x
+        elif isinstance(x, types.FunctionType):
+            def new_test_func(self):
+                if db_params['provider'] in providers:
+                    raise unittest.SkipTest('%s test are skipped for %s provider%s' % (
+                        x.__name__, ', '.join(providers), '' if len(providers) < 2 else 's'
+                    ))
+                return x(self)
+            result = new_test_func
+        else:
+            raise TypeError
+        return result
+    return decorator
