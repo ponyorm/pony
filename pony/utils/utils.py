@@ -16,8 +16,7 @@ from pony import options
 
 from pony.thirdparty.decorator import decorator as _decorator
 
-if pony.MODE.startswith('GAE-'): localbase = object
-else: from threading import local as localbase
+from threading import local as localbase
 
 
 class PonyDeprecationWarning(DeprecationWarning):
