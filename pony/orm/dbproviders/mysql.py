@@ -239,11 +239,16 @@ class MySQLValue(Value):
     def __unicode__(self):
         value = self.value
         if isinstance(value, timedelta):
-            if value.microseconds:
-                return "INTERVAL '%s' HOUR_MICROSECOND" % timedelta2str(value)
-            return "INTERVAL '%s' HOUR_SECOND" % timedelta2str(value)
+            return str(int(value.total_seconds()))
         return Value.__unicode__(self)
     if not PY2: __str__ = __unicode__
+
+def to_interval(delta):
+    assert isinstance(delta, timedelta)
+    if delta.microseconds:
+        return "INTERVAL '%s' HOUR_MICROSECOND" % timedelta2str(delta)
+    return "INTERVAL '%s' HOUR_SECOND" % timedelta2str(delta)
+
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
@@ -278,21 +283,33 @@ class MySQLBuilder(SQLBuilder):
     def SECOND(builder, expr):
         return 'second(', builder(expr), ')'
     def DATE_ADD(builder, expr, delta):
-        if delta[0] == 'VALUE' and isinstance(delta[1], time):
-            return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+        if delta[0] == 'VALUE':
+            value = delta[1]
+            if isinstance(value, time):
+                return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+            if isinstance(value, timedelta):
+                return 'ADDDATE(', builder(expr), ', ', to_interval(value), ')'
+        if delta[0] == 'PARAM':
+            return '(', builder(expr), '+ INTERVAL ', builder(delta) ,' SECOND)'
         return 'ADDDATE(', builder(expr), ', ', builder(delta), ')'
     def DATE_SUB(builder, expr, delta):
-        if delta[0] == 'VALUE' and isinstance(delta[1], time):
-            return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+        if delta[0] == 'VALUE':
+            value = delta[1]
+            if isinstance(value, time):
+                return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+            if isinstance(value, timedelta):
+                return 'SUBDATE(', builder(expr), ', ', to_interval(value), ')'
+        if delta[0] == 'PARAM':
+            return '(', builder(expr), '- INTERVAL ', builder(delta) ,' SECOND)'
         return 'SUBDATE(', builder(expr), ', ', builder(delta), ')'
     def DATE_DIFF(builder, expr1, expr2):
-        return 'TIMEDIFF(', builder(expr1), ', ', builder(expr2), ')'
+        return 'TIMESTAMPDIFF(SECOND, ', builder(expr2), ', ', builder(expr1), ')'
     def DATETIME_ADD(builder, expr, delta):
         return builder.DATE_ADD(expr, delta)
     def DATETIME_SUB(builder, expr, delta):
         return builder.DATE_SUB(expr, delta)
     def DATETIME_DIFF(builder, expr1, expr2):
-        return 'TIMEDIFF(', builder(expr1), ', ', builder(expr2), ')'
+        return 'TIMESTAMPDIFF(SECOND, ', builder(expr2), ', ', builder(expr1), ')'
     def JSON_QUERY(builder, expr, path):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'json_extract(', builder(expr), ', ', path_sql, ')'
@@ -363,7 +380,11 @@ class MySQLTimeConverter(dbapiprovider.TimeConverter):
         return val
 
 class MySQLTimedeltaConverter(dbapiprovider.TimedeltaConverter):
-    sql_type_name = 'TIME'
+    def py2sql(converter, val):
+        return int(val.total_seconds())
+    def sql2py(converter, val):
+        return timedelta(seconds=val)
+    sql_type_name = 'INTEGER'  # seconds
 
 class MySQLUuidConverter(dbapiprovider.UuidConverter):
     def sql_type(converter):
