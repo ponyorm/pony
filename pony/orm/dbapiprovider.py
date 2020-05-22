@@ -362,6 +362,8 @@ class Pool(localbase):
         except:
             pool.drop(con)
             raise
+        else:
+            pool.drop(con)
     def drop(pool, con):
         assert con is pool.con, (con, pool.con)
         pool.con = None
