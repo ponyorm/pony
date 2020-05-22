@@ -253,6 +253,14 @@ def to_interval(delta):
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
     value_class = MySQLValue
+    def LIKE(builder, expr, template, escape=None):
+        result = builder(expr), ' LIKE BINARY ', builder(template)
+        if escape: result = result + (' ESCAPE ', builder(escape))
+        return result
+    def NOT_LIKE(builder, expr, template, escape=None):
+        result = builder(expr), ' NOT LIKE BINARY ', builder(template)
+        if escape: result = result + (' ESCAPE ', builder(escape))
+        return result
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', imap(builder, args)), ')'
     def TRIM(builder, expr, chars=None):
