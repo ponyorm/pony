@@ -81,11 +81,6 @@ class TestQuerySetMonad(unittest.TestCase):
         self.assertEqual(result, {Student[2], Student[3]})
         self.assertTrue('DISTINCT' in db.last_sql)
 
-    def test_count_3b(self):
-        result = set(select(s for s in Student if select(c for c in s.courses).count(distinct=False) > 1))
-        self.assertEqual(result, {Student[2], Student[3]})
-        self.assertTrue('DISTINCT' not in db.last_sql)
-
     def test_count_4(self):
         result = set(select(c for c in Course if count(s for s in c.students) > 1))
         self.assertEqual(result, {Course['C1', 1], Course['C2', 1]})
