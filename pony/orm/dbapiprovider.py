@@ -4,6 +4,7 @@ from pony.py23compat import PY2, basestring, unicode, buffer, int_types, iterite
 import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
+from time import strptime
 from uuid import uuid4, UUID
 from hashlib import md5
 
@@ -763,8 +764,10 @@ class DateConverter(Converter):
         if isinstance(val, basestring): return str2date(val)
         throw(TypeError, "Attribute %r: expected type is 'date'. Got: %r" % (converter.attr, val))
     def sql2py(converter, val):
-        if not isinstance(val, date): throw(ValueError,
-            'Value of unexpected type received from database: instead of date got %s' % type(val))
+        if isinstance(val, str):
+            val = str2datetime(val).date
+        elif not isinstance(val, date):
+            throw(ValueError, 'Value of unexpected type received from database: instead of date got %s' % type(val))
         return val
     def sql_type(converter):
         return 'DATE'
@@ -847,8 +850,10 @@ class DatetimeConverter(ConverterWithMicroseconds):
         if mcs is not None: val = val.replace(microsecond=mcs)
         return val
     def sql2py(converter, val):
-        if not isinstance(val, datetime): throw(ValueError,
-            'Value of unexpected type received from database: instead of datetime got %s' % type(val))
+        if isinstance(val, str):
+            val = str2datetime(val)
+        elif not isinstance(val, datetime):
+            throw(ValueError, 'Value of unexpected type received from database: instead of datetime got %s' % type(val))
         return val
 
 class UuidConverter(Converter):
