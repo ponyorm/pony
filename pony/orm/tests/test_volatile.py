@@ -11,14 +11,14 @@ class TestVolatile1(unittest.TestCase):
 
         class Item(self.db.Entity):
             name = Required(str)
-            index = Required(int, volatile=True)
+            position = Required(int, volatile=True)
 
         setup_database(db)
 
         with db_session:
-            Item(id=1, name='A', index=1)
-            Item(id=2, name='B', index=2)
-            Item(id=3, name='C', index=3)
+            Item(id=1, name='A', position=1)
+            Item(id=2, name='B', position=2)
+            Item(id=3, name='C', position=3)
 
     def tearDown(self):
         teardown_database(self.db)
@@ -27,17 +27,17 @@ class TestVolatile1(unittest.TestCase):
     def test_1(self):
         db = self.db
         Item = db.Item
-        db.execute('update "item" set "index" = "index" + 1')
-        items = Item.select(lambda item: item.index > 0).order_by(Item.id)[:]
+        db.execute('update item set position = position + 1')
+        items = Item.select(lambda item: item.position > 0).order_by(Item.id)[:]
         a, b, c = items
-        self.assertEqual(a.index, 2)
-        self.assertEqual(b.index, 3)
-        self.assertEqual(c.index, 4)
-        c.index = 1
+        self.assertEqual(a.position, 2)
+        self.assertEqual(b.position, 3)
+        self.assertEqual(c.position, 4)
+        c.position = 1
         items = Item.select()[:]  # force re-read from the database
-        self.assertEqual(c.index, 1)
-        self.assertEqual(a.index, 2)
-        self.assertEqual(b.index, 3)
+        self.assertEqual(c.position, 1)
+        self.assertEqual(a.position, 2)
+        self.assertEqual(b.position, 3)
 
 
     @db_session
@@ -46,7 +46,7 @@ class TestVolatile1(unittest.TestCase):
         item = Item[1]
         item.name = 'X'
         item.flush()
-        self.assertEqual(item.index, 1)
+        self.assertEqual(item.position, 1)
 
 
 class TestVolatile2(unittest.TestCase):

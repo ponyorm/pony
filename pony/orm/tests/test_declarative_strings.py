@@ -4,7 +4,7 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
-from pony.orm.tests import setup_database, teardown_database, only_for
+from pony.orm.tests import setup_database, teardown_database, skip_for
 
 db = Database()
 
@@ -186,6 +186,7 @@ class TestStringMethods(unittest.TestCase):
         result = list(select(s.name[-s.id:] for s in Student).without_distinct())
         self.assertEqual(sorted(result), ['Pete', 'eth', 'n', 'ob', 'than'])
 
+    @skip_for('mysql')  # too complex
     def test_slice_20b(self):
         result = list(select(s.name[-s.id:-1] for s in Student).without_distinct())
         self.assertEqual(sorted(result), ['', 'Pet', 'et', 'o', 'tha'])
@@ -193,6 +194,7 @@ class TestStringMethods(unittest.TestCase):
         result = list(select(s.name[-s.id:x] for s in Student).without_distinct())
         self.assertEqual(sorted(result), ['', 'Pet', 'et', 'o', 'tha'])
 
+    @skip_for('mysql')  # too complex
     def test_slice_20c(self):
         result = list(select(s.name[-s.id:-2] for s in Student).without_distinct())
         self.assertEqual(sorted(result), ['', '', 'Pe', 'e', 'th'])
@@ -218,6 +220,7 @@ class TestStringMethods(unittest.TestCase):
         result = list(select(s.name[s.id:s.id+3] for s in Student).without_distinct())
         self.assertEqual(sorted(result), ['', 'b', 'h', 'nn', 'tha'])
 
+    @skip_for('mysql')  # too complex
     def test_slice_24(self):
         result = list(select(s.name[-s.id*2:-s.id] for s in Student).without_distinct())
         self.assertEqual(sorted(result), ['', 'B', 'B', 'Jona', 'n'])

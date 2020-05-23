@@ -3,7 +3,7 @@ import unittest
 from pony.orm import *
 from pony.orm.tests.testutils import *
 from pony.py23compat import PYPY2
-from pony.orm.tests import setup_database, teardown_database
+from pony.orm.tests import setup_database, teardown_database, skip_for
 
 db = Database()
 
@@ -374,6 +374,7 @@ class TestSelectFromSelect(unittest.TestCase):
         q3 = select(s.first_name for s in q if s.group in q2)
         self.assertEqual(set(q3), {'Alex', 'Mary'})
 
+    @skip_for('mysql')  # NotSupportedError: (1235, u"This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'")
     @db_session
     def test_43(self):
         q = select(s for s in Student).order_by(Student.first_name).limit(3, offset=1)

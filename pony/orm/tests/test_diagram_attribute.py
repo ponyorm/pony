@@ -552,7 +552,7 @@ class TestAttribute(unittest.TestCase):
         setup_database(db)
         with db_session:
             try:
-                obj = Entity1(a='1234567890' * 1000)
+                obj = Entity1(a='1234567890' * 10)
             except ValueError as e:
                 error_message = "Check for attribute Entity1.a failed. Value: " + (
                     "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345..." if PY2
@@ -623,7 +623,9 @@ class TestAttribute(unittest.TestCase):
 
         table = db.schema.tables.get(Bar._table_)
         sql_type = table.columns['foo_id'].sql_type
-        required_type = 'INT8' if db.provider_name == 'cockroach' else 'INTEGER'
+        if db.provider_name == 'cockroach': required_type = 'INT8'
+        elif db.provider_name == 'mysql': required_type = 'BIGINT UNSIGNED'
+        else: required_type = 'INTEGER'
         self.assertEqual(required_type, sql_type)
 
     def test_foreign_key_sql_type_5(self):
@@ -637,7 +639,9 @@ class TestAttribute(unittest.TestCase):
 
         table = db.schema.tables.get(Bar._table_)
         sql_type = table.columns['foo_id'].sql_type
-        required_type = 'int8' if db.provider_name == 'cockroach' else 'integer'
+        if db.provider_name == 'cockroach': required_type = 'int8'
+        elif db.provider_name == 'mysql': required_type = 'bigint unsigned'
+        else: required_type = 'integer'
         self.assertEqual(required_type, sql_type)
 
     def test_self_referenced_m2m_1(self):

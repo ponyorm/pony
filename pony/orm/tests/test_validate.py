@@ -23,7 +23,7 @@ class TestValidate(unittest.TestCase):
         db.drop_all_tables(with_all_data=True)
         with db_session(ddl=True):
             db.execute("""
-                create table "%s"(
+                create table %s(
                     id int primary key,
                     name text,
                     tel text
@@ -36,7 +36,7 @@ class TestValidate(unittest.TestCase):
 
     @db_session
     def setUp(self):
-        db.execute('delete from "%s"' % table_name)
+        db.execute('delete from %s' % table_name)
         registry = getattr(core, '__warningregistry__', {})
         for key in list(registry):
             if type(key) is not tuple: continue
