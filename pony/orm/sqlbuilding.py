@@ -529,7 +529,7 @@ class SQLBuilder(object):
 
         if start[0] == 'VALUE':
             start_value = start[1]
-            if builder.dialect == 'PostgreSQL' and start_value < 0:
+            if builder.dialect != 'SQLite' and start_value < 0:
                 index_sql = [ 'LENGTH', expr ]
                 if start_value < -1:
                     index_sql = [ 'SUB', index_sql, [ 'VALUE', -(start_value + 1) ] ]
@@ -539,8 +539,10 @@ class SQLBuilder(object):
         else:
             inner_sql = start
             then = [ 'ADD', inner_sql, [ 'VALUE', 1 ] ]
-            else_ = [ 'ADD', [ 'LENGTH', expr ], then ] if builder.dialect == 'PostgreSQL' else inner_sql
+            else_ = [ 'ADD', [ 'LENGTH', expr ], then ] if builder.dialect != 'SQLite' else inner_sql
             index_sql = [ 'IF', [ 'GE', inner_sql, [ 'VALUE', 0 ] ], then, else_ ]
+            if builder.dialect == 'MySQL':
+                index_sql = [ 'MAX', None, ['VALUE', 1], index_sql ]
 
         if stop is None:
             len_sql = None

@@ -131,7 +131,7 @@ class TestPrefetching(unittest.TestCase):
 FROM "%s" "s"
 ORDER BY 1
 LIMIT 1''' % table_name
-        if db.provider.dialect == 'SQLite' and pony.__version__ >= '0.9':
+        if db.provider.dialect == 'MySQL' or db.provider.dialect == 'SQLite' and pony.__version__ >= '0.9':
             expected_sql = expected_sql.replace('"', '`')
         self.assertEqual(db.last_sql, expected_sql)
 

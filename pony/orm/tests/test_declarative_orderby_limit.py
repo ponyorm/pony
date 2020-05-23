@@ -127,10 +127,12 @@ class TestOrderbyLimit(unittest.TestCase):
         q = select(s for s in Student).limit(offset=2)
         self.assertEqual(set(q), {Student[3], Student[4], Student[5]})
         last_sql = db.last_sql
-        if db.provider.dialect == 'PostgreSQL':
-            self.assertTrue('LIMIT null OFFSET 2' in last_sql)
-        else:
+        if db.provider.dialect == 'SQLite':
             self.assertTrue('LIMIT -1 OFFSET 2' in last_sql)
+        elif db.provider.dialect == 'MySQL':
+            self.assertTrue('LIMIT 18446744073709551615 OFFSET 2' in last_sql)
+        else:
+            self.assertTrue('LIMIT null OFFSET 2' in last_sql)
 
     def test21(self):
         q = select(s for s in Student).limit(0, offset=2)

@@ -1,11 +1,12 @@
 import unittest
+import warnings
 from decimal import Decimal
 from datetime import datetime, time
 from random import randint
 
 from pony import orm
 from pony.orm.core import *
-from pony.orm.tests import setup_database, teardown_database
+from pony.orm.tests import setup_database, teardown_database, db_params
 from pony.orm.tests.testutils import raises_exception
 
 db = Database()
@@ -27,11 +28,14 @@ class TestAttributeOptions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         setup_database(db)
-        with orm.db_session:
-            p1 = Person(id=1, name='Andrew', lastName='Bodroue', age=40, rate=0.980000000001, salaryRate=0.98000001)
-            p2 = Person(id=2, name='Vladimir', lastName='Andrew ', nickName='vlad  ')
-            p3 = Person(id=3, name='Nick', lastName='Craig', middleName=None, timeStmp='2010-12-10 14:12:09.019473',
-                        vehicle='dodge')
+        with warnings.catch_warnings():
+            if db_params['provider'] == 'mysql':
+                warnings.filterwarnings('ignore', message='''.*Data truncated for column 'rate' at row 1".*''')
+            with orm.db_session:
+                p1 = Person(id=1, name='Andrew', lastName='Bodroue', age=40, rate=0.980000000001, salaryRate=0.98000001)
+                p2 = Person(id=2, name='Vladimir', lastName='Andrew ', nickName='vlad  ')
+                p3 = Person(id=3, name='Nick', lastName='Craig', middleName=None, timeStmp='2010-12-10 14:12:09.019473',
+                            vehicle='dodge')
 
     @classmethod
     def tearDownClass(cls):
