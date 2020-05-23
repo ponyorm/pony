@@ -44,10 +44,19 @@ def teardown_database(db):
         db.drop_all_tables(with_all_data=True)
     db.disconnect()
 
+supported_providers = ['sqlite', 'postgres', 'cockroach', 'mysql', 'oracle']
+
+def check_providers(providers):
+    if not providers:
+        raise TypeError('For `@only_for` and `@skip_for` decorators provider list should not be empty')
+    for provider in providers:
+        if provider not in supported_providers:
+            raise TypeError('unknown provider name: %s' % provider)
 
 def only_for(providers):
     if not isinstance(providers, (list, tuple)):
         providers = [providers]
+    check_providers(providers)
     def decorator(x):
         if isinstance(x, type) and issubclass(x, unittest.TestCase):
             @classmethod
@@ -74,6 +83,7 @@ def only_for(providers):
 def skip_for(providers):
     if not isinstance(providers, (list, tuple)):
         providers = [providers]
+    check_providers(providers)
     def decorator(x):
         if isinstance(x, type) and issubclass(x, unittest.TestCase):
             @classmethod
