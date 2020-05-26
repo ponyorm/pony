@@ -217,7 +217,7 @@ class OraVirtualSequence(vdbschema.DBObject):
         return row[0] if row is not None else None
 
     @vdbschema.sql_op
-    def get_create_sql(sequence):
+    def get_create_sql(sequence, using_obsolete_names=False):
         schema = sequence.table.schema
         seq_name = schema.provider.quote_name(sequence.name)
         return 'CREATE SEQUENCE %s NOCACHE' % seq_name
@@ -251,7 +251,7 @@ class OraVirtualTrigger(DBObject):
         return row[0] if row is not None else None
 
     @vdbschema.sql_op
-    def get_create_sql(trigger):
+    def get_create_sql(trigger, using_obsolete_names=False):
         schema = trigger.table.schema
         quote_name = schema.provider.quote_name
         trigger_name = quote_name(trigger.name)
