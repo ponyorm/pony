@@ -221,11 +221,9 @@ class SQLTranslator(ASTTranslator):
         try:
             translator.init(tree, parent_translator, code_key, filter_num, extractors, vars, vartypes, left_join, optimize)
         except UseAnotherTranslator as e:
-            assert local.translators
-            t = local.translators.pop()
-            assert t is e.translator
+            translator = e.translator
             raise
-        else:
+        finally:
             assert local.translators
             t = local.translators.pop()
             assert t is translator
@@ -901,9 +899,8 @@ class SQLTranslator(ASTTranslator):
             namespace = None
         if namespace is not None:
             translator.namespace_stack.append(namespace)
-
-        with translator:
-            try:
+        try:
+            with translator:
                 translator.dispatch(func_ast)
                 if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
                 else: nodes = (func_ast,)
@@ -911,8 +908,9 @@ class SQLTranslator(ASTTranslator):
                     translator.inside_order_by = True
                     new_order = []
                     for node in nodes:
-                        if isinstance(node.monad, SetMixin):
-                            t = node.monad.type.item_type
+                        monad = node.monad.to_single_cell_value()
+                        if isinstance(monad, SetMixin):
+                            t = monad.type.item_type
                             if isinstance(type(t), type): t = t.__name__
                             throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
                                                     % (t, ast2src(node)))
@@ -929,10 +927,10 @@ class SQLTranslator(ASTTranslator):
                             else: translator.having_conditions.extend(m.getsql())
                 translator.vars = None
                 return translator
-            finally:
-                if namespace is not None:
-                    ns = translator.namespace_stack.pop()
-                    assert ns is namespace
+        finally:
+            if namespace is not None:
+                ns = translator.namespace_stack.pop()
+                assert ns is namespace
     def preGenExpr(translator, node):
         inner_tree = node.code
         translator_cls = translator.__class__
@@ -1428,6 +1426,8 @@ class Monad(with_metaclass(MonadMeta)):
         monad.mixin_init()
     def mixin_init(monad):
         pass
+    def to_single_cell_value(monad):
+        return monad
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): throw(TypeError)
@@ -2569,9 +2569,9 @@ class HybridFuncMonad(Monad):
                 root_translator.vartypes.update(func_vartypes)
                 root_translator.vars.update(func_vars)
 
+        func_ast = copy_ast(func_ast)
         stack = translator.namespace_stack
         stack.append(name_mapping)
-        func_ast = copy_ast(func_ast)
         try:
             prev_code_key = translator.code_key
             translator.code_key = func_id
@@ -2584,7 +2584,8 @@ class HybridFuncMonad(Monad):
                 msg = e.args[0] + ' (inside %s)' % (monad.func_name)
                 e.args = (msg,)
             raise
-        stack.pop()
+        finally:
+            stack.pop()
         return func_ast.monad
 
 class HybridMethodMonad(HybridFuncMonad):
@@ -2840,11 +2841,16 @@ class FuncCoalesceMonad(FuncMonad):
     func = coalesce
     def call(monad, *args):
         if len(args) < 2: throw(TranslationError, 'coalesce() function requires at least two arguments')
-        arg = args[0]
+        arg = args[0].to_single_cell_value()
         t = arg.type
         result = [ [ sql ] for sql in arg.getsql() ]
         for arg in args[1:]:
-            if arg.type is not t: throw(TypeError, 'All arguments of coalesce() function should have the same type')
+            arg = arg.to_single_cell_value()
+            if arg.type is not t:
+                t2 = coerce_types(t, arg.type)
+                if t2 is None:
+                    throw(TypeError, 'All arguments of coalesce() function should have the same type')
+                t = t2
             for i, sql in enumerate(arg.getsql()):
                 result[i].append(sql)
         sql = [ [ 'COALESCE' ] + coalesce_args for coalesce_args in result ]
@@ -3354,6 +3360,8 @@ class QuerySetMonad(SetMixin, Monad):
         monad.subtranslator = subtranslator
         monad.item_type = item_type
         monad.limit = monad.offset = None
+    def to_single_cell_value(monad):
+        return ExprMonad.new(monad.item_type, monad.getsql()[0])
     def requires_distinct(monad, joined=False):
         assert False
     def call_limit(monad, limit=None, offset=None):
@@ -3561,7 +3569,7 @@ class QuerySetMonad(SetMixin, Monad):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
         return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
     def getsql(monad):
-        return monad.subtranslator.construct_subquery_ast(monad.limit, monad.offset)
+        return [ monad.subtranslator.construct_subquery_ast(monad.limit, monad.offset) ]
 
 def find_or_create_having_ast(sections):
     groupby_offset = None
