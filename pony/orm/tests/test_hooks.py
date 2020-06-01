@@ -129,6 +129,14 @@ class TestHooks(unittest.TestCase):
         p4 = Person(id=4, name='Bob', age=16)
         db.flush()
 
+    @db_session
+    def test_4(self):
+        global do_before_insert
+        def do_before_insert(person):
+            some_person = Person.select().first()  # creates nested prefetch_context
+        p4 = Person(id=4, name='Bob', age=16)
+        Person.select().first()
+
 
 if __name__ == '__main__':
     unittest.main()

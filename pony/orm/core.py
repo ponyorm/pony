@@ -298,11 +298,11 @@ class PrefetchContext(object):
         result.entities_to_prefetch = self.entities_to_prefetch.copy()
         return result
     def __enter__(self):
-        assert local.prefetch_context is None
-        local.prefetch_context = self
+        local.prefetch_context_stack.append(self)
     def __exit__(self, exc_type, exc_val, exc_tb):
-        assert local.prefetch_context is self
-        local.prefetch_context = None
+        stack = local.prefetch_context_stack
+        assert stack and stack[-1] is self
+        stack.pop()
     def get_frozen_attrs_to_prefetch(self, entity):
         attrs_to_prefetch = self.attrs_to_prefetch_dict.get(entity, ())
         if type(attrs_to_prefetch) is set:
@@ -329,11 +329,16 @@ class Local(localbase):
         local.db2cache = {}
         local.db_context_counter = 0
         local.db_session = None
-        local.prefetch_context = None
+        local.prefetch_context_stack = []
         local.current_user = None
         local.perms_context = None
         local.user_groups_cache = {}
         local.user_roles_cache = defaultdict(dict)
+    @property
+    def prefetch_context(local):
+        if local.prefetch_context_stack:
+            return local.prefetch_context_stack[-1]
+        return None
     def push_debug_state(local, debug, show_values):
         local.debug_stack.append((local.debug, local.show_values))
         if not suppress_debug_change:
