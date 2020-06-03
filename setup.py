@@ -92,6 +92,8 @@ packages = [
     "pony.orm.examples",
     "pony.orm.integration",
     "pony.orm.tests",
+    "pony.orm.migrations",
+    "pony.orm.migrations.tests",
     "pony.thirdparty",
     "pony.thirdparty.compiler",
     "pony.utils"
