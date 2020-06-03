@@ -79,7 +79,7 @@ classifiers = [
     'Topic :: Database'
 ]
 
-author = "Alexander Kozlovsky, Alexey Malashkevich"
+author = "Alexander Kozlovsky, Alexey Malashkevich, Alexander Tischenko"
 author_email = "team@ponyorm.com"
 url = "https://ponyorm.com"
 licence = "Apache License Version 2.0"
