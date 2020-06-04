@@ -1799,18 +1799,18 @@ class Schema(object):
 
                 # In Pony 0.9+ we dont add UNIQUE keyword in column def, we create named UNIQUE constraint or index
                 # We should rename old names
-                for con in table.constraints:
-                    if not con.typename == 'Unique constraint' or len(con.cols) != 1:
+                for cons in table.constraints:
+                    if not cons.typename == 'Unique constraint' or len(cons.cols) != 1:
                         continue
-                    old_name = con.dbms_name(connection)
+                    old_name = cons.dbms_name(connection)
                     if old_name is None:
                         throw(orm.core.UpgradeError, 'Expected UNIQUE constraint for column %r was not found'
-                              % con.cols[0].name)
-                    new_name = con.name
-                    con.name = old_name
-                    schema.ops.extend(con.get_rename_sql(new_name))
-                    con.name = new_name
-                    if con.exists(provider, connection):
+                              % cons.cols[0].name)
+                    new_name = cons.name
+                    cons.name = old_name
+                    schema.ops.extend(cons.get_rename_sql(new_name))
+                    cons.name = new_name
+                    if cons.exists(provider, connection):
                         throw(UpgradeError, 'Pony wants to rename constraint %r to %r but this name is already taken' %
                               (old_name, new_name))
 
