@@ -1767,7 +1767,7 @@ class Schema(object):
                 for index in table.indexes:
                     old_idx_name = obsolete(index.name)
                     new_idx_name = index.name
-                    if old_idx_name != new_idx_name:
+                    if old_idx_name is not None and old_idx_name != new_idx_name:
                         index.name = old_idx_name
                         schema.rename_index(index, new_idx_name)
                         if index.exists(provider, connection):
@@ -1779,7 +1779,7 @@ class Schema(object):
                 for fk in table.foreign_keys:
                     old_fk_name = obsolete(fk.name)
                     new_fk_name = fk.name
-                    if old_fk_name != new_fk_name:
+                    if old_fk_name is not None and old_fk_name != new_fk_name:
                         fk.name = old_fk_name
                         schema.rename_foreign_key(fk, new_fk_name)
                         if fk.exists(provider, connection):
