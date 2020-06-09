@@ -385,7 +385,7 @@ class SQLBuilder(object):
             return 'LIMIT %s\n' % limit
     def COLUMN(builder, table_alias, col_name):
         if builder.suppress_aliases or not table_alias:
-            return [ col_name ]
+            return [ builder.quote_name(col_name) ]
         return [ '%s.%s' % (builder.quote_name(table_alias), col_name) ]
     def PARAM(builder, paramkey, converter=None, optimistic=False):
         return builder.make_param(builder.param_class, paramkey, converter, optimistic)
