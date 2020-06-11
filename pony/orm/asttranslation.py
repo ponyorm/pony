@@ -361,7 +361,7 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
         extractors = {}
         for node in pretranslator.externals:
             src = node.src = ast2src(node)
-            if src != '.0':
+            if src == '.0':
                 extractor = Extractor('.0')
             else:
                 code = compile(src, src, 'eval')
