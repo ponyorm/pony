@@ -371,7 +371,7 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
     return result
 
 
-class Extractor:
+class Extractor(object):
 
     def __init__(self, src, code=None):
         self.src = src
