@@ -361,13 +361,26 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
         extractors = {}
         for node in pretranslator.externals:
             src = node.src = ast2src(node)
-            if src == '.0':
-                def extractor(globals, locals):
-                    return locals['.0']
+            if src != '.0':
+                extractor = Extractor('.0')
             else:
                 code = compile(src, src, 'eval')
-                def extractor(globals, locals, code=code):
-                    return eval(code, globals, locals)
+                extractor = Extractor(src, code)
             extractors[src] = extractor
         result = extractors_cache[code_key] = tree, extractors
     return result
+
+
+class Extractor:
+
+    def __init__(self, src, code=None):
+        self.src = src
+        self.code = code
+
+    def __call__(self, globals, locals):
+        if self.src == '.0':
+            return locals['.0']
+        return eval(self.code, globals, locals)
+
+    def __repr__(self):
+        return 'Extractor(%s)' % self.src
