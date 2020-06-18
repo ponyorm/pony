@@ -1013,6 +1013,72 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_delete_attr(self):
+        """
+            Delete's attribute: optional "gpa" from entity "Student" and required "lab_hours" from "Course"
+        """
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+
+        class Course(db2.Entity):
+            name = Required(str, 100)
+            semester = Required(int)
+            lect_hours = Required(int)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Required('Teacher')
+            PrimaryKey(name, semester)
+            description = Optional(str)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            group = Required(Group)
+            courses = Set(Course)
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+
+        correct_sql = 'ALTER TABLE "course" DROP COLUMN "lab_hours"\n' \
+                      'ALTER TABLE "student" DROP COLUMN "gpa"'
+
+        migration_op = "RemoveAttribute(entity_name='Course', attr_name='lab_hours')\n" \
+                       "RemoveAttribute(entity_name='Student', attr_name='gpa')"
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(expected_schema, actual_schema)
+
 
 
 
