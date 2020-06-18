@@ -1145,6 +1145,72 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_unset_unique_attr(self):
+        """
+            Unsets unique constraint from attribute "major" in entity "Group"
+        """
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str)
+            dept = Required(Department)
+            students = Set('Student')
+
+        class Course(db2.Entity):
+            name = Required(str, 100)
+            semester = Required(int)
+            lect_hours = Required(int)
+            lab_hours = Required(int)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Required('Teacher')
+            PrimaryKey(name, semester)
+            description = Optional(str)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            gpa = Optional(float)
+            group = Required(Group)
+            courses = Set(Course)
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+
+        correct_sql = 'ALTER TABLE "group" DROP CONSTRAINT "unq_group__major"'
+
+        migration_op = "DropUniqueConstraint(entity_name='Group', attr_name='major')"
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(expected_schema, actual_schema)
+
 
 
 
