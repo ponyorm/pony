@@ -697,6 +697,97 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_change_max_length(self):
+        """
+            Change max_length parameter for string attribute. Attribute "name" in entity "Course"
+        """
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+
+        class Course(db2.Entity):
+            name = Required(str, 300)
+            semester = Required(int)
+            lect_hours = Required(int)
+            lab_hours = Required(int)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Required('Teacher')
+            PrimaryKey(name, semester)
+            description = Optional(str)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            gpa = Optional(float)
+            group = Required(Group)
+            courses = Set(Course)
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+
+        correct_sql = ''
+
+        migration_op = ""
+        # TODO getting error from apply_migrate:
+        """
+        Last SQL: ALTER TABLE "course" ALTER COLUMN "name" TYPE VARCHAR(300) USING
+
+        Error
+        Traceback (most recent call last):
+          File "/home/admin/pony/pony/orm/dbapiprovider.py", line 55, in wrap_dbapi_exceptions
+            return func(provider, *args, **kwargs)
+          File "/home/admin/pony/pony/orm/dbproviders/postgres.py", line 294, in execute
+            if arguments is None: cursor.execute(sql)
+        psycopg2.errors.SyntaxError: syntax error at end of input
+        LINE 1: ...R TABLE "course" ALTER COLUMN "name" TYPE VARCHAR(300) USING
+                                                                               ^
+
+
+        During handling of the above exception, another exception occurred:
+
+        Traceback (most recent call last):
+          File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 1690, in apply
+            schema.provider.execute(cursor, op.sql)
+          File "<string>", line 2, in execute
+          File "/home/admin/pony/pony/orm/dbapiprovider.py", line 67, in wrap_dbapi_exceptions
+            raise ProgrammingError(e)
+        pony.orm.dbapiprovider.ProgrammingError: syntax error at end of input
+        LINE 1: ...R TABLE "course" ALTER COLUMN "name" TYPE VARCHAR(300) USING
+        """
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(expected_schema, actual_schema)
+
 
 
 
