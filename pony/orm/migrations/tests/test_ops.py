@@ -83,6 +83,95 @@ class TestMigrations(unittest.TestCase):
 
         return expected_schema, actual_schema, m, sql_ops
 
+    def test_add_entity(self):
+        """
+            Adds regular entity "Course mark"
+        """
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+
+        class Course(db2.Entity):
+            name = Required(str, 100)
+            semester = Required(int)
+            lect_hours = Required(int)
+            lab_hours = Required(int)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Required('Teacher')
+            course_mark = Optional('Course_mark')
+            PrimaryKey(name, semester)
+            description = Optional(str)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            gpa = Optional(float)
+            group = Required(Group)
+            courses = Set(Course)
+            course_marks = Set('Course_mark')
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+
+        class Course_mark(db2.Entity):  # added entity
+            id = PrimaryKey(int, auto=True)
+            course = Required(Course)
+            student = Required(Student)
+            mark = Required(int)
+
+        correct_sql = 'CREATE TABLE "course_mark" (\n  ' \
+                      '"id" SERIAL PRIMARY KEY,\n  ' \
+                      '"course_name" VARCHAR(100) NOT NULL,\n  ' \
+                      '"course_semester" INTEGER NOT NULL,\n  ' \
+                      '"student_id" INTEGER NOT NULL,\n  ' \
+                      '"mark" INTEGER NOT NULL\n)\n' \
+                      'CREATE INDEX "idx_course_mark__course_name__course_semester" ON ' \
+                      '"course_mark" ("course_name", "course_semester")\n' \
+                      'CREATE INDEX "idx_course_mark__student_id" ON "course_mark" ("student_id")\n' \
+                      'ALTER TABLE "course_mark" ADD CONSTRAINT "fk_course_mark__course_name__course_semester" ' \
+                      'FOREIGN KEY ("course_name", "course_semester") REFERENCES "course" ("name", "semester")\n' \
+                      'ALTER TABLE "course_mark" ADD CONSTRAINT "fk_course_mark__student_id" ' \
+                      'FOREIGN KEY ("student_id") REFERENCES "student" ("id") ON DELETE CASCADE'
+
+        migration_op = "AddEntity(Entity('Course_mark',  attrs=[\n        " \
+                       "PrimaryKey('id', int, auto=True), \n        " \
+                       "Required('course', 'Course', reverse='course_mark'), \n        " \
+                       "Required('student', 'Student', reverse='course_marks'), \n        " \
+                       "Required('mark', int)]))"
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(expected_schema, actual_schema)
 
 
 
