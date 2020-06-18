@@ -1674,6 +1674,7 @@ class Schema(object):
 
     def apply(schema, connection, verbose, sql_only):
         sql_ops = schema.prepare_sql(connection)
+        sql_ops_ = [op.sql for op in sql_ops]
 
         if sql_only:
             for op in sql_ops:
@@ -1697,6 +1698,8 @@ class Schema(object):
                 print('last object: %s %s' % (last_obj.typename, last_obj.name),
                       file=sys.stderr)
             raise
+
+        return sql_ops_
 
     @staticmethod
     def create_upgrade_table_sql():
