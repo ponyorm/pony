@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from decimal import Decimal
 from pony.orm import *
 from pony.orm.migrations import VirtualDB, Migration
 from collections import defaultdict
@@ -18,6 +19,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db.Entity):
             number = PrimaryKey(int, auto=True)
@@ -95,6 +97,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -185,6 +188,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -258,6 +262,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -325,6 +330,7 @@ class TestMigrations(unittest.TestCase):
             name = Required(str)
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -384,6 +390,7 @@ class TestMigrations(unittest.TestCase):
             name = Required(str)
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -441,6 +448,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -507,6 +515,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -575,6 +584,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -642,6 +652,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -709,6 +720,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -800,6 +812,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -893,6 +906,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -959,6 +973,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1025,6 +1040,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1091,6 +1107,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1157,6 +1174,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1223,6 +1241,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1290,6 +1309,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1356,6 +1376,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1422,6 +1443,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1488,6 +1510,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1556,6 +1579,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -1609,6 +1633,7 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
+
 
 
 
