@@ -1709,7 +1709,7 @@ class TestMigrations(unittest.TestCase):
 
     def test_set_precision(self):
         """
-            Set's precision parameter to attribute "rating" in entity "Teacher"
+            Set's precision parameter to attributes "rating" in entity "Teacher" and "last_update" in entity "Course"
         """
         self.db2 = db2 = Database(**self.db_params)
 
@@ -1739,7 +1739,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
-            last_update = Optional(datetime)
+            last_update = Optional(datetime, precision=5)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
