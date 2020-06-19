@@ -1822,7 +1822,79 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_change_rel_attr_opt_to_req(self):
+        """
+            Changes optional attribute "curator" in entity "Group" to required
+        """
+        self.db2 = db2 = Database(**self.db_params)
 
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+            rating = Optional(Decimal)
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+            curator = Optional('Teacher')
+
+        class Course(db2.Entity):
+            name = Required(str, 100)
+            semester = Required(int)
+            lect_hours = Required(int)
+            lab_hours = Required(int, unsigned=True)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Optional('Teacher')
+            PrimaryKey(name, semester)
+            description = Optional(str)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            gpa = Optional(float)
+            group = Required(Group)
+            courses = Set(Course)
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+            groups = Set(Group)
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+
+        correct_sql = ''
+
+        migration_op = ""
+        # apply migrate raises exception
+        # File "/home/admin/pony/pony/orm/migrations/operations.py", line 721, in apply_to_schema
+        #     schema.move_column_with_data(attr)
+        #   File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 1087, in move_column_with_data
+        #     table_from = cols_from[0].table
+        # IndexError: list index out of range
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(expected_schema, actual_schema)
 
 
 
