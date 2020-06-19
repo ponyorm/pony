@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import datetime, date
 from decimal import Decimal
 from pony.orm import *
 from pony.orm.migrations import VirtualDB, Migration
@@ -39,6 +39,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db.Entity):
             id = PrimaryKey(int, auto=True)
@@ -121,6 +122,7 @@ class TestMigrations(unittest.TestCase):
             course_mark = Optional('Course_mark')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -213,6 +215,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -289,6 +292,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Pupil(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -352,6 +356,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -369,7 +374,6 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
-            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -398,9 +402,17 @@ class TestMigrations(unittest.TestCase):
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
             name = Required(str)
+            groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
             rating = Optional(Decimal)
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -413,6 +425,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -420,6 +433,7 @@ class TestMigrations(unittest.TestCase):
             dob = Required(date)
             picture = Optional(buffer)
             gpa = Optional(float)
+            group = Required(Group)
             courses = Set(Course)
 
         class Teacher(db2.Entity):
@@ -479,6 +493,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -549,6 +564,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -619,6 +635,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -689,6 +706,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -759,6 +777,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -853,6 +872,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -949,6 +969,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1085,6 +1106,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1155,6 +1177,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1223,6 +1246,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1292,6 +1316,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1362,6 +1387,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1431,6 +1457,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1500,6 +1527,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1569,6 +1597,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1640,6 +1669,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1709,6 +1739,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1780,6 +1811,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Optional('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1854,6 +1886,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Optional('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
