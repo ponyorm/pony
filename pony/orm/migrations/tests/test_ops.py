@@ -26,6 +26,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db.Entity):
             name = Required(str, 100)
@@ -56,6 +57,8 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -104,6 +107,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -136,6 +140,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -195,6 +200,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -225,6 +231,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -269,6 +276,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -299,6 +307,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -360,6 +369,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -420,6 +430,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         correct_sql = ''
 
@@ -455,6 +466,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -485,6 +497,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -522,6 +535,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -553,6 +567,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -591,6 +606,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -622,6 +638,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -659,6 +676,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -689,6 +707,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -727,6 +746,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 300)
@@ -757,6 +777,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -819,6 +840,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -849,6 +871,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -913,6 +936,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -980,6 +1004,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1010,6 +1035,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1047,6 +1073,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1075,6 +1102,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1114,6 +1142,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1144,6 +1173,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1211,6 +1241,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1248,6 +1279,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1278,6 +1310,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1316,6 +1349,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1346,6 +1380,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1383,6 +1418,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1413,6 +1449,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1450,6 +1487,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1480,6 +1518,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1517,6 +1556,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1547,6 +1587,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1586,6 +1627,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1616,6 +1658,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1653,6 +1696,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1683,6 +1727,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1722,6 +1767,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
             name = Required(str, 100)
@@ -1752,6 +1798,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -1774,6 +1821,7 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
+
 
 
 
