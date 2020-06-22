@@ -1857,7 +1857,7 @@ class TestMigrations(unittest.TestCase):
 
     def test_change_rel_attr_opt_to_req(self):
         """
-            Changes optional attribute "curator" in entity "Group" to required
+            Changes optional attribute "head_of_dept" in entity "Teacher" to required
         """
         self.db2 = db2 = Database(**self.db_params)
 
@@ -1907,7 +1907,7 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
-            head_of_dept = Optional('DeptDirector')
+            head_of_dept = Required('DeptDirector', initial=None)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
