@@ -64,9 +64,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         db.generate_mapping(check_tables=False)
         db.drop_all_tables(with_all_data=True)
@@ -149,9 +151,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         class Course_mark(db2.Entity):  # added entity
             id = PrimaryKey(int, auto=True)
@@ -241,9 +245,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         class Graduate(Student):  # added inherited entity
             doc_number = Required(str)
@@ -318,9 +324,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = '\n'.join([
             'ALTER TABLE "course_students" RENAME COLUMN "student_id" TO "pupil_id"',
@@ -389,6 +397,7 @@ class TestMigrations(unittest.TestCase):
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "student" DROP COLUMN "group_number"\n' \
                       'DROP TABLE "group"'
@@ -457,6 +466,7 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         correct_sql = ''
 
@@ -525,9 +535,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "department" RENAME TO "dept"'
 
@@ -596,9 +608,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "course" ADD COLUMN "code" TEXT DEFAULT \'00.00.00\' NOT NULL\n' \
                       'ALTER TABLE "course" ALTER COLUMN "code" DROP DEFAULT'
@@ -668,9 +682,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "teacher" ADD COLUMN "patronymic" TEXT DEFAULT \'\' NOT NULL'
 
@@ -738,9 +754,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "teacher" RENAME COLUMN "dob" TO "date_of_birth"'
 
@@ -809,9 +827,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "department" ALTER COLUMN "name" TYPE VARCHAR(300)'
         migration_op = "ChangeColumnType(entity_name='Department', attr_name='name', new_options={'max_len': 300})"
@@ -877,9 +897,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "credits" TYPE INTEGER'
 
@@ -949,6 +971,7 @@ class TestMigrations(unittest.TestCase):
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = ''
 
@@ -1016,9 +1039,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = ''
 
@@ -1083,9 +1108,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "course" DROP COLUMN "lab_hours"\n' \
                       'ALTER TABLE "student" DROP COLUMN "gpa"'
@@ -1155,9 +1182,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "department" ADD CONSTRAINT "unq_department__name" UNIQUE ("name")'
 
@@ -1225,9 +1254,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "group" DROP CONSTRAINT "unq_group__major"'
 
@@ -1295,9 +1326,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = ''
 
@@ -1366,9 +1399,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = ''
 
@@ -1436,9 +1471,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = ''
 
@@ -1506,9 +1543,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "department" RENAME COLUMN "name" TO "mydept"'
 
@@ -1576,9 +1615,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lect_hours" TYPE smallint'
 
@@ -1645,9 +1686,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "teacher" ALTER COLUMN "name" SET DEFAULT \'empty_name\''
 
@@ -1715,9 +1758,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = ''
 
@@ -1787,9 +1832,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = '\n'.join([
             'ALTER TABLE "course" DROP CONSTRAINT "fk_course__teacher_id"',
@@ -1860,9 +1907,11 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
+            teacher = Optional(Teacher)
 
         correct_sql = ''
 
@@ -1882,6 +1931,8 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
+
+
 
 
 
