@@ -5,9 +5,14 @@ from pony.orm import *
 from pony.orm.migrations import VirtualDB, Migration
 from collections import defaultdict
 
+"""
+TODO: remove max_len,
+      error on change primary key attr type  
+      move column after change required -> optional and vice versa
+"""
 
 class TestMigrations(unittest.TestCase):
-    db_params = dict(provider='postgres', user='pony', password='pony', host='localhost', database='pony')
+    db_params = dict(provider='postgres', user='ponytest', password='ponytest', host='localhost', database='ponytest')
 
     def setUp(self):
         self.db = Database(**self.db_params)
@@ -15,7 +20,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -29,7 +34,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -59,12 +64,13 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
-            groups = Set(Group)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
 
-        db.generate_mapping(create_tables=True)
+        db.generate_mapping(check_tables=False)
+        db.drop_all_tables(with_all_data=True)
+        db.create_tables()
 
     def tearDown(self):
         self.db2.drop_all_tables()
@@ -97,7 +103,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -111,7 +117,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -155,7 +161,7 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'CREATE TABLE "course_mark" (\n  ' \
                       '"id" SERIAL PRIMARY KEY,\n  ' \
-                      '"course_name" VARCHAR(100) NOT NULL,\n  ' \
+                      '"course_name" TEXT NOT NULL,\n  ' \
                       '"course_semester" INTEGER NOT NULL,\n  ' \
                       '"student_id" INTEGER NOT NULL,\n  ' \
                       '"mark" INTEGER NOT NULL\n)\n' \
@@ -191,7 +197,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -205,7 +211,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -268,7 +274,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -278,17 +284,17 @@ class TestMigrations(unittest.TestCase):
             number = PrimaryKey(int, auto=True)
             major = Required(str, unique=True)
             dept = Required(Department)
-            students = Set('Student')
+            students = Set('Pupil')
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
             credits = Required(int, size=8)
             dept = Required(Department)
-            students = Set('Student')
+            students = Set('Pupil')
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
@@ -316,12 +322,18 @@ class TestMigrations(unittest.TestCase):
         class DeptDirector(Teacher):
             is_director = Required(bool)
 
-        correct_sql = ''
+        correct_sql = '\n'.join([
+            'ALTER TABLE "course_students" RENAME COLUMN "student_id" TO "pupil_id"',
+            'ALTER TABLE "course_students" RENAME CONSTRAINT "fk_course_students__student_id" TO "fk_course_students__pupil_id"',
+            'ALTER INDEX "idx_course_students__student_id" RENAME TO "idx_course_students__pupil_id"',
+            'ALTER TABLE "student" RENAME TO "pupil"',
+            'ALTER TABLE "pupil" RENAME CONSTRAINT "fk_student__group_number" TO "fk_pupil__group_number"',
+            'ALTER INDEX "idx_student__group_number" RENAME TO "idx_pupil__group_number"',
+        ])
 
-        migration_op = ""
+        migration_op = "RenameEntity(entity_name='Student', new_entity_name='Pupil')"
 
         rename_map = {'Student': 'Pupil'}
-        # TODO apply_migrate() returns error: pony.orm.core.ERDiagramError: Entity definition Student was not found
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate(rename_map)
         imports = defaultdict(set)
         t = []
@@ -340,13 +352,13 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             courses = Set('Course')
             teachers = Set('Teacher')
             rating = Optional(Decimal)
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -401,7 +413,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -415,7 +427,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -469,7 +481,7 @@ class TestMigrations(unittest.TestCase):
         class Department(db2.Entity):
             _table_ = 'dept'
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -483,7 +495,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -539,7 +551,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -553,7 +565,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             code = Required(str, initial="00.00.00")
             lect_hours = Required(int)
@@ -611,7 +623,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -625,7 +637,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -682,7 +694,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -696,7 +708,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -753,7 +765,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 300)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -767,7 +779,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 300)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -801,35 +813,8 @@ class TestMigrations(unittest.TestCase):
         class DeptDirector(Teacher):
             is_director = Required(bool)
 
-        correct_sql = ''
-
-        migration_op = ""
-        # TODO getting error from apply_migrate:
-        """
-        Last SQL: ALTER TABLE "course" ALTER COLUMN "name" TYPE VARCHAR(300) USING
-
-        Error
-        Traceback (most recent call last):
-          File "/home/admin/pony/pony/orm/dbapiprovider.py", line 55, in wrap_dbapi_exceptions
-            return func(provider, *args, **kwargs)
-          File "/home/admin/pony/pony/orm/dbproviders/postgres.py", line 294, in execute
-            if arguments is None: cursor.execute(sql)
-        psycopg2.errors.SyntaxError: syntax error at end of input
-        LINE 1: ...R TABLE "course" ALTER COLUMN "name" TYPE VARCHAR(300) USING
-                                                                               ^
-
-
-        During handling of the above exception, another exception occurred:
-
-        Traceback (most recent call last):
-          File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 1690, in apply
-            schema.provider.execute(cursor, op.sql)
-          File "<string>", line 2, in execute
-          File "/home/admin/pony/pony/orm/dbapiprovider.py", line 67, in wrap_dbapi_exceptions
-            raise ProgrammingError(e)
-        pony.orm.dbapiprovider.ProgrammingError: syntax error at end of input
-        LINE 1: ...R TABLE "course" ALTER COLUMN "name" TYPE VARCHAR(300) USING
-        """
+        correct_sql = 'ALTER TABLE "department" ALTER COLUMN "name" TYPE VARCHAR(300)'
+        migration_op = "ChangeColumnType(entity_name='Department', attr_name='name', new_options={'max_len': 300})"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -848,7 +833,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -862,7 +847,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -896,36 +881,9 @@ class TestMigrations(unittest.TestCase):
         class DeptDirector(Teacher):
             is_director = Required(bool)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "credits" TYPE INTEGER'
 
-        migration_op = ""
-        # TODO getting error from apply_migrate:
-        """
-        Last SQL: ALTER TABLE "course" ALTER COLUMN "credits" TYPE INTEGER USING
-
-        Error
-        Traceback (most recent call last):
-          File "/home/admin/pony/pony/orm/dbapiprovider.py", line 55, in wrap_dbapi_exceptions
-            return func(provider, *args, **kwargs)
-          File "/home/admin/pony/pony/orm/dbproviders/postgres.py", line 294, in execute
-            if arguments is None: cursor.execute(sql)
-        psycopg2.errors.SyntaxError: syntax error at end of input
-        LINE 1: ...TER TABLE "course" ALTER COLUMN "credits" TYPE INTEGER USING
-                                                                               ^
-
-
-        During handling of the above exception, another exception occurred:
-
-        Traceback (most recent call last):
-          File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 1690, in apply
-            schema.provider.execute(cursor, op.sql)
-          File "<string>", line 2, in execute
-          File "/home/admin/pony/pony/orm/dbapiprovider.py", line 67, in wrap_dbapi_exceptions
-            raise ProgrammingError(e)
-        pony.orm.dbapiprovider.ProgrammingError: syntax error at end of input
-        LINE 1: ...TER TABLE "course" ALTER COLUMN "credits" TYPE INTEGER USING
-                                                                               ^
-        """
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='credits', new_options={'size': 32})"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -945,7 +903,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -959,7 +917,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1014,7 +972,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1028,7 +986,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1038,6 +996,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str, nullable=True)
+            last_update = Optional(datetime)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -1064,7 +1023,6 @@ class TestMigrations(unittest.TestCase):
         correct_sql = ''
 
         migration_op = "ChangeNullable(entity_name='Course', attr_name='description', nullable=True)"
-        # different expected and actual schemas
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -1083,7 +1041,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1097,7 +1055,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             credits = Required(int, size=8)
@@ -1153,7 +1111,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str, unique=True)
+            name = Required(str, 100, unique=True)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1167,7 +1125,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1223,7 +1181,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1234,9 +1192,10 @@ class TestMigrations(unittest.TestCase):
             major = Required(str)
             dept = Required(Department)
             students = Set('Student')
+            curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1292,7 +1251,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1306,7 +1265,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int, unsigned=True)
             lab_hours = Required(int, unsigned=True)
@@ -1363,7 +1322,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1377,7 +1336,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int)
@@ -1433,7 +1392,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str, default="deptName")
+            name = Required(str, 100, default="deptName")
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1447,7 +1406,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1503,7 +1462,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str, column='mydept')
+            name = Required(str, 100, column='mydept')
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1517,7 +1476,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1573,7 +1532,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1587,9 +1546,9 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
-            semester = Required(int, sql_type="smallint")
-            lect_hours = Required(int)
+            name = Required(str)
+            semester = Required(int)
+            lect_hours = Required(int, sql_type="smallint")
             lab_hours = Required(int, unsigned=True)
             credits = Required(int, size=8)
             dept = Required(Department)
@@ -1621,12 +1580,9 @@ class TestMigrations(unittest.TestCase):
         class DeptDirector(Teacher):
             is_director = Required(bool)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lect_hours" TYPE smallint'
 
-        migration_op = ""
-        # apply_migrate raises exception
-        # psycopg2.errors.SyntaxError: syntax error at end of input
-        # LINE 1: ...R TABLE "course" ALTER COLUMN "semester" TYPE smallint USING
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='lect_hours', new_options={'sql_type': 'smallint'})"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -1645,7 +1601,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1659,7 +1615,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1715,7 +1671,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1729,7 +1685,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1787,7 +1743,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1801,7 +1757,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
@@ -1835,15 +1791,13 @@ class TestMigrations(unittest.TestCase):
         class DeptDirector(Teacher):
             is_director = Required(bool)
 
-        correct_sql = ''
-
-        migration_op = ""
-        # apply migrate raises exception
-        # File "/home/admin/pony/pony/orm/migrations/operations.py", line 721, in apply_to_schema
-        #     schema.move_column_with_data(attr)
-        #   File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 1087, in move_column_with_data
-        #     table_from = cols_from[0].table
-        # IndexError: list index out of range
+        correct_sql = '\n'.join([
+            'ALTER TABLE "course" DROP CONSTRAINT "fk_course__teacher_id"',
+            'ALTER TABLE "course" ALTER COLUMN "teacher_id" DROP NOT NULL',
+            'ALTER TABLE "course" ADD CONSTRAINT "fk_course__teacher_id" '
+                'FOREIGN KEY ("teacher_id") REFERENCES "teacher" ("id") ON DELETE SET NULL'
+        ])
+        migration_op = "ChangeAttributeClass(entity_name='Course', attr_name='teacher', new_class='Optional')"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -1862,7 +1816,7 @@ class TestMigrations(unittest.TestCase):
 
         class Department(db2.Entity):
             number = PrimaryKey(int, auto=True)
-            name = Required(str)
+            name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
@@ -1876,7 +1830,7 @@ class TestMigrations(unittest.TestCase):
             curator = Optional('Teacher')
 
         class Course(db2.Entity):
-            name = Required(str, 100)
+            name = Required(str)
             semester = Required(int)
             lect_hours = Required(int)
             lab_hours = Required(int, unsigned=True)
