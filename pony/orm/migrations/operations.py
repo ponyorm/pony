@@ -691,11 +691,14 @@ class ChangeAttributeClass(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm.migrations.virtuals import Optional, Required
+        from pony.orm.migrations.virtuals import Optional, Required, Set
 
         def need_to_move(attr):
-            assert attr.reverse
+            if not attr.reverse:
+                return False
             r_attr = attr.reverse
+            if isinstance(r_attr, Set):
+                return False
             col_provided = lambda a: a.provided.kwargs.get('column') or a.provided.kwargs.get('columns')
             if col_provided(attr) or col_provided(r_attr):
                 return False
@@ -711,14 +714,12 @@ class ChangeAttributeClass(BaseOperation):
                 return r_attr == min(attr, r_attr, key=lambda a: (a.name, a.entity.name))
 
         schema = vdb.schema
-        if not attr.reverse:
-            for col in attr.columns:
-                nullable = attr.nullable or len(attr.entity.bases) != 0
-                schema.change_nullable(col, nullable)
-            return
-
         if need_to_move(attr):
             schema.move_column_with_data(attr)
+
+        for col in attr.columns:
+            nullable = attr.nullable or len(attr.entity.bases) != 0
+            schema.change_nullable(col, nullable)
 
     def serialize(self, imports):
         super(ChangeAttributeClass, self).serialize(imports)
@@ -933,7 +934,7 @@ class RenameEntity(BaseOperation):
             if attr.reverse and isinstance(attr, Set) and isinstance(attr.reverse, Set):
                 m2m_table = attr.m2m_table
                 new_m2m_table_name = schema.get_m2m_table_name(attr, attr.reverse)
-                if m2m_table != new_m2m_table_name:
+                if m2m_table.name != new_m2m_table_name:
                     vdb.schema.rename_table(m2m_table, new_m2m_table_name)
 
             if 'column' not in attr.provided.kwargs or 'columns' not in attr.provided.kwargs:

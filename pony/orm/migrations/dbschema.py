@@ -240,6 +240,8 @@ class Column(DBObject):
         col.nullable = attr.nullable or len(attr.entity.bases) != 0
         col.auto = attr.auto
         col.sql_default = attr.sql_default
+        if not attr.is_required and attr.py_type is basestring:
+            col.sql_default = ''
         col.initial = attr.initial or attr.provided.initial
         col.sql_type = attr.sql_type or converter.get_sql_type()
         provided_cols = attr.provided.kwargs.get('columns', None)
@@ -360,8 +362,8 @@ class Column(DBObject):
         result.append(self.get_alter_prefix())
         result.append('TYPE')
         result.append(new_type)
-        result.append('USING')
         if cast:
+            result.append('USING')
             result.append(cast.format(colname=quote(self.name), sql_type=new_type))
         return ' '.join(result)
 
@@ -1083,6 +1085,9 @@ class Schema(object):
                     schema.rename_columns_by_attr(reverse, None)  # we're not passing name for reverse attrs
 
     def move_column_with_data(schema, attr):
+        if not attr.reverse.columns:
+            assert attr.columns
+            attr = attr.reverse
         cols_from = attr.reverse.columns
         table_from = cols_from[0].table
         table_from_pk = table_from.primary_key.cols
@@ -1153,11 +1158,19 @@ class Schema(object):
         old_value = column.nullable
         if old_value == new_value:
             return
+
+        fkeys = [fk for fk in column.table.foreign_keys if column in fk.cols_from]
+        for fk in fkeys:
+            schema.ops.extend(fk.get_drop_sql())
         column.nullable = new_value
         if new_value:
             schema.ops.extend(column.get_drop_not_null_sql())
         else:
             schema.ops.extend(column.get_set_not_null_sql())
+        for fk in fkeys:
+            if column.nullable and fk.on_delete == 'CASCADE':
+                fk.on_delete = 'SET NULL'
+            schema.ops.extend(fk.get_create_sql())
 
     def add_unique_constraint(schema, cols):
         unq = schema.unique_cls(cols)
