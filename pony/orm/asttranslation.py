@@ -458,5 +458,5 @@ def create_extractors(code_key, tree, globals, locals, special_functions, const_
                 def extractor(globals, locals, code=code):
                     return eval(code, globals, locals)
             extractors[src] = extractor
-        result = extractors_cache[code_key] = tree, extractors
+        result = tree, extractors
     return result
