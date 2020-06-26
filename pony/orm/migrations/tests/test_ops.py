@@ -394,6 +394,7 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -466,7 +467,6 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
-            head_of_dept = Optional('DeptDirector')
 
         correct_sql = ''
 
