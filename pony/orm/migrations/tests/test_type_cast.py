@@ -364,5 +364,38 @@ class TestTypeCast(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_change_attr_type_str_to_uuid(self):
+        """
+            Changes string attribute "name" in entity "Item" to uuid type
+        """
+        # Logically correct type casting
+        self.db = db = Database(**self.db_params)
+
+        class Item(db.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+
+        db.generate_mapping(create_tables=True)
+
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Item(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(UUID)
+
+        correct_sql = ''
+
+        migration_op = ""
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(expected_schema, actual_schema)
+
 if __name__ == '__main__':
     unittest.main()
