@@ -298,9 +298,9 @@ class TestTypeCast(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
-    def test_change_attr_type_str_to_time(self):
+    def test_change_attr_type_str_to_bytes(self):
         """
-            Changes string attribute "name" in entity "Item" to time type
+            Changes string attribute "name" in entity "Item" to bytes type
         """
         # Logically correct type casting
         self.db = db = Database(**self.db_params)
@@ -315,7 +315,7 @@ class TestTypeCast(unittest.TestCase):
 
         class Item(db2.Entity):
             id = PrimaryKey(int, auto=True)
-            name = Required(time)
+            name = Required(bytes)
 
         correct_sql = ''
 
