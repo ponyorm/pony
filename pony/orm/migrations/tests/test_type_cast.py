@@ -8,7 +8,7 @@ from collections import defaultdict
 
 
 class TestTypeCast(unittest.TestCase):
-    db_params = dict(provider='postgres', user='pony', password='pony', host='localhost', database='pony')
+    db_params = dict(provider='postgres', user='ponytest', password='ponytest', host='localhost', database='ponytest')
 
     def tearDown(self):
         self.db.drop_all_tables()
