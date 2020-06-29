@@ -120,9 +120,10 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             name = Required(Decimal)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE DECIMAL(12, 2) USING "name"::DECIMAL(12, 2)'
 
-        migration_op = ""
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': Decimal}, " \
+                       "cast_sql='{colname}::DECIMAL(12, 2)')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
