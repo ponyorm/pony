@@ -1059,8 +1059,8 @@ class ChangeColumnType(BaseOperation):
         type_has_empty_value = is_string or hasattr(attr.py_type, 'default_empty_value')
         attr.nullable = not isinstance(attr, Required) and not type_has_empty_value
 
-        cast_sql = None
-        if self.cast_sql is None and 'py_type' in self.new_options:
+        cast_sql = self.cast_sql
+        if cast_sql is None and 'py_type' in self.new_options:
             cast_sql = vdb.provider.cast_sql
 
         if not vdb.vdb_only:
