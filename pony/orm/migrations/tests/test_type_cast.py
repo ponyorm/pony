@@ -1025,6 +1025,40 @@ class TestTypeCast(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_change_attr_type_datetime_to_time(self):
+        """
+            Changes datetime attribute "number" in entity "Item" to time type
+        """
+        # Logically correct type casting
+        self.db = db = Database(**self.db_params)
+
+        class Item(db.Entity):
+            id = PrimaryKey(int, auto=True)
+            number = Required(datetime)
+
+        db.generate_mapping(create_tables=True)
+
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Item(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            number = Required(time)
+
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TIME USING "number"::TIME'
+
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': time}, " \
+                       "cast_sql='{colname}::TIME')"
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(expected_schema, actual_schema)
+
 
 if __name__ == '__main__':
     unittest.main()
