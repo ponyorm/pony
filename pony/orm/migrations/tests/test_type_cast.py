@@ -393,9 +393,10 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             name = Required(UUID)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE UUID USING "name"::UUID'
 
-        migration_op = ""
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': UUID}, " \
+                       "cast_sql='{colname}::UUID')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
