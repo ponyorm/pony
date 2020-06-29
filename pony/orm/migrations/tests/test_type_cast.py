@@ -598,5 +598,39 @@ class TestTypeCast(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_change_attr_type_float_to_str(self):
+        """
+            Changes float attribute "number" in entity "Item" to string type
+        """
+        # Logically correct type casting
+        self.db = db = Database(**self.db_params)
+
+        class Item(db.Entity):
+            id = PrimaryKey(int, auto=True)
+            number = Required(float)
+
+        db.generate_mapping(create_tables=True)
+
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Item(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            number = Required(str)
+
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT'
+
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': str}, " \
+                       "cast_sql='{colname}::TEXT')"
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(expected_schema, actual_schema)
+
 if __name__ == '__main__':
     unittest.main()
