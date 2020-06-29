@@ -529,7 +529,7 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             number = Required(Decimal)
 
-        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DECIMAL(12, 2)'
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DECIMAL(12, 2) USING "number"::DECIMAL(12, 2)'
 
         migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': Decimal}, " \
                        "cast_sql='{colname}::DECIMAL(12, 2)')"
