@@ -325,9 +325,10 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             name = Required(bytes)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE BYTEA USING "name"::BYTEA'
 
-        migration_op = ""
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': bytes}, " \
+                       "cast_sql='{colname}::BYTEA')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
