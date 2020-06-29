@@ -361,7 +361,8 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = ''
 
-        migration_op = ""
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': LongStr}, " \
+                       "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
