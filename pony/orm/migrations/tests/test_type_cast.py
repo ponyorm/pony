@@ -665,7 +665,7 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             number = Required(int)
 
-        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE INTEGER'
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE INTEGER USING "number"::INTEGER'
 
         migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': int}, " \
                        "cast_sql='{colname}::INTEGER')"
