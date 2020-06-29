@@ -495,9 +495,10 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             number = Required(float)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DOUBLE PRECISION USING "number"::DOUBLE PRECISION'
 
-        migration_op = ""
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': float}, " \
+                       "cast_sql='{colname}::DOUBLE PRECISION')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
