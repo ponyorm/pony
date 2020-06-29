@@ -222,9 +222,10 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             name = Required(time)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE TIME USING "name"::TIME'
 
-        migration_op = ""
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': time}, " \
+                       "cast_sql='{colname}::TIME')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
