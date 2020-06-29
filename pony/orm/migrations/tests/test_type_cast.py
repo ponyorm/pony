@@ -1710,6 +1710,41 @@ class TestTypeCast(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_change_attr_type_longstr_to_float(self):
+        """
+            Changes longstr attribute "description" in entity "Item" to float type
+        """
+        # Logically correct type casting
+        self.db = db = Database(**self.db_params)
+
+        class Item(db.Entity):
+            id = PrimaryKey(int, auto=True)
+            description = Required(LongStr)
+
+        db.generate_mapping(create_tables=True)
+
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Item(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            description = Required(float)
+
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE DOUBLE PRECISION ' \
+                      'USING "description"::DOUBLE PRECISION'
+
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': float}," \
+                       " cast_sql='{colname}::DOUBLE PRECISION')"
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(expected_schema, actual_schema)
+
 
 if __name__ == '__main__':
     unittest.main()
