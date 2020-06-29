@@ -291,9 +291,10 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             name = Required(bool)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE BOOLEAN USING "name"::BOOLEAN'
 
-        migration_op = ""
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': bool}, " \
+                       "cast_sql='{colname}::BOOLEAN')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
