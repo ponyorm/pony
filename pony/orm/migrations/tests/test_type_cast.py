@@ -597,7 +597,7 @@ class TestTypeCast(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             number = Required(LongStr)
 
-        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT'
+        correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
         migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
                        "cast_sql='{colname}::TEXT')"
