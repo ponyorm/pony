@@ -1992,8 +1992,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
 
     def test_change_primary_key_to_required(self):
@@ -2190,8 +2190,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_change_required_to_primary_key(self):
@@ -2324,8 +2324,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
 
     def test_change_optional_to_primary_key(self):
