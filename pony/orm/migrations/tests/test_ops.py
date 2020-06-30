@@ -1923,7 +1923,7 @@ class TestMigrations(unittest.TestCase):
 
     def test_change_rel_attr_opt_to_req(self):
         """
-            Changes optional attribute "head_of_dept" in entity "Teacher" to required
+            Changes optional attribute "curator" in entity "Group" to required
         """
         self.db2 = db2 = Database(**self.db_params)
 
@@ -1940,7 +1940,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
-            curator = Optional('Teacher')
+            curator = Required('Teacher', initial=None)
 
         class Course(db2.Entity):
             name = Required(str)
@@ -1950,7 +1950,7 @@ class TestMigrations(unittest.TestCase):
             credits = Required(int, size=8)
             dept = Required(Department)
             students = Set('Student')
-            teacher = Optional('Teacher')
+            teacher = Required('Teacher')
             PrimaryKey(name, semester)
             description = Optional(str)
             last_update = Optional(datetime)
@@ -1973,21 +1973,19 @@ class TestMigrations(unittest.TestCase):
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group)
-            head_of_dept = Required('DeptDirector', initial=None)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "group" DROP CONSTRAINT "fk_group__curator_id"\n' \
+                      'ALTER TABLE "group" ALTER COLUMN "curator_id" SET NOT NULL\n' \
+                      'ALTER TABLE "group" ADD CONSTRAINT "fk_group__curator_id" FOREIGN KEY ("curator_id") ' \
+                      'REFERENCES "teacher" ("id") ON DELETE SET NULL'
 
-        migration_op = ""
-        # apply migrate raises exception
-        # File "/home/admin/pony/pony/orm/migrations/operations.py", line 721, in apply_to_schema
-        #     schema.move_column_with_data(attr)
-        #   File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 1087, in move_column_with_data
-        #     table_from = cols_from[0].table
-        # IndexError: list index out of range
+        migration_op = "ChangeAttributeClass(entity_name='Group', attr_name='curator', new_class='Required')"
+
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -1996,7 +1994,7 @@ class TestMigrations(unittest.TestCase):
 
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual(expected_schema, actual_schema)
+        self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
 
 
 
