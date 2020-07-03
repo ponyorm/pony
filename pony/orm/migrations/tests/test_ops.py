@@ -1,4 +1,5 @@
 import unittest
+import collections
 from datetime import datetime, date
 from decimal import Decimal
 from pony.orm import *
@@ -78,19 +79,32 @@ class TestMigrations(unittest.TestCase):
         self.db2.drop_all_tables()
 
     def apply_migrate(self, rename_map=None):
+        vdb = VirtualDB.from_db(self.db)
+        vdb.schema = self.db.provider.vdbschema_cls.from_vdb(vdb, self.db.provider)
+        vdb.vdb_only = False
+
         self.db2.generate_mapping(check_tables=False)
-        base_vdb = self.db.vdb
-        tmp_vdb = self.db2.vdb
+        from_vdb = self.db.vdb
+        to_vdb = self.db2.vdb
+        m = Migration.make(from_vdb, to_vdb, rename_map)
 
-        new_vdb = VirtualDB.from_db(self.db)
-        new_vdb.schema = self.db.provider.vdbschema_cls.from_vdb(new_vdb, self.db.provider)
-
-        m = Migration.make(base_vdb, tmp_vdb, rename_map)
-        new_vdb.vdb_only = False
+        lines = []
         for op in m.operations:
-            op.apply(new_vdb)
-        expected_schema = tmp_vdb.schema
-        actual_schema = new_vdb.schema
+            imports = collections.defaultdict(set)
+            lines.append(op.serialize(imports))
+            op_text = ''
+            for k, v in imports.items():
+                op_text += 'from %s import %s\n' % (k, ', '.join(str(i) for i in v))
+            op_text += '\n'
+            op_text += 'op = ' + lines[-1]
+            objects = {}
+            exec(op_text, objects)
+            op = objects['op']
+            op.apply(vdb)
+
+        expected_schema = to_vdb.schema
+        actual_schema = vdb.schema
+
         with db_session:
             connection = self.db.get_connection()
             sql_ops = actual_schema.apply(connection, False, False)
@@ -163,6 +177,12 @@ class TestMigrations(unittest.TestCase):
             student = Required(Student)
             mark = Required(int)
 
+        migration_op = "AddEntity(Entity('Course_mark',  attrs=[\n        " \
+                       "PrimaryKey('id', int, auto=True), \n        " \
+                       "Required('course', 'Course', reverse='course_mark'), \n        " \
+                       "Required('student', 'Student', reverse='course_marks'), \n        " \
+                       "Required('mark', int)]))"
+
         correct_sql = 'CREATE TABLE "course_mark" (\n  ' \
                       '"id" SERIAL PRIMARY KEY,\n  ' \
                       '"course_name" TEXT NOT NULL,\n  ' \
@@ -177,11 +197,6 @@ class TestMigrations(unittest.TestCase):
                       'ALTER TABLE "course_mark" ADD CONSTRAINT "fk_course_mark__student_id" ' \
                       'FOREIGN KEY ("student_id") REFERENCES "student" ("id") ON DELETE CASCADE'
 
-        migration_op = "AddEntity(Entity('Course_mark',  attrs=[\n        " \
-                       "PrimaryKey('id', int, auto=True), \n        " \
-                       "Required('course', 'Course', reverse='course_mark'), \n        " \
-                       "Required('student', 'Student', reverse='course_marks'), \n        " \
-                       "Required('mark', int)]))"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -189,8 +204,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_inherited_entity(self):
@@ -255,12 +270,14 @@ class TestMigrations(unittest.TestCase):
             doc_number = Required(str)
             exam_mark = Required(int)
 
-        correct_sql = 'ALTER TABLE "student" ADD COLUMN "doc_number" TEXT\n' \
-                      'ALTER TABLE "student" ADD COLUMN "exam_mark" INTEGER'
-
         migration_op = "AddEntity(Entity('Graduate', bases=['Student'], attrs=[\n        " \
                        "Required('doc_number', str), \n        " \
                        "Required('exam_mark', int)]))"
+
+        correct_sql = 'ALTER TABLE "student" ADD COLUMN "classtype" TEXT DEFAULT \'Student\' NOT NULL\n' \
+                      'ALTER TABLE "student" ALTER COLUMN "classtype" DROP DEFAULT\n' \
+                      'ALTER TABLE "student" ADD COLUMN "doc_number" TEXT\n' \
+                      'ALTER TABLE "student" ADD COLUMN "exam_mark" INTEGER'
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
