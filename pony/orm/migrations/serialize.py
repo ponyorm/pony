@@ -10,6 +10,7 @@ import types
 
 def serialize(obj, imports):
     from pony import orm
+    from pony.orm import core
     result = None
     t = obj if isinstance(obj, type) else type(obj)
     if t in (str, int, float, bool):
@@ -36,7 +37,7 @@ def serialize(obj, imports):
         imports['pony.orm'].add(t.__name__)
     elif t in (types.BuiltinMethodType, types.MethodType):
         # like datetime.now as value
-        if obj is t: throw(TypeError, obj)
+        if obj is t: throw(core.MigrationError, 'Cannot serialize method: %r' % obj)
         method = obj
         module_name = method.__self__.__module__
         class_name = method.__self__.__name__
@@ -44,7 +45,7 @@ def serialize(obj, imports):
         imports[module_name].add(class_name)
         result = '%s.%s' % (class_name, func_name)
     elif t in (types.FunctionType, types.BuiltinFunctionType):
-        if obj is t: throw(TypeError, obj)
+        if obj is t: throw(core.MigrationError, 'Cannot serialize function: %r' % obj)
         func = obj
         module_name = func.__module__
         func_name = func.__name__

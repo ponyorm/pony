@@ -1410,14 +1410,14 @@ class Schema(object):
             schema1 = table1_name[0]
             schema2 = table2_name[0]
             if schema1 != schema2:
-                throw(NameError, 'Since %r and %r has different schemas you should provide schema'
-                                 ' for %s.%s <-> %s.%s intermediate m2m table' %
+                throw(MappingError, 'Since %r and %r has different schemas you should provide schema'
+                                    ' for %s.%s <-> %s.%s intermediate m2m table' %
                       (attr1.entity, attr2.entity, attr1.entity.name, attr1.name, attr2.entity.name, attr2.name))
             else:
                 schema_name = schema1
         elif isinstance(table1_name, tuple) or isinstance(table2_name, tuple):
-            throw(NameError, 'Since %r and %r has different schemas you should provide schema'
-                             ' for %s.%s <-> %s.%s intermediate m2m table' %
+            throw(MigrationError, 'Since %r and %r has different schemas you should provide schema'
+                                ' for %s.%s <-> %s.%s intermediate m2m table' %
                   (attr1.entity, attr2.entity, attr1.entity.name, attr1.name, attr2.entity.name, attr2.name))
 
         e1_name, e2_name = attr1.entity.name, attr2.entity.name
