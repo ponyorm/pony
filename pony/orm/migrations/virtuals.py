@@ -84,18 +84,18 @@ class VirtualDB(object):
             entity.init(self)
 
     def validate(db):
-        from pony.orm.core import MigrationException
+        from pony.orm.core import MigrationError
         for entity in db.entities.values():
             for attr in entity.new_attrs.values():
                 if attr.reverse:
                     r_entity_name = attr.py_type
                     r_entity = db.entities.get(r_entity_name)
                     if r_entity is None:
-                        throw(MigrationException, 'Reverse attr for %r is invalid: entity %s is not found' %
+                        throw(MigrationError, 'Reverse attr for %r is invalid: entity %s is not found' %
                               (attr, r_entity_name))
                     r_attr = r_entity.get_attr(getattr(attr.reverse, 'name', attr.reverse))
                     if r_attr is None:
-                        throw(MigrationException, 'Reverse attr for %r is invalid: attribute %s is not found' %
+                        throw(MigrationError, 'Reverse attr for %r is invalid: attribute %s is not found' %
                               (attr, attr.reverse.name))
                     assert attr.reverse == r_attr
 
@@ -173,10 +173,11 @@ class VirtualEntity(object):
             attr.apply_converters(self.db)
 
     def resolve_inheritance(self):
+        from pony.orm import core
         for i, base in enumerate(self.bases[:]):
             if isinstance(base, basestring):
                 if base not in self.db.entities:
-                    throw(TypeError, 'Entity %r is not defined yet' % base)
+                    throw(core.MappingError, 'Entity %r is not defined yet' % base)
                 base = self.db.entities[base]
                 self.bases[i] = base
             base.subclasses.append(self)
@@ -208,11 +209,12 @@ class VirtualEntity(object):
 
     @classmethod
     def from_entity(cls, db, entity):
+        from pony.orm import core
         name = entity.__name__
         bases = [b.__name__ for b in entity._direct_bases_]
         for base in bases:
             if base not in db.entities:
-                throw(ValueError, 'Entity %s has a parent %s that is not defined' % (entity.__name__, base))
+                throw(core.MappingError, 'Entity %s has a parent %s that is not defined' % (entity.__name__, base))
 
         table_name = entity._given_table_name
         discriminator = entity._given_discriminator
@@ -228,7 +230,7 @@ class VirtualEntity(object):
         if composite_pk:
             for attrname in composite_pk:
                 if attrname not in all_attrs:
-                    throw(ValueError, "attribute %s does not exist so it can't be used as primary key" % attrname)
+                    throw(core.MappingError, "attribute %s does not exist so it can't be used as primary key" % attrname)
         composite_keys = []
         composite_indexes = []
         for index in entity._indexes_:
@@ -337,17 +339,17 @@ class VirtualAttribute(object):
             throw(core.MappingError, "initial option cannot be used in relation")
 
         if initial and not (isinstance(initial, self.py_type) or self.is_string and isinstance(initial, basestring)):
-            throw(TypeError, 'initial value should be of type %s. Got: %s' %
+            throw(core.MappingError, 'initial value should be of type %s. Got: %s' %
                   (self.py_type.__name__, type(initial).__name__))
 
         self.provided = Provided(args=args[:], kwargs=kwargs.copy(), reverse=self.reverse, initial=initial)
 
         self.auto = kwargs.pop('auto', None)
         if self.auto and not isinstance(self, PrimaryKey):
-            throw(TypeError, 'auto option cannot be set for non-PrimaryKey attribute')
+            throw(core.MappingError, 'auto option cannot be set for non-PrimaryKey attribute')
         self.nullable = kwargs.pop('nullable', None)
         if self.nullable and not isinstance(self, Optional):
-            throw(TypeError, 'nullable option can be set only for Optional attribute')
+            throw(core.MappingError, 'nullable option can be set only for Optional attribute')
         if self.nullable is None:
             self.nullable = not self.is_required and not self.type_has_empty_value
         # self.nullable = self.nullable or not self.type_has_empty_value or not self.is_required
@@ -377,8 +379,8 @@ class VirtualAttribute(object):
         self.serializable = True
 
         if not isinstance(self, (Required, Set, Optional, Discriminator, PrimaryKey)):
-            throw(TypeError, 'VirtualAttribute is abstract base class, '
-                             'use Required, Optional, Set, PrimaryKey or Discriminator')
+            throw(core.MappingError, 'VirtualAttribute is abstract base class, '
+                                     'use Required, Optional, Set, PrimaryKey or Discriminator')
 
     def clone(self):
         cls = self.__class__
@@ -464,14 +466,16 @@ class VirtualAttribute(object):
         self.converters = [vdb.provider.get_converter_by_attr(self)]
 
     def init(self, entity, db):
+        from pony.orm import core
+
         def resolve_cascade(attr1, attr2):
             if attr1.cascade_delete is None:
                 attr1.cascade_delete = isinstance(attr1, Set) and attr2.is_required
             elif attr1.cascade_delete:
-                if attr2.cascade_delete: throw(TypeError,
+                if attr2.cascade_delete: throw(core.MappingError,
                     "'cascade_delete' option cannot be set for both sides of relationship "
                     "(%s and %s) simultaneously" % (attr1, attr2))
-                if isinstance(attr2, Set): throw(TypeError,
+                if isinstance(attr2, Set): throw(core.MappingError,
                     "'cascade_delete' option cannot be set for attribute %s, "
                     "because reverse attribute %s is collection" % (attr1, attr2))
 
@@ -503,12 +507,11 @@ class VirtualAttribute(object):
                         db.unresolved_links.add(self.reverse)
                         return
 
-                    throw(ValueError, 'Reverse attribute for %r should be specified' % self)
+                    throw(core.MappingError, 'Reverse attribute for %r should be specified' % self)
 
                 if r_attr.entity is None:
                     r_attr.entity = r_entity
 
-                from pony.orm import core
                 if r_attr.is_required and self.is_required:
                     throw(core.MappingError, 'Relation required-to-required is not possible')
 
@@ -516,18 +519,18 @@ class VirtualAttribute(object):
                 r_attr.reverse = self
                 self.symmetric = self is r_attr
                 if (self.m2m_table_name or r_attr.m2m_table_name) and not (isinstance(self, Set) or isinstance(r_attr, Set)):
-                    throw(TypeError, 'table_name parameter can be only specified for m2m relations')
+                    throw(core.MappingError, 'table_name parameter can be only specified for m2m relations')
                 if self.m2m_table_name and r_attr.m2m_table_name and self.m2m_table_name != r_attr.m2m_table_name:
-                    # throw(ValueError, 'Attributes %r and %r provide different m2m table names' % (self, r_attr))
+                    # throw(core.MappingError, 'Attributes %r and %r provide different m2m table names' % (self, r_attr))
                     throw(core.MappingError, "Parameter 'table' for %r and %r do not match" % (self, r_attr))
                 resolve_cascade(self, r_attr)
                 resolve_cascade(r_attr, self)
 
             else:
-                throw(ValueError, 'Reverse attribute should be specified')
+                throw(core.MappingError, 'Reverse attribute should be specified')
 
         if self.auto and self.py_type is not int:
-            throw(TypeError, 'Attribute %r provides option `auto` that can only be specified for int attributes' % self)
+            throw(core.MappingError, 'Attribute %r provides option `auto` that can only be specified for int attributes' % self)
 
     def __repr__(self):
         if self.entity is not None:

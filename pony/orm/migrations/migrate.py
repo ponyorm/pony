@@ -239,12 +239,13 @@ def entity_difference(entity1, entity2, vdb1, vdb2, rename_map):
             return AddCompositeIndex(entity1.name, ci)
 
 def attr_difference(attr1, attr2):
+    from pony.orm.core import MigrationError
     non_changeable_types = (PrimaryKey, Set, Discriminator)
     if type(attr1) != type(attr2):
         if type(attr1) in non_changeable_types:
-            throw(TypeError, 'Attribute of type %s cannot be changed' % type(attr1).__name__)
+            throw(MigrationError, 'Attribute of type %s cannot be changed' % type(attr1).__name__)
         if type(attr2) in non_changeable_types:
-            throw(TypeError, 'Attribute cannot be changed to type %s' % type(attr2).__name__)
+            throw(MigrationError, 'Attribute cannot be changed to type %s' % type(attr2).__name__)
 
         return ChangeAttributeClass(attr1.entity.name, attr1.name, type(attr2).__name__)
 

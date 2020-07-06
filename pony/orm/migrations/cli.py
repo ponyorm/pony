@@ -173,7 +173,7 @@ def apply(vdb, db, graph, args, sql_only=False):
 
 
 def make(db, graph, args):
-    from pony.orm.core import MigrationException
+    from pony.orm.core import MigrationError
     vdb_curr = VirtualDB.from_db(db)
     vdb_prev = VirtualDB()
     vdb_prev.provider = vdb_curr.provider
@@ -181,11 +181,11 @@ def make(db, graph, args):
     if not graph.migrations:
         # this is initial migration
         if args['name'] is not None:
-            throw(MigrationException, 'Cannot set name for initial migration')
+            throw(MigrationError, 'Cannot set name for initial migration')
         if args['empty']:
-            throw(MigrationException, 'Cannot make empty migration before initial')
+            throw(MigrationError, 'Cannot make empty migration before initial')
         if args['data']:
-            throw(MigrationException, 'Make initial migration before data')
+            throw(MigrationError, 'Make initial migration before data')
         migration = Migration.make(vdb_prev, vdb_curr)
         # vdb_prev.init()
         if not migration.operations:
@@ -221,7 +221,7 @@ def make(db, graph, args):
 
 
 def rename(db, graph, args):
-    from pony.orm.core import MigrationException
+    from pony.orm.core import MigrationError
     renames = args['rename']
     if not renames:
         print("Nothing to rename")
@@ -242,7 +242,7 @@ def rename(db, graph, args):
     migration = Migration(vdb_curr.migrations_dir, dependencies=[route[-1].name])
     for rename in renames:
         if ':' not in rename:
-            throw(MigrationException, 'Incorrect rename value (%s). Use rename From:To' % rename)
+            throw(MigrationError, 'Incorrect rename value (%s). Use rename From:To' % rename)
 
         old, new = rename.split(':', 1)
         if '.' in old and '.' in new:
@@ -255,12 +255,12 @@ def rename(db, graph, args):
                     if isinstance(op, RenameEntity) and op.entity_name == entity1 and op.new_entity_name == entity2:
                         break  # found it
                     else:
-                        throw(MigrationException, 'Incorrect usage of rename: %s.%s to %s.%s' %
+                        throw(MigrationError, 'Incorrect usage of rename: %s.%s to %s.%s' %
                               (entity1, attr1, entity2, attr2))
 
             if not (attr1 in vdb_prev.entities[entity1].new_attrs and
                     attr2 in vdb_curr.entities[entity2].new_attrs):
-                throw(MigrationException, 'Incorrect attribute rename %s' % rename)
+                throw(MigrationError, 'Incorrect attribute rename %s' % rename)
 
             migration.operations.append(RenameAttribute(entity2, attr1, attr2))
 
@@ -269,16 +269,16 @@ def rename(db, graph, args):
             entity1 = old
             entity2 = new
             if entity1 not in vdb_prev.entities:
-                throw(MigrationException, 'Entity %s was not found in a previous state' % entity1)
+                throw(MigrationError, 'Entity %s was not found in a previous state' % entity1)
             if entity2 not in vdb_curr.entities:
                 if entity2 in vdb_prev.entities:
                     # user forgot to rename
-                    throw(MigrationException, 'Rename %s to %s in models file before using migrate rename' %
+                    throw(MigrationError, 'Rename %s to %s in models file before using migrate rename' %
                           (entity1, entity2))
-                throw(MigrationException, 'Entity %s not found' % entity2)
+                throw(MigrationError, 'Entity %s not found' % entity2)
             migration.operations.append(RenameEntity(entity1, entity2))
         else:
-            throw(MigrationException, 'Incorrect usage of rename command (%s)' % rename)
+            throw(MigrationError, 'Incorrect usage of rename command (%s)' % rename)
 
     migration.save(int(route[-1].name[:5]) + 1)
     print("Migration %s saved" % migration.name)

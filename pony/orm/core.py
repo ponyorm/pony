@@ -46,7 +46,7 @@ __all__ = [
     'IntegrityError', 'InternalError', 'ProgrammingError', 'NotSupportedError',
 
     'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError', 'BindingError',
-    'MigrationException', 'MigrationError', 'SchemaError',
+    'MigrationError', 'SchemaError',
     'TableDoesNotExist', 'TableIsNotEmpty', 'ConstraintError', 'CacheIndexError',
     'ObjectNotFound', 'MultipleObjectsFoundError', 'TooManyObjectsFoundError', 'OperationWithDeletedObjectError',
     'TransactionError', 'ConnectionClosedError', 'TransactionIntegrityError', 'IsolationError',
@@ -156,11 +156,10 @@ class TooManyRowsFound(OrmError): pass
 
 class PermissionError(OrmError): pass
 
-class MigrationException(Exception):pass
 class MigrationError(Exception):pass
 class SchemaError(Exception):pass
-class UpgradeError(ValueError):pass
-class DowngradeError(ValueError):pass
+class UpgradeError(MigrationError):pass
+class DowngradeError(MigrationError):pass
 
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval=None):

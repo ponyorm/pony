@@ -286,10 +286,11 @@ class AddEntity(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
+        from pony.orm import core
         from pony.orm.migrations.virtuals import PrimaryKey
         entity = self.entity
         if entity.name in vdb.entities:
-            throw(ValueError, 'Entity %s already exists' % entity.name)
+            throw(core.MigrationError, 'Entity %s already exists' % entity.name)
 
         vdb.entities[entity.name] = entity
         vdb.new_entities.add(entity.name)
@@ -301,7 +302,7 @@ class AddEntity(BaseOperation):
             if isinstance(attr, PrimaryKey):
                 if entity.primary_key is not None:
                     if attr.name != entity.primary_key[0]:
-                        throw(TypeError, 'Cannot specify more than one PrimaryKey attribute')
+                        throw(core.MappingError, 'Cannot specify more than one PrimaryKey attribute')
                 else:
                     entity.primary_key = (attr.name,)
             if attr.reverse:
@@ -530,20 +531,16 @@ class RenameColumns(BaseOperation):
         r_col_names = self.new_reverse_columns_names
         if attr.reverse is attr:
             if col_names and len(col_names) != len(entity.primary_key):
-                throw(
-                    core.MigrationError,
-                    'new_columns_names for symmetric attribute should have exactly %d values, got %d' %
-                    (len(entity.primary_key), len(col_names))
-                )
+                throw(core.MigrationError,
+                      'new_columns_names for symmetric attribute should have exactly %d values, got %d'
+                      % (len(entity.primary_key), len(col_names)))
             if r_col_names and len(r_col_names) != len(entity.primary_key):
                 throw(core.MigrationError,
                       'reverse_new_columns_names for symmetric attribute should have exactly %d values, got %d'
                       % (len(entity.primary_key), len(r_col_names)))
         elif attr.columns and len(attr.columns) != len(self.new_columns_names):
-            throw(
-                core.MigrationError,
-                'Columns option should contain exactly same number or names as columns for attribute'
-            )
+            throw(core.MigrationError,
+                 'Columns option should contain exactly same number or names as columns for attribute')
         if self.new_columns_names is None:
             attr.provided.kwargs.pop('columns', None)
             attr.provided.kwargs.pop('column', None)
@@ -655,7 +652,7 @@ class ChangeAttributeClass(BaseOperation):
 
     def apply(self, vdb):
         from pony.orm.migrations.virtuals import Optional, Required
-        from pony.orm import MappingError
+        from pony.orm.core import MigrationError
         new_class = self.new_class
         if isinstance(new_class, basestring):
             if new_class == 'Optional':
@@ -663,14 +660,14 @@ class ChangeAttributeClass(BaseOperation):
             elif new_class == 'Required':
                 new_class = Required
         if new_class not in (Optional, Required):
-            throw(ValueError, 'Attribute class can only be changed to Optional or Required. Got: %s' % new_class.__name__)
+            throw(MigrationError, 'Attribute class can only be changed to Optional or Required. Got: %s' % new_class.__name__)
 
         entity, attr = self.get_entity_attr(vdb)
         if isinstance(attr, new_class):
-            throw(ValueError, 'Cannot change attribute of type %s to the same type' % new_class.__name__)
+            throw(MigrationError, 'Cannot change attribute of type %s to the same type' % new_class.__name__)
 
         if attr.reverse and new_class is Required and attr.reverse.__class__ is Required:
-            throw(MappingError, 'Cannot change %s.%s class to Required because it has Required relation with %s.%s' %
+            throw(MigrationError, 'Cannot change %s.%s class to Required because it has Required relation with %s.%s' %
                   (entity.name, attr.name, attr.reverse.entity.name, attr.reverse.name))
 
         attr.__class__ = new_class
@@ -772,9 +769,11 @@ class AddCompositeKey(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
+        from pony.orm import core
+
         entity = vdb.entities[self.entity_name]
         if not isinstance(self.attr_names, tuple):
-            throw(TypeError, 'Composite key should be defined as tuple')
+            throw(core.MappingError, 'Composite key should be defined as tuple')
 
         attrs = []
         for attr_name in self.attr_names:
@@ -809,9 +808,11 @@ class AddCompositeIndex(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
+        from pony.orm import core
+
         entity = vdb.entities[self.entity_name]
         if not isinstance(self.attr_names, tuple):
-            throw(TypeError, 'Composite index should be defined as tuple')
+            throw(core.MappingError, 'Composite index should be defined as tuple')
 
         attrs = []
         for attr_name in self.attr_names:
