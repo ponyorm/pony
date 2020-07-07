@@ -1,5 +1,10 @@
-from pony.utils import throw
 from pony.py23compat import basestring
+
+from pony.orm.migrations import virtuals as v
+from pony.orm.migrations.serialize import serialize
+
+from pony.orm import core
+from pony.utils import throw
 
 
 class NotProvided:
@@ -48,8 +53,6 @@ class AddAttribute(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
-        from pony.orm.migrations.virtuals import Required, Discriminator, Optional
         entity = vdb.entities.get(self.entity_name)
         attr = self.attr
         attr.entity = entity
@@ -57,12 +60,12 @@ class AddAttribute(BaseOperation):
             throw(core.MigrationError, 'Entity %s does not exist' % self.entity_name)
         if attr.name in entity.new_attrs:
             throw(core.MigrationError, 'Attribute %s is already defined' % attr.name)
-        if isinstance(attr, Required):
+        if isinstance(attr, v.Required):
             if attr.is_required and attr.provided.initial is None:
                 throw(core.MigrationError, 'initial option should be specified in case of adding the Required attribute')
             attr.initial = attr.provided.initial
 
-        if isinstance(attr, Discriminator):
+        if isinstance(attr, v.Discriminator):
             if not attr.provided.initial or not attr.initial:
                 attr.initial = attr.provided.initial = self.entity_name
 
@@ -78,7 +81,7 @@ class AddAttribute(BaseOperation):
             r_attr.reverse = attr
             attr.reverse = r_attr
 
-        if isinstance(attr, Optional) and attr.py_type is basestring:
+        if isinstance(attr, v.Optional) and attr.py_type is basestring:
             attr.sql_default = ''
 
         if not vdb.vdb_only:
@@ -139,8 +142,6 @@ class AddRelation(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
-        from pony.orm.migrations.virtuals import Required
         attr1 = self.attr1
         attr2 = self.attr2
         if attr1.py_type != self.entity2_name:
@@ -157,14 +158,14 @@ class AddRelation(BaseOperation):
         attr1.entity = entity1
         attr2.entity = entity2
 
-        if isinstance(attr1, Required):
+        if isinstance(attr1, v.Required):
             if entity1.name not in vdb.new_entities:
                 if attr1.provided.initial is None:
                     throw(core.MigrationError,
                           'initial option should be specified in case of adding the Required attribute')
                 attr1.initial = attr1.provided.initial
 
-        if isinstance(attr2, Required):
+        if isinstance(attr2, v.Required):
             if entity2.name not in vdb.new_entities:
                 if attr2.provided.initial is None:
                     throw(core.MigrationError,
@@ -208,7 +209,6 @@ class AddSymmetricRelation(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
         entity = vdb.entities.get(self.entity_name)
         if entity is None:
             throw(core.MigrationError, 'Entity %r was not found' % self.entity_name)
@@ -247,15 +247,13 @@ class RemoveAttribute(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
-        from pony.orm.migrations.virtuals import PrimaryKey
         entity = vdb.entities.get(self.entity_name)
         if entity is None:
             throw(core.MigrationError, 'Entity %s does not exist' % self.entity_name)
         if self.attr_name not in entity.new_attrs:
             throw(core.MigrationError, 'Attribute %s not found' % self.attr_name)
         attr = entity.new_attrs[self.attr_name]
-        if isinstance(attr, PrimaryKey) or self.attr_name in entity.primary_key:
+        if isinstance(attr, v.PrimaryKey) or self.attr_name in entity.primary_key:
             throw(core.MigrationError, 'Cannot change primary key for entity %s' % entity.name)
 
         entity.remove_attr(self.attr_name)
@@ -268,9 +266,8 @@ class RemoveAttribute(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm.migrations import Set
         vdb.schema.drop_columns(attr.columns)
-        if isinstance(attr, Set) and isinstance(attr.reverse, Set):
+        if isinstance(attr, v.Set) and isinstance(attr.reverse, v.Set):
             m2m_table_name = vdb.schema.get_m2m_table_name(attr, attr.reverse)
             vdb.schema.drop_table(vdb.schema.tables[m2m_table_name])
 
@@ -286,8 +283,6 @@ class AddEntity(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
-        from pony.orm.migrations.virtuals import PrimaryKey
         entity = self.entity
         if entity.name in vdb.entities:
             throw(core.MigrationError, 'Entity %s already exists' % entity.name)
@@ -299,7 +294,7 @@ class AddEntity(BaseOperation):
         relations_attrs = []
         for attr in new_attrs:
             attr.entity = entity
-            if isinstance(attr, PrimaryKey):
+            if isinstance(attr, v.PrimaryKey):
                 if entity.primary_key is not None:
                     if attr.name != entity.primary_key[0]:
                         throw(core.MappingError, 'Cannot specify more than one PrimaryKey attribute')
@@ -341,12 +336,11 @@ class AddEntity(BaseOperation):
         entity.resolve_inheritance()
         root = entity.get_root()
         if root.subclasses:
-            from pony.orm.migrations import Discriminator
             for attr in root.new_attrs.values():
-                if isinstance(attr, Discriminator):
+                if isinstance(attr, v.Discriminator):
                     break
             else:
-                op = AddAttribute(root.name, Discriminator('classtype', str, initial=root.name, column='classtype'))
+                op = AddAttribute(root.name, v.Discriminator('classtype', str, initial=root.name, column='classtype'))
                 op.apply(vdb)
 
         if not vdb.vdb_only:
@@ -388,7 +382,6 @@ class RemoveEntity(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
         entity = vdb.entities.get(self.entity_name)
         if entity is None:
             raise core.MigrationError('Entity %s not found' % self.entity_name)
@@ -441,18 +434,16 @@ class RemoveEntity(BaseOperation):
                 cols = attr.columns
                 schema.drop_columns(cols)
 
-            from pony.orm.migrations import Discriminator
-            from pony.orm.core import MigrationError
             for disc in root.new_attrs.values():
-                if isinstance(disc, Discriminator):
+                if isinstance(disc, v.Discriminator):
                     break
             else:
-                throw(MigrationError, 'Discriminator attribute was not found')
+                throw(core.MigrationError, 'Discriminator attribute was not found')
                 return
 
             if root.subclasses:
                 if len(entity.bases) > 1 and not new_classtype_value:
-                    throw(MigrationError,
+                    throw(core.MigrationError,
                           'In order to remove entity %r you should provide `new_classtype_value` '
                           'to cast records to the new type')  # TODO better explanation probably?
                 col = disc.columns[0]
@@ -525,7 +516,6 @@ class RenameColumns(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
         entity, attr = self.get_entity_attr(vdb)
         col_names = self.new_columns_names
         r_col_names = self.new_reverse_columns_names
@@ -568,10 +558,8 @@ class RenameColumns(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, entity, attr, new_names, new_reverse_names):
-        from pony.orm.migrations import Set
-        from pony.orm import MigrationError
         schema = vdb.schema
-        if attr.reverse and isinstance(attr, Set) and isinstance(attr.reverse, Set):
+        if attr.reverse and isinstance(attr, v.Set) and isinstance(attr.reverse, v.Set):
             r_attr = attr.reverse
             if new_names is None and new_names is not NOT_PROVIDED:
                 new_names = [
@@ -580,19 +568,19 @@ class RenameColumns(BaseOperation):
                 ]
             if new_names is not NOT_PROVIDED:
                 if len(r_attr.m2m_columns) != len(new_names):
-                    throw(MigrationError,
+                    throw(core.MigrationError,
                       'Incorrent number of columns. Expected %d, but got %d' % (len(r_attr.m2m_columns), len(new_names)))
                 schema.rename_columns(r_attr.m2m_columns, new_names)
             if new_reverse_names is None and new_reverse_names is not NOT_PROVIDED:
                 new_reverse_names = [col.name + '_2' for col in r_attr.m2m_columns]
             if new_reverse_names is not NOT_PROVIDED:
                 if len(r_attr.reverse_m2m_columns) != len(new_reverse_names):
-                    throw(MigrationError, 'Incorrent number of columns. Expected %d, but got %d' %
+                    throw(core.MigrationError, 'Incorrent number of columns. Expected %d, but got %d' %
                           (len(r_attr.reverse_m2m_columns), len(new_reverse_names)))
                 schema.rename_columns(r_attr.reverse_m2m_columns, new_reverse_names)
         else:
             if len(attr.columns) != len(new_names):
-                throw(MigrationError, 'Incorrent number of columns. Expected %d, but got %d' %
+                throw(core.MigrationError, 'Incorrent number of columns. Expected %d, but got %d' %
                       (len(attr.columns), len(new_names)))
             schema.rename_columns(attr.columns, new_names)
 
@@ -614,13 +602,11 @@ class ChangeDiscriminator(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
-        from pony.orm.migrations.virtuals import Discriminator
         entity = vdb.entities[self.entity_name]
         entity.discriminator = self.new_discriminator
         disc = None
         for attr in entity.new_attrs.values():
-            if isinstance(attr, Discriminator):
+            if isinstance(attr, v.Discriminator):
                 disc = attr
                 break
         else:
@@ -651,30 +637,28 @@ class ChangeAttributeClass(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm.migrations.virtuals import Optional, Required
-        from pony.orm.core import MigrationError
         new_class = self.new_class
         if isinstance(new_class, basestring):
             if new_class == 'Optional':
-                new_class = Optional
+                new_class = v.Optional
             elif new_class == 'Required':
-                new_class = Required
-        if new_class not in (Optional, Required):
-            throw(MigrationError, 'Attribute class can only be changed to Optional or Required. Got: %s' % new_class.__name__)
+                new_class = v.Required
+        if new_class not in (v.Optional, v.Required):
+            throw(core.MigrationError, 'Attribute class can only be changed to Optional or Required. Got: %s' % new_class.__name__)
 
         entity, attr = self.get_entity_attr(vdb)
         if isinstance(attr, new_class):
-            throw(MigrationError, 'Cannot change attribute of type %s to the same type' % new_class.__name__)
+            throw(core.MigrationError, 'Cannot change attribute of type %s to the same type' % new_class.__name__)
 
-        if attr.reverse and new_class is Required and attr.reverse.__class__ is Required:
-            throw(MigrationError, 'Cannot change %s.%s class to Required because it has Required relation with %s.%s' %
+        if attr.reverse and new_class is v.Required and attr.reverse.__class__ is v.Required:
+            throw(core.MigrationError, 'Cannot change %s.%s class to Required because it has Required relation with %s.%s' %
                   (entity.name, attr.name, attr.reverse.entity.name, attr.reverse.name))
 
         attr.__class__ = new_class
 
         is_string = type(attr.py_type) is type and issubclass(attr.py_type, basestring)
         type_has_empty_value = is_string or hasattr(attr.py_type, 'default_empty_value')
-        attr.nullable = not isinstance(attr, Required) and not type_has_empty_value
+        attr.nullable = not isinstance(attr, v.Required) and not type_has_empty_value
 
         if not vdb.vdb_only:
             if self.sql:
@@ -682,32 +666,30 @@ class ChangeAttributeClass(BaseOperation):
             else:
                 self.apply_to_schema(vdb, attr)
         else:
-            if self.new_class is Required:
+            if self.new_class is v.Required:
                 print("Warning: Changing attribute from Optional to Required assumes that you do not have empty values"
                       " for attribute `%s.%s`" % (entity.name, attr.name))
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm.migrations.virtuals import Optional, Required, Set
-
         def need_to_move(attr):
             if not attr.reverse:
                 return False
             r_attr = attr.reverse
-            if isinstance(r_attr, Set):
+            if isinstance(r_attr, v.Set):
                 return False
             col_provided = lambda a: a.provided.kwargs.get('column') or a.provided.kwargs.get('columns')
             if col_provided(attr) or col_provided(r_attr):
                 return False
             new_class = attr.__class__
             reverse_class = r_attr.__class__
-            if new_class is Required:
-                if reverse_class is Optional:
+            if new_class is v.Required:
+                if reverse_class is v.Optional:
                     return bool(r_attr.columns)
                 else:
                     assert False, 'Required - Required relation is not possible'
             else:
-                assert reverse_class is not Required, 'Required - Required relation is not possible'
+                assert reverse_class is not v.Required, 'Required - Required relation is not possible'
                 return r_attr == min(attr, r_attr, key=lambda a: (a.name, a.entity.name))
 
         schema = vdb.schema
@@ -744,7 +726,6 @@ class DropCompositeKey(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attrs):
-        from pony.orm import MigrationError
         schema = vdb.schema
         cols = []
         for attr in attrs:
@@ -752,8 +733,8 @@ class DropCompositeKey(BaseOperation):
         table = cols[0].table
         try:
             schema.drop_composite_key(table, cols)
-        except MigrationError:
-            throw(MigrationError,
+        except core.MigrationError:
+            throw(core.MigrationError,
                   'Composite key for attributes %s was not found' % (', '.join(attr.name for attr in attrs)))
 
     def serialize(self, imports):
@@ -769,8 +750,6 @@ class AddCompositeKey(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
-
         entity = vdb.entities[self.entity_name]
         if not isinstance(self.attr_names, tuple):
             throw(core.MappingError, 'Composite key should be defined as tuple')
@@ -808,8 +787,6 @@ class AddCompositeIndex(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
-
         entity = vdb.entities[self.entity_name]
         if not isinstance(self.attr_names, tuple):
             throw(core.MappingError, 'Composite index should be defined as tuple')
@@ -828,14 +805,13 @@ class AddCompositeIndex(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attrs):
-        from pony.orm import MigrationError
         schema = vdb.schema
         cols = []
         for attr in attrs:
             cols.extend(attr.columns)
         prev_index = vdb.schema.get_index(cols)
         if prev_index is not None:
-            throw(MigrationError,
+            throw(core.MigrationError,
                   'Composite index for attributes %s already exists' % (', '.join(attr.name for attr in attrs)))
         table = cols[0].table
         index_name = schema.get_default_index_name(table, cols)
@@ -867,13 +843,12 @@ class DropCompositeIndex(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attrs):
-        from pony.orm import MigrationError
         cols = []
         for attr in attrs:
             cols.extend(attr.columns)
         index = vdb.schema.get_index(cols)
         if index is None:
-            throw(MigrationError,
+            throw(core.MigrationError,
                   'Composite index for attributes %s was not found' % (', '.join(attr.name for attr in attrs)))
 
         vdb.schema.drop_index(index)
@@ -922,7 +897,6 @@ class RenameEntity(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, entity, old_name):
-        from pony.orm.migrations import Set
         schema = vdb.schema
         if entity.bases:
             root = entity.get_root()
@@ -932,7 +906,7 @@ class RenameEntity(BaseOperation):
             return
 
         for attr in entity.new_attrs.values():
-            if attr.reverse and isinstance(attr, Set) and isinstance(attr.reverse, Set):
+            if attr.reverse and isinstance(attr, v.Set) and isinstance(attr.reverse, v.Set):
                 m2m_table = attr.m2m_table
                 new_m2m_table_name = schema.get_m2m_table_name(attr, attr.reverse)
                 if m2m_table.name != new_m2m_table_name:
@@ -1000,10 +974,9 @@ class RenameAttribute(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr, new_name):
-        from pony.orm.migrations import Optional
         schema = vdb.schema
         entity = attr.entity
-        if isinstance(attr, Optional) and isinstance(attr.reverse, Optional):
+        if isinstance(attr, v.Optional) and isinstance(attr.reverse, v.Optional):
             min_attr = min(attr, attr.reverse, key=lambda a: (a.name, a.entity.name))
             if not min_attr.columns:
                 schema.move_column_with_data(min_attr)
@@ -1040,7 +1013,6 @@ class ChangeColumnType(BaseOperation):
         self.cast_sql = cast_sql
 
     def apply(self, vdb):
-        from pony.orm.migrations import Required
         entity, attr = self.get_entity_attr(vdb)
         assert not attr.reverse
         unpopped_names = {'unsinged', 'size', 'scale', 'precision', 'max_len'}
@@ -1058,7 +1030,7 @@ class ChangeColumnType(BaseOperation):
 
         is_string = type(attr.py_type) is type and issubclass(attr.py_type, basestring)
         type_has_empty_value = is_string or hasattr(attr.py_type, 'default_empty_value')
-        attr.nullable = not isinstance(attr, Required) and not type_has_empty_value
+        attr.nullable = not isinstance(attr, v.Required) and not type_has_empty_value
 
         cast_sql = self.cast_sql
         if cast_sql is None and 'py_type' in self.new_options:
@@ -1072,10 +1044,9 @@ class ChangeColumnType(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr, cast_sql):
-        from pony.orm import MigrationError
         schema = vdb.schema
         if len(attr.columns) != 1:
-            throw(MigrationError, 'Incorrect number of columns for ChangeColumnType operation')
+            throw(core.MigrationError, 'Incorrect number of columns for ChangeColumnType operation')
         column = attr.columns[0]
         new_converter = schema.provider.get_converter_by_attr(attr)
         new_sql_type = attr.sql_type or new_converter.get_sql_type()
@@ -1085,7 +1056,6 @@ class ChangeColumnType(BaseOperation):
             schema.change_nullable(column, nullable)
 
     def serialize(self, imports):
-        from pony.orm.migrations.serialize import serialize
         super(ChangeColumnType, self).serialize(imports)
         options = []
         for k, v in self.new_options.items():
@@ -1236,9 +1206,8 @@ class AddUniqueConstraint(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm.migrations import Optional
         cols = attr.columns
-        if isinstance(attr, Optional) and issubclass(attr.py_type, basestring):
+        if isinstance(attr, v.Optional) and issubclass(attr.py_type, basestring):
             assert len(cols) == 1
             col = cols[0]
             # attr.nullable = True
@@ -1272,9 +1241,8 @@ class DropUniqueConstraint(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm.migrations import Optional
         cols = attr.columns
-        if isinstance(attr, Optional) and issubclass(attr.py_type, basestring):
+        if isinstance(attr, v.Optional) and issubclass(attr.py_type, basestring):
             assert len(cols) == 1
             col = cols[0]
             vdb.schema.change_nullable(col, False)
@@ -1308,12 +1276,11 @@ class AddCheckConstraint(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr, check):
-        from pony.orm import MigrationError
         column = attr.columns[0]
         try:
             vdb.schema.add_check_constraint(column, check)
-        except MigrationError:
-            throw(MigrationError, "attribute '%s.%s' already has check constraint" % (attr.entity.name, attr.name))
+        except core.MigrationError:
+            throw(core.MigrationError, "attribute '%s.%s' already has check constraint" % (attr.entity.name, attr.name))
 
     def serialize(self, imports):
         super(AddCheckConstraint, self).serialize(imports)
@@ -1329,7 +1296,6 @@ class DropCheckConstraint(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
-        from pony.orm import core
         entity, attr = self.get_entity_attr(vdb)
         if not attr.check:
             throw(core.MigrationError, "attribute '%s.%s' doesn't have check constraint" %
@@ -1345,12 +1311,11 @@ class DropCheckConstraint(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm import MigrationError
         column = attr.columns[0]
         try:
             vdb.schema.drop_check_constraint(column)
-        except MigrationError:
-            throw(MigrationError, 'attribute %r doesn\'t have check constraint' % attr)
+        except core.MigrationError:
+            throw(core.MigrationError, 'attribute %r doesn\'t have check constraint' % attr)
 
     def serialize(self, imports):
         super(DropCheckConstraint, self).serialize(imports)
@@ -1378,12 +1343,11 @@ class AddIndex(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm import MigrationError
         schema = vdb.schema
         columns = attr.columns
         prev_index = schema.get_index(columns)
         if prev_index is not None:
-            throw(MigrationError, 'Index for attribute %r already exists' % attr)
+            throw(core.MigrationError, 'Index for attribute %r already exists' % attr)
         table = columns[0].table
         index_name = schema.get_index_name(attr, table, columns)
         index = schema.index_cls(table, columns, index_name)
@@ -1415,11 +1379,10 @@ class RenameIndex(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm import MigrationError
         cols = attr.columns
         index = vdb.schema.get_index(cols)
         if index is None:
-            throw(MigrationError, 'Index was not found for attribute %r' % attr)
+            throw(core.MigrationError, 'Index was not found for attribute %r' % attr)
         vdb.schema.rename_index(index, attr.index)
 
     def serialize(self, imports):
@@ -1448,11 +1411,10 @@ class DropIndex(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr):
-        from pony.orm import MigrationError
         columns = attr.columns
         index = vdb.schema.get_index(columns)
         if index is None:
-            throw(MigrationError, 'Index was not found for attribute %r' % attr)
+            throw(core.MigrationError, 'Index was not found for attribute %r' % attr)
             return
         vdb.schema.drop_index(index)
 
@@ -1486,12 +1448,11 @@ class RenameForeignKey(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr, new_fk_name):
-        from pony.orm import MigrationError
         cols = attr.columns
         assert cols
         fk = vdb.schema.get_fk(cols)
         if fk is None:
-            throw(MigrationError, "Foreign key wasn't found for attribute %r" % attr)
+            throw(core.MigrationError, "Foreign key wasn't found for attribute %r" % attr)
             return
         vdb.schema.rename_foreign_key(fk, new_fk_name)
 
@@ -1525,15 +1486,13 @@ class ChangeCascadeDeleteOption(BaseOperation):
 
     @staticmethod
     def apply_to_schema(vdb, attr, cascade_delete):
-        from pony.orm import MigrationError
-        from pony.orm.migrations import Optional
         schema = vdb.schema
         reverse = attr.reverse
         r_cols = reverse.columns or reverse.m2m_columns
         assert r_cols
         r_fk = schema.get_fk(r_cols)
         if r_fk is None:
-            throw(MigrationError, "Foreign key wasn't found for attribute %r" % attr)
+            throw(core.MigrationError, "Foreign key wasn't found for attribute %r" % attr)
             return
 
         schema.drop_fk(r_fk)
@@ -1541,7 +1500,7 @@ class ChangeCascadeDeleteOption(BaseOperation):
         new_r_fk = schema.fk_cls(r_fk.table, r_fk.table_to, r_fk.cols_from, r_fk.cols_to, new_r_fk_name)
         if cascade_delete:
             new_r_fk.on_delete = 'CASCADE'
-        elif isinstance(reverse, Optional) and reverse.nullable:
+        elif isinstance(reverse, v.Optional) and reverse.nullable:
             new_r_fk.on_delete = 'SET NULL'
 
         schema.add_fk(new_r_fk)

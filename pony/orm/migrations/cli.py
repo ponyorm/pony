@@ -1,11 +1,15 @@
 from __future__ import print_function
 
-import sys
-from pony.orm.migrations import Migration
-from pony.orm.migrations.operations import *
-from pony.orm.migrations.virtuals import *
+import sys, argparse
+from collections import defaultdict
+
 from pony.utils import throw
-import argparse
+
+from pony.orm.migrations import Migration
+from pony.orm.migrations import operations as ops
+from pony.orm.migrations import virtuals as v
+
+
 
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers(help='commands', dest='cmd')
@@ -52,7 +56,7 @@ def migrate(db, cmd=None):
     if cmd == 'make':
         make(db, graph, args)
     elif cmd in ('apply', 'sql'):
-        vdb = VirtualDB(db.migrations_dir, db.provider)
+        vdb = v.VirtualDB(db.migrations_dir, db.provider)
         vdb.schema = vdb.provider.vdbschema_cls(vdb, vdb.provider)
         db.vdb = vdb
         apply(vdb, db, graph, args, sql_only=cmd == 'sql')
@@ -174,8 +178,8 @@ def apply(vdb, db, graph, args, sql_only=False):
 
 def make(db, graph, args):
     from pony.orm.core import MigrationError
-    vdb_curr = VirtualDB.from_db(db)
-    vdb_prev = VirtualDB()
+    vdb_curr = v.VirtualDB.from_db(db)
+    vdb_prev = v.VirtualDB()
     vdb_prev.provider = vdb_curr.provider
 
     if not graph.migrations:
@@ -231,13 +235,13 @@ def rename(db, graph, args):
         return
     route = graph.make_route()
 
-    vdb_prev = VirtualDB()
+    vdb_prev = v.VirtualDB()
 
     for m in route:
         for op in m.operations:
             op.apply(vdb_prev)
 
-    vdb_curr = VirtualDB.from_db(db)
+    vdb_curr = v.VirtualDB.from_db(db)
 
     migration = Migration(vdb_curr.migrations_dir, dependencies=[route[-1].name])
     for rename in renames:
@@ -252,7 +256,7 @@ def rename(db, graph, args):
             if entity1 != entity2:
                 # we should find if RenameEntity with these names are part of this migration
                 for op in migration.operations:
-                    if isinstance(op, RenameEntity) and op.entity_name == entity1 and op.new_entity_name == entity2:
+                    if isinstance(op, ops.RenameEntity) and op.entity_name == entity1 and op.new_entity_name == entity2:
                         break  # found it
                     else:
                         throw(MigrationError, 'Incorrect usage of rename: %s.%s to %s.%s' %
@@ -262,7 +266,7 @@ def rename(db, graph, args):
                     attr2 in vdb_curr.entities[entity2].new_attrs):
                 throw(MigrationError, 'Incorrect attribute rename %s' % rename)
 
-            migration.operations.append(RenameAttribute(entity2, attr1, attr2))
+            migration.operations.append(ops.RenameAttribute(entity2, attr1, attr2))
 
         elif '.' not in old and '.' not in new:
             # rename entity
@@ -276,7 +280,7 @@ def rename(db, graph, args):
                     throw(MigrationError, 'Rename %s to %s in models file before using migrate rename' %
                           (entity1, entity2))
                 throw(MigrationError, 'Entity %s not found' % entity2)
-            migration.operations.append(RenameEntity(entity1, entity2))
+            migration.operations.append(ops.RenameEntity(entity1, entity2))
         else:
             throw(MigrationError, 'Incorrect usage of rename command (%s)' % rename)
 
@@ -313,17 +317,17 @@ def squash(db, graph, args):
     result = []
     based_on = []
     rename_map = {}
-    curr_db = VirtualDB()
+    curr_db = v.VirtualDB()
     curr_db.provider = db.provider
-    prev_db = VirtualDB()
+    prev_db = v.VirtualDB()
     prev_db.provider = db.provider
     for m in route:
         based_on.append(m.name)
         for op in m.operations:
             if not op.sql:
-                if isinstance(op, (RenameEntity, RenameAttribute)):
-                    old_name = op.entity_name if isinstance(op, RenameEntity) else (op.entity_name, op.attr_name)
-                    new_name = op.new_entity_name if isinstance(op, RenameEntity) else (
+                if isinstance(op, (ops.RenameEntity, ops.RenameAttribute)):
+                    old_name = op.entity_name if isinstance(op, ops.RenameEntity) else (op.entity_name, op.attr_name)
+                    new_name = op.new_entity_name if isinstance(op, ops.RenameEntity) else (
                     op.entity_name, op.new_attr_name)
                     for k, v in rename_map.items():
                         if old_name == v:
@@ -333,9 +337,9 @@ def squash(db, graph, args):
                         del rename_map[old_name]
                     else:
                         rename_map[old_name] = new_name
-                elif isinstance(op, RemoveEntity):
+                elif isinstance(op, ops.RemoveEntity):
                     rename_map.pop(op.entity_name, None)
-                elif isinstance(op, RemoveAttribute):
+                elif isinstance(op, ops.RemoveAttribute):
                     rename_map.pop((op.entity_name, op.attr_name), None)
                 op.apply(curr_db)
             else:

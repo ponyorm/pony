@@ -1,12 +1,14 @@
 import glob
 import os
-from pony.orm.migrations.migrate import Migration
+
+from pony.orm import core
 from pony.utils import throw
+
+from pony.orm.migrations.migrate import Migration
 
 
 class MigrationGraph(object):
     def __init__(self, migrations_dir):
-        from pony.orm.core import MigrationException
         # self.db = db
         self.dir = migrations_dir
         self.files = sorted([os.path.basename(file) for file in glob.glob(os.path.join(self.dir, '*.py'))])
@@ -23,7 +25,7 @@ class MigrationGraph(object):
         for name, migration in self.migrations.items():
             for dep in migration.dependencies:
                 if dep not in self.migrations:
-                    throw(MigrationException, "Dependency `%s` for migration `%s` not found" % (dep, name))
+                    throw(core.MigrationError, "Dependency `%s` for migration `%s` not found" % (dep, name))
                 migration.parents.append(self.migrations[dep])
 
     def make_dependencies(self):

@@ -3,11 +3,13 @@ from pony.py23compat import basestring
 
 import sys
 from collections import OrderedDict
-from pony.utils import throw
-from pony.orm.migrations.virtuals import Required, Set, Optional, Discriminator
+
+from pony.orm import core
 from pony.orm.dbapiprovider import Name, obsolete
 from pony.orm.sqlbuilding import SQLBuilder
-from pony.orm.core import MigrationError, MappingError, SchemaError
+from pony.utils import throw
+
+from pony.orm.migrations import virtuals as v
 
 
 class DBObject(object):
@@ -177,7 +179,7 @@ class Column(DBObject):
 
     def __init__(self, table, name, converter, sql_type=None):
         if name in table.columns:
-            raise SchemaError('Column `%s` already exists in table `%s`' % (name, table.name))
+            raise core.SchemaError('Column `%s` already exists in table `%s`' % (name, table.name))
 
         self.table = table
         self.name = name
@@ -232,9 +234,9 @@ class Column(DBObject):
         col_name = schema.get_column_name(attr)
         col = cls(table, col_name, converter)
         col.is_pk = attr.is_pk
-        if isinstance(attr, Optional) and attr.is_string and schema.provider.dialect == 'Oracle':
+        if isinstance(attr, v.Optional) and attr.is_string and schema.provider.dialect == 'Oracle':
             if attr.provided.kwargs.get('nullable') is False:
-                throw(MappingError, 'In Oracle, optional string attribute %s must be nullable' % attr)
+                throw(core.MappingError, 'In Oracle, optional string attribute %s must be nullable' % attr)
             else:
                 attr.nullable = True
         col.nullable = attr.nullable or len(attr.entity.bases) != 0
@@ -246,7 +248,7 @@ class Column(DBObject):
         col.sql_type = attr.sql_type or converter.get_sql_type()
         provided_cols = attr.provided.kwargs.get('columns', None)
         if provided_cols:
-            throw(MappingError, "Too many columns were specified for %r" % attr)
+            throw(core.MappingError, "Too many columns were specified for %r" % attr)
         return col
 
     def get_inline_sql(self, using_obsolete_names=False, ignore_pk=False, without_name=False):
@@ -788,7 +790,7 @@ class Schema(object):
 
     def add_sql(schema, sql):
         if not isinstance(sql, (list, tuple)):
-            throw(MigrationError, 'sql option should be a type of list')
+            throw(core.MigrationError, 'sql option should be a type of list')
         for op in sql:
             schema.ops.append(SQLOperation(None, op))
 
@@ -1028,7 +1030,7 @@ class Schema(object):
                 if key.cols == columns:
                     break
         else:
-            raise MigrationError
+            raise core.MigrationError
 
         schema.ops.extend(key.get_drop_sql())
         table.keys.remove(key)
@@ -1095,14 +1097,14 @@ class Schema(object):
             if fk.cols_from == cols_from:
                 break
         else:
-            throw(MigrationError, 'Foreign key was not found')
+            throw(core.MigrationError, 'Foreign key was not found')
             return  # for pycharm
 
         for index in table_from.indexes:
             if index.cols == cols_from:
                 break
         else:
-            throw(MigrationError, 'Index was not found')
+            throw(core.MigrationError, 'Index was not found')
             return
 
         table_to = fk.table_to
@@ -1133,7 +1135,7 @@ class Schema(object):
         new_fk = schema.fk_cls(table_to, table_from, cols_to, table_from_pk, new_fk_name)
         if attr.reverse.cascade_delete:
             new_fk.on_delete = 'CASCADE'
-        elif isinstance(attr, Optional) and attr.nullable:
+        elif isinstance(attr, v.Optional) and attr.nullable:
             new_fk.on_delete = 'SET NULL'
 
         index_name = schema.get_index_name(attr, table_to, cols_to)
@@ -1187,7 +1189,7 @@ class Schema(object):
 
     def add_check_constraint(schema, col, check):
         if col.check_constraint:
-            raise MigrationError
+            raise core.MigrationError
         chk = schema.check_cls(col, check)
         schema.ops.extend(chk.get_add_sql())
 
@@ -1195,7 +1197,7 @@ class Schema(object):
         table = col.table
         chk = col.check_constraint
         if chk is None:
-            raise MigrationError
+            raise core.MigrationError
         assert chk in table.constraints
         table.constraints.remove(chk)
         col.check_constraint = None
@@ -1268,7 +1270,6 @@ class Schema(object):
         return result
 
     def create_tables(self, connection):
-        from pony.orm import core
         provider = self.provider
         cursor = connection.cursor()
         for obj in self.get_objects_to_create():
@@ -1282,7 +1283,7 @@ class Schema(object):
                 quote_name = provider.quote_name
                 n1, n2 = quote_name(obj.name), quote_name(name)
                 tn1 = obj.typename
-                throw(SchemaError, '%s %s cannot be created, because %s ' \
+                throw(core.SchemaError, '%s %s cannot be created, because %s ' \
                                    '(with a different letter case) already exists in the database. ' \
                                    'Try to delete %s first.' % (tn1, n1, n2, n2))
 
@@ -1325,7 +1326,7 @@ class Schema(object):
             table = self.tables[name]
             if table.is_m2m:
                 return table
-            throw(MappingError, 'Table name "%s" is already in use' % name)
+            throw(core.MappingError, 'Table name "%s" is already in use' % name)
             return self.tables[name]  # table was already created
         table = self.table_cls(self, name, is_m2m=True)
         attr1.m2m_table = attr2.m2m_table = table
@@ -1347,7 +1348,7 @@ class Schema(object):
 
             if provided_col_names:
                 if len(provided_col_names) != len(table_from.primary_key.cols):
-                    throw(MappingError, 'Invalid number of columns for %s.%s' % (entity.name, attr.name))
+                    throw(core.MappingError, 'Invalid number of columns for %s.%s' % (entity.name, attr.name))
             elif same_entity:
                 provided_col_names = [col.name + '_2' for col in attr.m2m_columns]
 
@@ -1410,13 +1411,13 @@ class Schema(object):
             schema1 = table1_name[0]
             schema2 = table2_name[0]
             if schema1 != schema2:
-                throw(MappingError, 'Since %r and %r has different schemas you should provide schema'
+                throw(core.MappingError, 'Since %r and %r has different schemas you should provide schema'
                                     ' for %s.%s <-> %s.%s intermediate m2m table' %
                       (attr1.entity, attr2.entity, attr1.entity.name, attr1.name, attr2.entity.name, attr2.name))
             else:
                 schema_name = schema1
         elif isinstance(table1_name, tuple) or isinstance(table2_name, tuple):
-            throw(MigrationError, 'Since %r and %r has different schemas you should provide schema'
+            throw(core.MigrationError, 'Since %r and %r has different schemas you should provide schema'
                                 ' for %s.%s <-> %s.%s intermediate m2m table' %
                   (attr1.entity, attr2.entity, attr1.entity.name, attr1.name, attr2.entity.name, attr2.name))
 
@@ -1495,7 +1496,7 @@ class Schema(object):
         return name
 
     def get_fk_name(self, attr, table, cols):
-        if isinstance(attr, (Optional, Required)) and attr.fk_name:
+        if isinstance(attr, (v.Optional, v.Required)) and attr.fk_name:
             return attr.fk_name
         return self.get_default_fk_name(table, cols)
 
@@ -1559,19 +1560,19 @@ class Schema(object):
         column_provided = 'column' in attr.provided.kwargs
         provided_col_names = []
         if column_provided and columns_provided:
-            throw(MappingError, 'Both `column` and `columns` options cannot be passed simultaneously')
+            throw(core.MappingError, 'Both `column` and `columns` options cannot be passed simultaneously')
         if len(resolved_pk) == 1:
             if columns_provided:
-                throw(MappingError, 'Invalid number of columns specified for %r' % attr)
+                throw(core.MappingError, 'Invalid number of columns specified for %r' % attr)
             elif column_provided:
                 provided_col_names = [attr.provided.kwargs['column']]
         else:
             if column_provided:
-                throw(MappingError, 'Invalid number of columns specified for %r' % attr)
+                throw(core.MappingError, 'Invalid number of columns specified for %r' % attr)
             elif columns_provided:
                 provided_col_names = attr.provided.kwargs['columns']
                 if len(provided_col_names) != len(resolved_pk):
-                    throw(MappingError, 'Invalid number of columns specified for %r' % attr)
+                    throw(core.MappingError, 'Invalid number of columns specified for %r' % attr)
 
         for i, (col_name, obs_name, pk_attr, col_path) in enumerate(resolved_pk):
             if provided_col_names:
@@ -1582,7 +1583,7 @@ class Schema(object):
                 attr.converters.append(converter)
             new_converter = converter.make_fk_converter(attr)
             column = schema.column_cls(table, name, new_converter, attr.sql_type)
-            if isinstance(attr, Optional) or attr.entity.bases or attr.nullable:
+            if isinstance(attr, v.Optional) or attr.entity.bases or attr.nullable:
                 column.nullable = True
             attr.columns.append(column)
             cols_from.append(column)
@@ -1596,7 +1597,7 @@ class Schema(object):
         fk = schema.fk_cls(table, table_to, cols_from, cols_to, fk_name)
         if attr.reverse.cascade_delete:
             fk.on_delete = 'CASCADE'
-        elif isinstance(attr, Optional) and attr.nullable:
+        elif isinstance(attr, v.Optional) and attr.nullable:
             fk.on_delete = 'SET NULL'
         return columns, fk, index
 
@@ -1606,11 +1607,11 @@ class Schema(object):
 
         if attr.reverse:
             r_attr = attr.reverse
-            if isinstance(attr, Required):
-                if type(r_attr) in (Optional, Set):
+            if isinstance(attr, v.Required):
+                if type(r_attr) in (v.Optional, v.Set):
                     return schema.add_fk_refs(attr, table)
-            elif isinstance(attr, Optional):
-                if isinstance(r_attr, Optional):
+            elif isinstance(attr, v.Optional):
+                if isinstance(r_attr, v.Optional):
                     if attr.provided.kwargs.get('column') or attr.provided.kwargs.get('columns'):
                         # throw(NotImplementedError, 'Optional to Optional link with provided columns on both sides')
                         return schema.add_fk_refs(attr, table)
@@ -1618,13 +1619,13 @@ class Schema(object):
                             r_attr.provided.kwargs.get('column') or r_attr.provided.kwargs.get('columns')
                     ):
                         return schema.add_fk_refs(attr, table)
-                elif isinstance(r_attr, Set):
+                elif isinstance(r_attr, v.Set):
                     return schema.add_fk_refs(attr, table)
-                elif isinstance(r_attr, Required):
+                elif isinstance(r_attr, v.Required):
                     if attr.provided.kwargs.get('column') or attr.provided.kwargs.get('columns'):
                         return schema.add_fk_refs(attr, table)
-            elif isinstance(attr, Set):
-                if isinstance(r_attr, Set):
+            elif isinstance(attr, v.Set):
+                if isinstance(r_attr, v.Set):
                     r_table_name = schema.get_table_name(r_attr.entity.get_root())
                     if r_table_name in schema.tables:
                         if attr.entity == r_attr.entity and (r_attr, attr) in schema.m2m_to_create:
