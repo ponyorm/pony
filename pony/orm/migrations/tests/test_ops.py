@@ -97,6 +97,7 @@ class TestMigrations(unittest.TestCase):
                 op_text += 'from %s import %s\n' % (k, ', '.join(str(i) for i in v))
             op_text += '\n'
             op_text += 'op = ' + lines[-1]
+            # print('***', op_text)
             objects = {}
             exec(op_text, objects)
             op = objects['op']
@@ -141,7 +142,7 @@ class TestMigrations(unittest.TestCase):
             dept = Required(Department)
             students = Set('Student')
             teacher = Required('Teacher')
-            course_mark = Optional('Course_mark')
+            course_mark = Optional('CourseMark')
             PrimaryKey(name, semester)
             description = Optional(str)
             last_update = Optional(datetime)
@@ -154,7 +155,7 @@ class TestMigrations(unittest.TestCase):
             gpa = Optional(float)
             group = Required(Group)
             courses = Set(Course)
-            course_marks = Set('Course_mark')
+            course_marks = Set('CourseMark')
 
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
@@ -171,31 +172,32 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        class Course_mark(db2.Entity):  # added entity
+        class CourseMark(db2.Entity):  # added entity
             id = PrimaryKey(int, auto=True)
             course = Required(Course)
-            student = Required(Student)
+            student = Optional(Student)
             mark = Required(int)
 
-        migration_op = "AddEntity(Entity('Course_mark',  attrs=[\n        " \
+        migration_op = "AddEntity(Entity('CourseMark',  attrs=[\n        " \
                        "PrimaryKey('id', int, auto=True), \n        " \
-                       "Required('course', 'Course', reverse='course_mark'), \n        " \
-                       "Required('student', 'Student', reverse='course_marks'), \n        " \
+                       "Required('course', 'Course', reverse=Optional('course_mark', 'CourseMark')), \n        " \
+                       "Optional('student', 'Student', reverse=Set('course_marks', 'CourseMark')), \n        " \
                        "Required('mark', int)]))"
 
-        correct_sql = 'CREATE TABLE "course_mark" (\n  ' \
-                      '"id" SERIAL PRIMARY KEY,\n  ' \
-                      '"course_name" TEXT NOT NULL,\n  ' \
-                      '"course_semester" INTEGER NOT NULL,\n  ' \
-                      '"student_id" INTEGER NOT NULL,\n  ' \
-                      '"mark" INTEGER NOT NULL\n)\n' \
-                      'CREATE INDEX "idx_course_mark__course_name__course_semester" ON ' \
-                      '"course_mark" ("course_name", "course_semester")\n' \
-                      'CREATE INDEX "idx_course_mark__student_id" ON "course_mark" ("student_id")\n' \
-                      'ALTER TABLE "course_mark" ADD CONSTRAINT "fk_course_mark__course_name__course_semester" ' \
-                      'FOREIGN KEY ("course_name", "course_semester") REFERENCES "course" ("name", "semester")\n' \
-                      'ALTER TABLE "course_mark" ADD CONSTRAINT "fk_course_mark__student_id" ' \
-                      'FOREIGN KEY ("student_id") REFERENCES "student" ("id") ON DELETE CASCADE'
+        correct_sql = 'CREATE TABLE "coursemark" (\n  ' \
+                        '"id" SERIAL PRIMARY KEY,\n  ' \
+                        '"course_name" TEXT NOT NULL,\n  ' \
+                        '"course_semester" INTEGER NOT NULL,\n  ' \
+                        '"student_id" INTEGER,\n  ' \
+                        '"mark" INTEGER NOT NULL\n' \
+                      ')\n' \
+                      'CREATE INDEX "idx_coursemark__course_name__course_semester" ON ' \
+                      '"coursemark" ("course_name", "course_semester")\n' \
+                      'CREATE INDEX "idx_coursemark__student_id" ON "coursemark" ("student_id")\n' \
+                      'ALTER TABLE "coursemark" ADD CONSTRAINT "fk_coursemark__course_name__course_semester" ' \
+                        'FOREIGN KEY ("course_name", "course_semester") REFERENCES "course" ("name", "semester") ON DELETE CASCADE\n' \
+                      'ALTER TABLE "coursemark" ADD CONSTRAINT "fk_coursemark__student_id" ' \
+                        'FOREIGN KEY ("student_id") REFERENCES "student" ("id") ON DELETE SET NULL'
 
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()

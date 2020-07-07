@@ -455,16 +455,7 @@ class VirtualAttribute(object):
         self.converters = [vdb.provider.get_converter_by_attr(self)]
 
     def init(self, entity, db):
-        def resolve_cascade(attr1, attr2):
-            if attr1.cascade_delete is None:
-                attr1.cascade_delete = isinstance(attr1, Set) and attr2.is_required
-            elif attr1.cascade_delete:
-                if attr2.cascade_delete: throw(core.MappingError,
-                    "'cascade_delete' option cannot be set for both sides of relationship "
-                    "(%s and %s) simultaneously" % (attr1, attr2))
-                if isinstance(attr2, Set): throw(core.MappingError,
-                    "'cascade_delete' option cannot be set for attribute %s, "
-                    "because reverse attribute %s is collection" % (attr1, attr2))
+        self.initialized = True
 
         if self.entity is not None:
             return  # link that was already resolved
@@ -510,14 +501,26 @@ class VirtualAttribute(object):
                 if self.m2m_table_name and r_attr.m2m_table_name and self.m2m_table_name != r_attr.m2m_table_name:
                     # throw(core.MappingError, 'Attributes %r and %r provide different m2m table names' % (self, r_attr))
                     throw(core.MappingError, "Parameter 'table' for %r and %r do not match" % (self, r_attr))
-                resolve_cascade(self, r_attr)
-                resolve_cascade(r_attr, self)
+                self.resolve_cascade(r_attr)
+                r_attr.resolve_cascade(self)
 
             else:
                 throw(core.MappingError, 'Reverse attribute should be specified')
 
         if self.auto and self.py_type is not int:
             throw(core.MappingError, 'Attribute %r provides option `auto` that can only be specified for int attributes' % self)
+
+    def resolve_cascade(attr, attr2):
+        if attr.cascade_delete is None:
+            attr.cascade_delete = isinstance(attr, (Set, Optional)) and attr2.is_required
+        elif attr.cascade_delete:
+            if attr2.cascade_delete: throw(core.MappingError,
+                "'cascade_delete' option cannot be set for both sides of relationship "
+                "(%s and %s) simultaneously" % (attr, attr2))
+            if isinstance(attr2, Set): throw(core.MappingError,
+                "'cascade_delete' option cannot be set for attribute %s, "
+                "because reverse attribute %s is collection" % (attr, attr2))
+        attr.cascade_resolved = True
 
     def __repr__(self):
         if self.entity is not None:
