@@ -1595,10 +1595,12 @@ class Schema(object):
         index = schema.index_cls(table, cols_from, index_name)
         fk_name = schema.get_fk_name(attr, table, cols_from)
         fk = schema.fk_cls(table, table_to, cols_from, cols_to, fk_name)
+
         if attr.reverse.cascade_delete:
             fk.on_delete = 'CASCADE'
         elif isinstance(attr, v.Optional) and attr.nullable:
             fk.on_delete = 'SET NULL'
+
         return columns, fk, index
 
     def make_column(schema, attr, table):

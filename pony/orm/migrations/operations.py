@@ -55,11 +55,11 @@ class AddAttribute(BaseOperation):
     def apply(self, vdb):
         entity = vdb.entities.get(self.entity_name)
         attr = self.attr
-        attr.entity = entity
         if entity is None:
             throw(core.MigrationError, 'Entity %s does not exist' % self.entity_name)
         if attr.name in entity.new_attrs:
             throw(core.MigrationError, 'Attribute %s is already defined' % attr.name)
+
         if isinstance(attr, v.Required):
             if attr.is_required and attr.provided.initial is None:
                 throw(core.MigrationError, 'initial option should be specified in case of adding the Required attribute')
@@ -69,6 +69,7 @@ class AddAttribute(BaseOperation):
             if not attr.provided.initial or not attr.initial:
                 attr.initial = attr.provided.initial = self.entity_name
 
+        attr.entity = entity
         entity.add_attr(self.attr)
         if attr.reverse:
             r_entity = vdb.entities.get(attr.py_type)
@@ -80,6 +81,8 @@ class AddAttribute(BaseOperation):
             r_attr.entity = r_entity
             r_attr.reverse = attr
             attr.reverse = r_attr
+            attr.resolve_cascade(r_attr)
+            r_attr.resolve_cascade(attr)
 
         if isinstance(attr, v.Optional) and attr.py_type is basestring:
             attr.sql_default = ''
@@ -155,9 +158,6 @@ class AddRelation(BaseOperation):
         if not entity2:
             throw(core.MigrationError, "Entity %r was not found" % self.entity2_name)
 
-        attr1.entity = entity1
-        attr2.entity = entity2
-
         if isinstance(attr1, v.Required):
             if entity1.name not in vdb.new_entities:
                 if attr1.provided.initial is None:
@@ -177,10 +177,14 @@ class AddRelation(BaseOperation):
         if attr2.name in entity2.new_attrs:
             throw(core.MigrationError, 'Attribute %r is already defined' % attr2.name)
 
+        attr1.entity = entity1
+        attr2.entity = entity2
         entity1.add_attr(attr1)
         entity2.add_attr(attr2)
         attr1.reverse = attr2
         attr2.reverse = attr1
+        attr1.resolve_cascade(attr2)
+        attr2.resolve_cascade(attr1)
 
         if not vdb.vdb_only:
             if self.sql:
@@ -212,10 +216,12 @@ class AddSymmetricRelation(BaseOperation):
         entity = vdb.entities.get(self.entity_name)
         if entity is None:
             throw(core.MigrationError, 'Entity %r was not found' % self.entity_name)
-        self.attr.entity = entity
-        entity.add_attr(self.attr)
-        self.attr.symmetric = True
-        self.attr.reverse = self.attr
+        attr = self.attr
+        attr.entity = entity
+        entity.add_attr(attr)
+        attr.symmetric = True
+        attr.reverse = self.attr
+        attr.resolve_cascade(attr)
 
         if not vdb.vdb_only:
             if self.sql:
@@ -327,6 +333,8 @@ class AddEntity(BaseOperation):
                             relations_attrs.append(r_attr)
                         r_attr.entity = r_entity
                         r_attr.reverse = attr
+                        attr.resolve_cascade(r_attr)
+                        r_attr.resolve_cascade(attr)
 
                 if attr.py_type in vdb.entities and attr.py_type in vdb.new_entities:
                     attr.serializable = False
