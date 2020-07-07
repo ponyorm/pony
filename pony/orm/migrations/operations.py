@@ -196,8 +196,8 @@ class AddRelation(BaseOperation):
     def serialize(self, imports):
         super(AddRelation, self).serialize(imports)
         return 'AddRelation(entity1_name=%r, attr1=%s, entity2_name=%r, attr2=%s%s)' % (
-            self.entity1_name, self.attr1.serialize(imports, without_reverse=True),
-            self.entity2_name, self.attr2.serialize(imports, without_reverse=True),
+            self.entity1_name, self.attr1.serialize(imports, with_reverse=False),
+            self.entity2_name, self.attr2.serialize(imports, with_reverse=False),
             '' if not self.sql else ', sql=%r' % self.sql
         )
 
