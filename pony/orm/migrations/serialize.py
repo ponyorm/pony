@@ -3,14 +3,13 @@ from datetime import *
 from uuid import UUID
 from pony.py23compat import *
 from pony.utils import throw
-from pony.orm.ormtypes import IntArray, StrArray, FloatArray
+from pony.orm import core
+from pony.orm.ormtypes import IntArray, StrArray, FloatArray, Json, LongStr
 
 import types
 
 
 def serialize(obj, imports):
-    from pony import orm
-    from pony.orm import core
     result = None
     t = obj if isinstance(obj, type) else type(obj)
     if t in (str, int, float, bool):
@@ -29,9 +28,9 @@ def serialize(obj, imports):
     elif t == buffer:
         if PY2:
             imports['pony.py23compat'].add('buffer')
-    elif t == orm.Json:
+    elif t == Json:
         imports['pony.orm'].add('Json')
-    elif t == orm.LongStr:
+    elif t == LongStr:
         imports['pony.orm'].add('LongStr')
     elif t in (IntArray, StrArray, FloatArray):
         imports['pony.orm'].add(t.__name__)

@@ -30,8 +30,8 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError,
     Name, obsolete
     )
-from pony.orm.migrations import VirtualDB
-from pony.orm.migrations.cli import migrate as migrate_
+from pony.orm import migrations
+from pony.orm.migrations import cli
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, cut_traceback_depth, throw, reraise, truncate_repr, \
      get_lambda_args, pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
@@ -809,7 +809,7 @@ class Database(object):
         self.provider = provider_cls(*args, **kwargs)
     def migrate(database, cmd=None):
         database.generate_mapping(check_tables=False)
-        migrate_(database, cmd)
+        cli.migrate(database, cmd)
     @property
     def migrations_dir(database):
         return os.path.abspath(
@@ -998,7 +998,7 @@ class Database(object):
         for entity in entities:
             entity._check_table_options_()
 
-        database.vdb = VirtualDB.from_db(database)
+        database.vdb = migrations.VirtualDB.from_db(database)
 
         database.vdb.schema = provider.vdbschema_cls.from_vdb(database.vdb, provider)
 

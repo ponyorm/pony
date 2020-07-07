@@ -1,7 +1,10 @@
-from collections import OrderedDict, defaultdict
-from pony.utils import throw
 from pony.py23compat import basestring
-from pony.orm.ormtypes import Json, Array
+
+from collections import OrderedDict, defaultdict
+
+from pony.orm import core
+from pony.utils import throw
+
 from pony.orm.migrations.serialize import serialize
 
 
@@ -28,7 +31,6 @@ class VirtualDB(object):
         return self
 
     def to_db(self, db):
-        from pony.orm import core
         def define_entity(entity_name, bases, attrs):
             return core.EntityMeta(entity_name, bases, attrs)
 
@@ -84,18 +86,17 @@ class VirtualDB(object):
             entity.init(self)
 
     def validate(db):
-        from pony.orm.core import MigrationError
         for entity in db.entities.values():
             for attr in entity.new_attrs.values():
                 if attr.reverse:
                     r_entity_name = attr.py_type
                     r_entity = db.entities.get(r_entity_name)
                     if r_entity is None:
-                        throw(MigrationError, 'Reverse attr for %r is invalid: entity %s is not found' %
+                        throw(core.MigrationError, 'Reverse attr for %r is invalid: entity %s is not found' %
                               (attr, r_entity_name))
                     r_attr = r_entity.get_attr(getattr(attr.reverse, 'name', attr.reverse))
                     if r_attr is None:
-                        throw(MigrationError, 'Reverse attr for %r is invalid: attribute %s is not found' %
+                        throw(core.MigrationError, 'Reverse attr for %r is invalid: attribute %s is not found' %
                               (attr, attr.reverse.name))
                     assert attr.reverse == r_attr
 
@@ -104,7 +105,6 @@ class VirtualEntity(object):
     def __init__(self, name, bases=None, _table_=None, _discriminator_=None, attrs=None, primary_key=None,
                  composite_keys=None, composite_indexes=None, _id_=None):
         if _id_ is None:
-            from pony.orm import core
             _id_ = next(core.entity_id_counter)
         self._id_ = _id_
         self.db = None
@@ -173,7 +173,6 @@ class VirtualEntity(object):
             attr.apply_converters(self.db)
 
     def resolve_inheritance(self):
-        from pony.orm import core
         for i, base in enumerate(self.bases[:]):
             if isinstance(base, basestring):
                 if base not in self.db.entities:
@@ -209,7 +208,6 @@ class VirtualEntity(object):
 
     @classmethod
     def from_entity(cls, db, entity):
-        from pony.orm import core
         name = entity.__name__
         bases = [b.__name__ for b in entity._direct_bases_]
         for base in bases:
@@ -248,7 +246,6 @@ class VirtualEntity(object):
         return ventity
 
     def add_attr(self, attr):
-        from pony.orm import core
         attr_name = attr.name
         if attr_name in self.new_attrs:
             raise core.MigrationError('Attribute with name %s already exists in entity %s' % (attr.name, self.name))
@@ -263,7 +260,6 @@ class VirtualEntity(object):
         self.get_root().all_attrs.append(attr)
 
     def remove_attr(self, attr_name):
-        from pony.orm import core
         if attr_name not in self.new_attrs:
             raise core.MigrationError('Attribute %s not found in entity %s' % (attr_name, self.name))
         base_attr = None
@@ -334,7 +330,6 @@ class VirtualAttribute(object):
         self.symmetric = False
         initial = kwargs.pop('initial', None)
 
-        from pony.orm import core
         if initial and self.reverse:
             throw(core.MappingError, "initial option cannot be used in relation")
 
@@ -426,7 +421,6 @@ class VirtualAttribute(object):
 
     @classmethod
     def from_attribute(cls, attr):
-        from pony.orm import core
         name = attr.name
         if isinstance(attr, core.PrimaryKey):
             attr_class = PrimaryKey
@@ -466,8 +460,6 @@ class VirtualAttribute(object):
         self.converters = [vdb.provider.get_converter_by_attr(self)]
 
     def init(self, entity, db):
-        from pony.orm import core
-
         def resolve_cascade(attr1, attr2):
             if attr1.cascade_delete is None:
                 attr1.cascade_delete = isinstance(attr1, Set) and attr2.is_required
