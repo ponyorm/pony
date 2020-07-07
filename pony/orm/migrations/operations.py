@@ -328,9 +328,7 @@ class AddEntity(BaseOperation):
                         r_attr.entity = r_entity
                         r_attr.reverse = attr
 
-                if attr.py_type not in vdb.entities or attr.py_type in vdb.new_entities:
-                    attr.full_reverse = True
-                elif attr.py_type in vdb.entities and attr.py_type in vdb.new_entities:
+                if attr.py_type in vdb.entities and attr.py_type in vdb.new_entities:
                     attr.serializable = False
 
         entity.resolve_inheritance()

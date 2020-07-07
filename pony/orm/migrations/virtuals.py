@@ -369,8 +369,6 @@ class VirtualAttribute(object):
         self.args = args
         self.kwargs = kwargs
         self.real_attr = None
-
-        self.full_reverse = False
         self.serializable = True
 
         if not isinstance(self, (Required, Set, Optional, Discriminator, PrimaryKey)):
@@ -409,11 +407,8 @@ class VirtualAttribute(object):
         if self.reverse and with_reverse:
             if self.reverse == self:
                 options += ', reverse=%r' % self.name
-            elif self.full_reverse:
-                options += ', reverse=%s' % self.reverse.serialize(imports, with_reverse=False)
             else:
-                options += ', reverse=%r' % (self.reverse.name
-                                             if not isinstance(self.reverse, basestring) else self.reverse)
+                options += ', reverse=%s' % self.reverse.serialize(imports, with_reverse=False)
 
         return "%s(%r, %s%s)" % (
             type(self).__name__, self.name, serialize(self.py_type, imports), options
