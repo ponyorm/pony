@@ -393,7 +393,7 @@ class VirtualAttribute(object):
             **self.provided.kwargs
         )
 
-    def serialize(self, imports, without_reverse=False):
+    def serialize(self, imports, with_reverse=True):
         imports['pony.orm.migrations.virtuals'].add(self.__class__.__name__)
         options = ''
 
@@ -406,11 +406,11 @@ class VirtualAttribute(object):
         if self.provided.initial is not None:
             options += ', initial=%s' % serialize(self.provided.initial, imports)
 
-        if self.reverse and not without_reverse:
+        if self.reverse and with_reverse:
             if self.reverse == self:
                 options += ', reverse=%r' % self.name
             elif self.full_reverse:
-                options += ', reverse=%s' % self.reverse.serialize(imports, without_reverse=True)
+                options += ', reverse=%s' % self.reverse.serialize(imports, with_reverse=False)
             else:
                 options += ', reverse=%r' % (self.reverse.name
                                              if not isinstance(self.reverse, basestring) else self.reverse)
