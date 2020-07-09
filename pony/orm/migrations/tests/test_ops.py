@@ -487,18 +487,21 @@ class TestMigrations(unittest.TestCase):
             biography = Optional(str, nullable=True)
             groups = Set(Group)
 
-        correct_sql = ''
+        migration_op = "RemoveEntity('DeptDirector')\n" \
+                       "RemoveAttribute(entity_name='Teacher', attr_name='head_of_dept')"
 
-        migration_op = ""
-        # TODO apply_migrate() returns error: KeyError: 'classtype' from method table.columns.pop(col_name)
+        correct_sql = 'ALTER TABLE "teacher" DROP COLUMN "classtype"\n' \
+                      'ALTER TABLE "teacher" DROP COLUMN "is_director"\n' \
+                      'ALTER TABLE "teacher" DROP COLUMN "teacher_id"'
+
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_any_table_name(self):

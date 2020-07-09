@@ -397,10 +397,21 @@ class RemoveEntity(BaseOperation):
         root = entity.get_root()
         removed_attrs = []
         if root is not entity:
+            for disc in root.new_attrs.values():
+                if isinstance(disc, v.Discriminator):
+                    break
+            else:
+                throw(core.MigrationError, 'Discriminator attribute was not found')
+
+            if len(root.subclasses) == 1 and root.subclasses[0] is entity:
+                removed_attrs.append(disc)
+                root.remove_attr(disc.name)
+
             for attr in list(entity.new_attrs.values()):
                 removed_attrs.append(attr)
                 entity.remove_attr(attr.name)
         else:
+            disc = None
             for attr in entity.new_attrs.values():
                 if attr.reverse:
                     r_attr = attr.reverse
@@ -418,10 +429,10 @@ class RemoveEntity(BaseOperation):
             if self.sql:
                 vdb.schema.add_sql(self.sql)
             else:
-                self.apply_to_schema(vdb, entity, removed_attrs, self.new_classtype_value)
+                self.apply_to_schema(vdb, entity, removed_attrs, disc, self.new_classtype_value)
 
     @staticmethod
-    def apply_to_schema(vdb, entity, removed_attrs, new_classtype_value):
+    def apply_to_schema(vdb, entity, removed_attrs, disc, new_classtype_value):
         schema = vdb.schema
         if not entity.bases:
             for attr in removed_attrs:
@@ -440,13 +451,6 @@ class RemoveEntity(BaseOperation):
                 cols = attr.columns
                 schema.drop_columns(cols)
 
-            for disc in root.new_attrs.values():
-                if isinstance(disc, v.Discriminator):
-                    break
-            else:
-                throw(core.MigrationError, 'Discriminator attribute was not found')
-                return
-
             if root.subclasses:
                 if len(entity.bases) > 1 and not new_classtype_value:
                     throw(core.MigrationError,
@@ -456,8 +460,6 @@ class RemoveEntity(BaseOperation):
                 old_value = entity.name
                 new_name = new_classtype_value or entity.bases[0].name
                 schema.change_discriminator_value(col, old_value, new_name)
-            else:
-                schema.drop_columns(disc.columns)
 
     def serialize(self, imports):
         super(RemoveEntity, self).serialize(imports)
