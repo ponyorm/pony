@@ -998,9 +998,9 @@ class Database(object):
         for entity in entities:
             entity._check_table_options_()
 
-        database.vdb = migrations.VirtualDB.from_db(database)
-
-        database.vdb.schema = provider.vdbschema_cls.from_vdb(database.vdb, provider)
+        vdb = migrations.VirtualDB.from_db(database)
+        vdb.schema = provider.vdbschema_cls.from_vdb(vdb, provider)
+        database.vdb = vdb
 
         obsolete_table_names = set()
 

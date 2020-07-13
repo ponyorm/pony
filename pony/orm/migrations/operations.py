@@ -1136,7 +1136,11 @@ class ChangeNullable(BaseOperation):
                 attr.provided.kwargs['nullable'] = self.nullable
             return  # user input validation
 
-        attr.nullable = attr.provided.kwargs['nullable'] = self.nullable
+        if self.nullable:
+            attr.nullable = attr.provided.kwargs['nullable'] = True
+        else:
+            attr.nullable = False
+            attr.provided.kwargs.pop('nullable', None)
 
         if not vdb.vdb_only:
             if self.sql:
@@ -1147,7 +1151,8 @@ class ChangeNullable(BaseOperation):
     @staticmethod
     def apply_to_schema(vdb, attr, nullable):
         new_value = nullable or len(attr.entity.bases) != 0
-        vdb.schema.change_nullable(attr, new_value)
+        for column in attr.columns:
+            vdb.schema.change_nullable(column, new_value)
 
     def serialize(self, imports):
         super(ChangeNullable, self).serialize(imports)
