@@ -938,7 +938,6 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual(expected_schema, actual_schema)
 
-    @unittest.skip
     def test_unset_nullable_attr(self):
         """
             Unset's "nullable" to attribute "biography" in entity "Teacher"
@@ -990,14 +989,17 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str)
+            groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        migration_op = "ChangeNullable(entity_name='Teacher', attr_name='biography', nullable=False)"
 
-        migration_op = ""
+        correct_sql = 'ALTER TABLE "teacher" ALTER COLUMN "biography" SET NOT NULL'
+
         # test execution freezes at apply_migrate() call
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1005,8 +1007,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_nullable_attr(self):
