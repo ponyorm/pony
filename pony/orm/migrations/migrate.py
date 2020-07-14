@@ -5,7 +5,7 @@ import datetime
 from collections import defaultdict
 
 from pony.orm.migrations import operations
-from pony.orm.migrations.virtuals import PrimaryKey, Discriminator, Set
+from pony.orm.migrations import virtuals as v
 
 from pony.orm import core
 from pony.utils import throw
@@ -192,7 +192,7 @@ def entity_difference(entity1, entity2, vdb1, vdb2, rename_map):
                 rename_map.pop(val)
 
             if attr1.reverse and attr1.py_type in vdb1.entities or not attr1.reverse:
-                if isinstance(attr1, PrimaryKey) or isinstance(attr1, Discriminator) and entity1.subclasses:
+                if isinstance(attr1, v.PrimaryKey) or isinstance(attr1, v.Discriminator) and entity1.subclasses:
                     throw(NotImplementedError, 'Cannot remove attribute which type is %s' % type(attr1).__name__)
 
                 # for ck in attr1.composite_keys:
@@ -208,7 +208,7 @@ def entity_difference(entity1, entity2, vdb1, vdb2, rename_map):
 
     for attr_name, attr2 in entity2.new_attrs.items():
         if attr_name not in entity1.new_attrs:
-            if isinstance(attr2, Discriminator):
+            if isinstance(attr2, v.Discriminator):
                 if attr2.provided.initial is None:
                     attr2.provided.initial = entity2.name
             if attr2.reverse:
@@ -240,12 +240,15 @@ def entity_difference(entity1, entity2, vdb1, vdb2, rename_map):
             return operations.AddCompositeIndex(entity1.name, ci)
 
 def attr_difference(attr1, attr2):
-    non_changeable_types = (PrimaryKey, Set, Discriminator)
+    non_changeable_types = (v.PrimaryKey, v.Discriminator, v.Set)
     if type(attr1) != type(attr2):
         if type(attr1) in non_changeable_types:
             throw(core.MigrationError, 'Attribute of type %s cannot be changed' % type(attr1).__name__)
         if type(attr2) in non_changeable_types:
             throw(core.MigrationError, 'Attribute cannot be changed to type %s' % type(attr2).__name__)
+
+        if type(attr2) is v.Required and attr2.provided.initial is None:
+            throw(core.MigrationError, 'Initial value should be specified for Required attribute `%s`' % attr2.name)
 
         return operations.ChangeAttributeClass(attr1.entity.name, attr1.name, type(attr2).__name__)
 
