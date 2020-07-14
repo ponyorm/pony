@@ -297,21 +297,17 @@ def attr_difference(attr1, attr2):
             return operations.RenameColumns(attr1.entity.name, attr1.name, new_columns_names=kw2.get('columns'))
         elif option_diff('reverse_columns', (), list):
             return operations.RenameColumns(attr1.entity.name, attr1.name, new_reverse_columns_names=kw2.get('reverse_columns'))
-        elif attr1.py_type != attr2.py_type:
+        elif attr1.py_type != attr2.py_type or any(
+                option_diff(key) for key in ['sql_type', 'max_len', 'precision', 'scale', 'size', 'unsigned']):
             cast_sql = None
-            if attr2.columns:
+            if attr1.py_type != attr2.py_type and attr2.columns:
+                assert len(attr2.columns) == 1
                 col = attr2.columns[0]
                 provider = col.provider
                 cast_sql = provider.cast_sql.format(colname='{colname}', sql_type=col.converter.get_sql_type())
-            new_options = {'py_type': attr2.py_type}
-            if option_diff('max_len') or option_diff('precision') or option_diff('scale') or \
-                option_diff('size') or option_diff('unsigned') or option_diff('sql_type'):
-                new_options.update(kw2)
-            return operations.ChangeColumnType(attr1.entity.name, attr1.name, new_options, cast_sql=cast_sql)
-        elif option_diff('max_len') or option_diff('precision') or option_diff('scale') or \
-                option_diff('size') or option_diff('unsigned') or option_diff('sql_type'):
-            new_options = kw2.copy()
-            return operations.ChangeColumnType(attr1.entity.name, attr1.name, new_options)
+            new_options = {key: value for key, value in kw2.items()
+                           if key in {'sql_type', 'max_len', 'precision', 'scale', 'size', 'unsigned'}}
+            return operations.ChangeColumnType(attr1.entity.name, attr1.name, attr2.py_type, new_options, cast_sql=cast_sql)
         elif option_diff('sql_default'):
             return operations.ChangeSQLDefault(attr1.entity.name, attr1.name, kw2.get('sql_default', None))
         elif option_diff('nullable'):

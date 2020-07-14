@@ -855,16 +855,18 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
+        migration_op = "ChangeColumnType(entity_name='Department', attr_name='name', py_type=str, options={'max_len': 300})"
+
         correct_sql = 'ALTER TABLE "department" ALTER COLUMN "name" TYPE VARCHAR(300)'
-        migration_op = "ChangeColumnType(entity_name='Department', attr_name='name', new_options={'max_len': 300})"
+
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_change_int_size(self):
@@ -927,7 +929,7 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "credits" TYPE INTEGER'
 
-        migration_op = "ChangeColumnType(entity_name='Course', attr_name='credits', new_options={'size': 32})"
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='credits', py_type=int, options={'size': 32})"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -1013,7 +1015,7 @@ class TestMigrations(unittest.TestCase):
 
     def test_set_nullable_attr(self):
         """
-            Set's "nullable" to attribute "name" in entity "Teacher"
+            Set's "nullable" to attribute "description" in entity "Course"
         """
         self.db2 = db2 = Database(**self.db_params)
 
@@ -1069,17 +1071,18 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
-
         migration_op = "ChangeNullable(entity_name='Course', attr_name='description', nullable=True)"
+
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "description" DROP NOT NULL'
+
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_delete_attr(self):
@@ -1356,9 +1359,9 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='lect_hours', py_type=int, options={'unsigned': True})"
 
-        migration_op = "ChangeColumnType(entity_name='Course', attr_name='lect_hours', new_options={'unsigned': True})"
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lect_hours" TYPE BIGINT'
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1366,11 +1369,10 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
-    @unittest.skip
     def test_unset_unsigned_attr(self):
         """
             Unset's unsigned constraint to attribute "lab_hours" in entity "Course"
@@ -1429,9 +1431,10 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='lab_hours', py_type=int, options={})"
 
-        migration_op = ""
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lab_hours" TYPE INTEGER'
+
         # test execution freezes at apply_migrate() call
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1439,8 +1442,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_default_val(self):
@@ -1647,7 +1650,7 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lect_hours" TYPE smallint'
 
-        migration_op = "ChangeColumnType(entity_name='Course', attr_name='lect_hours', new_options={'sql_type': 'smallint'})"
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='lect_hours', py_type=int, options={'sql_type': 'smallint'})"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -1789,7 +1792,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "department" ALTER COLUMN "rating" TYPE DECIMAL(10, 2)'
-        migration_op = "ChangeColumnType(entity_name='Department', attr_name='rating', new_options={'precision': 10})"
+        migration_op = "ChangeColumnType(entity_name='Department', attr_name='rating', py_type=Decimal, options={'precision': 10})"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -1859,7 +1862,7 @@ class TestMigrations(unittest.TestCase):
             teacher = Optional(Teacher)
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "last_update" TYPE TIMESTAMP(5)'
-        migration_op = "ChangeColumnType(entity_name='Course', attr_name='last_update', new_options={'precision': 5})"
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='last_update', py_type=datetime, options={'precision': 5})"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []

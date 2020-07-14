@@ -1013,25 +1013,28 @@ class RenameAttribute(BaseOperation):
 
 
 class ChangeColumnType(BaseOperation):
-    def __init__(self, entity_name, attr_name, new_options, cast_sql=None, sql=None):
+    all_options = {'py_type', 'sql_type', 'max_len', 'precision', 'scale', 'size', 'unsigned'}
+    kwarg_names = {'max_len', 'precision', 'scale', 'size', 'unsigned'}
+    default_values = {'unsigned': False, 'size': 32}
+
+    def __init__(self, entity_name, attr_name, py_type, options, cast_sql=None, sql=None):
         self.entity_name = entity_name
         self.attr_name = attr_name
-        self.new_options = new_options
+        self.py_type = py_type
+        self.options = options
         self.sql = sql
         self.cast_sql = cast_sql
 
     def apply(self, vdb):
         entity, attr = self.get_entity_attr(vdb)
         assert not attr.reverse
-        unpopped_names = {'unsinged', 'size', 'scale', 'precision', 'max_len'}
-        for key in self.new_options:
-            value = self.new_options[key]
-            if key not in ('py_type',):
-                attr.provided.kwargs[key] = value
-            if key in unpopped_names:
-                attr.kwargs[key] = value
-            else:
-                setattr(attr, key, value)
+
+        attr.py_type = self.py_type
+        attr.provided.kwargs = self.options.copy()
+        attr.kwargs = {key: val for key, val in self.options.items() if key in self.kwarg_names}
+        for key, val in self.options.items():
+            if key not in self.kwarg_names:
+                setattr(attr, key, val)
 
         # attr.sql_type = self.new_options.get('sql_type', None)
         attr.args = attr.provided.args = []
@@ -1041,7 +1044,7 @@ class ChangeColumnType(BaseOperation):
         attr.nullable = not isinstance(attr, v.Required) and not type_has_empty_value
 
         cast_sql = self.cast_sql
-        if cast_sql is None and 'py_type' in self.new_options:
+        if cast_sql is None and 'py_type' in self.options:
             cast_sql = vdb.provider.cast_sql
 
         if not vdb.vdb_only:
@@ -1065,13 +1068,15 @@ class ChangeColumnType(BaseOperation):
 
     def serialize(self, imports):
         super(ChangeColumnType, self).serialize(imports)
+        serialize(self.py_type, imports)
         options = []
-        for k, v in self.new_options.items():
-            options.append('%r: %s' % (k, repr(v) if not isinstance(v, type) else v.__name__))
+        for k, v in self.options.items():
+            options.append('%r: %r' % (k, v))
             serialize(v, imports)
         options = ', '.join(options)
-        return 'ChangeColumnType(entity_name=%r, attr_name=%r, new_options={%s}%s%s)' % (
-            self.entity_name, self.attr_name, options,
+        py_type = repr(self.py_type) if not isinstance(self.py_type, type) else self.py_type.__name__
+        return 'ChangeColumnType(entity_name=%r, attr_name=%r, py_type=%s, options={%s}%s%s)' % (
+            self.entity_name, self.attr_name, py_type, options,
             '' if not self.cast_sql else ', cast_sql=%r' % self.cast_sql,
             '' if not self.sql else ', sql=%r' % self.sql
         )
