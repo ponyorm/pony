@@ -1373,7 +1373,7 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
-    def test_unset_unsigned_attr(self):
+    def test_unset_unsigned_attr_1(self):
         """
             Unset's unsigned constraint to attribute "lab_hours" in entity "Course"
         """
@@ -1434,6 +1434,79 @@ class TestMigrations(unittest.TestCase):
         migration_op = "ChangeColumnType(entity_name='Course', attr_name='lab_hours', py_type=int, options={})"
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lab_hours" TYPE INTEGER'
+
+        # test execution freezes at apply_migrate() call
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(expected_schema, actual_schema)
+
+    def test_unset_unsigned_attr_2(self):
+        """
+            Unset's unsigned constraint to attribute "lab_hours" in entity "Course", specify smaller size
+        """
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str, 100)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+            rating = Optional(Decimal)
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+            curator = Optional('Teacher')
+
+        class Course(db2.Entity):
+            name = Required(str)
+            semester = Required(int)
+            lect_hours = Required(int)
+            lab_hours = Required(int, size=8)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Required('Teacher')
+            PrimaryKey(name, semester)
+            description = Optional(str)
+            last_update = Optional(datetime)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            gpa = Optional(float)
+            group = Required(Group)
+            courses = Set(Course)
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+            groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+            teacher = Optional(Teacher)
+
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='lab_hours', py_type=int, options={'size': 8})"
+
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lab_hours" TYPE SMALLINT'
 
         # test execution freezes at apply_migrate() call
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
