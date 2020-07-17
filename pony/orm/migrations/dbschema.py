@@ -6,7 +6,6 @@ from collections import OrderedDict
 
 from pony.orm import core
 from pony.orm.dbapiprovider import Name, obsolete
-from pony.orm.sqlbuilding import SQLBuilder
 from pony.utils import throw
 
 from pony.orm.migrations import virtuals as v
@@ -320,7 +319,8 @@ class Column(DBObject):
         result = [self.table.get_alter_prefix()]
         result.append(self.get_alter_prefix())
         result.append('SET DEFAULT')
-        builder = SQLBuilder(self.provider, ['VALUE', self.sql_default])
+        provider = self.provider
+        builder = provider.sqlbuilder_cls(provider, ['VALUE', self.sql_default])
         sql_default = builder.sql
         result.append(sql_default)
         return ' '.join(result)
@@ -337,25 +337,13 @@ class Column(DBObject):
 
     @sql_op
     def get_update_value_sql(self, old_value, new_value):
-        quote = self.provider.quote_name
-        py2sql = self.converter.py2sql
-        old_value = py2sql(old_value)
-        new_value = py2sql(new_value)
-        builder = SQLBuilder(self.provider, ['VALUE', old_value])
-        old_value = builder.sql
-        builder2 = SQLBuilder(self.provider, ['VALUE', new_value])
-        new_value = builder2.sql
-        result = ['UPDATE']
-        result.append(quote(self.table.name))
-        result.append('SET')
-        result.append(quote(self.name))
-        result.append('=')
-        result.append(new_value)
-        result.append('WHERE')
-        result.append(quote(self.name))
-        result.append('=')
-        result.append(old_value)
-        return ' '.join(result)
+        column_name = self.name
+        sql, adapter = self.provider.ast2sql([
+            'UPDATE', self.table.name,
+            [ (column_name, [ 'VALUE', new_value ]) ],
+            [ 'WHERE', [ 'EQ', [ 'COLUMN', None, column_name ], [ 'VALUE', old_value ] ] ]
+        ])
+        return sql
 
     @sql_op
     def get_change_type_sql(self, new_type, cast):
