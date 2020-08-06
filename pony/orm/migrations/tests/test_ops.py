@@ -2040,7 +2040,7 @@ class TestMigrations(unittest.TestCase):
             major = Required(str, unique=True)
             dept = Required(Department)
             students = Set('Student')
-            curator = Required('Teacher', initial=None)
+            curator = Required('Teacher')
 
         class Course(db2.Entity):
             name = Required(str)
@@ -2079,12 +2079,12 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
+        migration_op = "ChangeAttributeClass(entity_name='Group', attr_name='curator', new_class='Required')"
+
         correct_sql = 'ALTER TABLE "group" DROP CONSTRAINT "fk_group__curator_id"\n' \
                       'ALTER TABLE "group" ALTER COLUMN "curator_id" SET NOT NULL\n' \
                       'ALTER TABLE "group" ADD CONSTRAINT "fk_group__curator_id" FOREIGN KEY ("curator_id") ' \
-                      'REFERENCES "teacher" ("id") ON DELETE SET NULL'
-
-        migration_op = "ChangeAttributeClass(entity_name='Group', attr_name='curator', new_class='Required')"
+                      'REFERENCES "teacher" ("id") ON DELETE CASCADE'
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -2356,70 +2356,7 @@ class TestMigrations(unittest.TestCase):
 
         self.assertEqual(cm.exception.args[0], 'Cannot change primary key')
 
-    def test_change_optional_to_required_no_initial(self):
-        """
-            Changes optional attribute "description" in entity "Course" to required with initial value
-        """
-        self.db2 = db2 = Database(**self.db_params)
-
-        class Department(db2.Entity):
-            number = PrimaryKey(int, auto=True)
-            name = Required(str, 100)
-            groups = Set('Group')
-            courses = Set('Course')
-            teachers = Set('Teacher')
-            rating = Optional(Decimal)
-
-        class Group(db2.Entity):
-            number = PrimaryKey(int, auto=True)
-            major = Required(str, unique=True)
-            dept = Required(Department)
-            students = Set('Student')
-            curator = Optional('Teacher')
-
-        class Course(db2.Entity):
-            name = Required(str)
-            semester = Required(int)
-            lect_hours = Required(int)
-            lab_hours = Required(int, unsigned=True)
-            credits = Required(int, size=8)
-            dept = Required(Department)
-            students = Set('Student')
-            teacher = Required('Teacher')
-            PrimaryKey(name, semester)
-            description = Required(str)
-            last_update = Optional(datetime)
-
-        class Student(db2.Entity):
-            id = PrimaryKey(int, auto=True)
-            name = Required(str)
-            dob = Required(date)
-            picture = Optional(buffer)
-            gpa = Optional(float)
-            group = Required(Group)
-            courses = Set(Course)
-
-        class Teacher(db2.Entity):
-            id = PrimaryKey(int)
-            name = Required(str)
-            surname = Optional(str)
-            dob = Required(date)
-            departments = Set(Department)
-            courses = Set(Course)
-            biography = Optional(str, nullable=True)
-            groups = Set(Group)
-            head_of_dept = Optional('DeptDirector')
-
-        class DeptDirector(Teacher):
-            is_director = Required(bool)
-            teacher = Optional(Teacher)
-
-        with self.assertRaises(MigrationError) as cm:
-            self.apply_migrate()
-
-        self.assertEqual(cm.exception.args[0], 'Initial value should be specified for Required attribute `description`')
-
-    def test_change_optional_to_required_1(self):
+    def test_change_optional_to_required_1a(self):
         """
             Changes optional attribute "description" in entity "Course" to required with initial value
         """
@@ -2477,9 +2414,13 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        migration_op = "ChangeAttributeClass(entity_name='Course', attr_name='description', " \
+                                            "new_class='Required', initial='Empty description')"
 
-        migration_op = "ChangeAttributeClass(entity_name='Course', attr_name='description', new_class='Required')"
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "description" DROP DEFAULT\n' \
+                      'UPDATE "course"\n' \
+                      'SET "description" = \'Empty description\'\n' \
+                      'WHERE ("description" = \'\' OR "description" IS NULL)'
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -2491,9 +2432,81 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
 
-    def test_change_optional_to_required_2(self):
+    def test_change_optional_to_required_1b(self):
         """
-            Changes optional attribute "description" in entity "Course" to required with initial value
+            Changes optional attribute "description" in entity "Course" to required without initial value
+        """
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str, 100)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+            rating = Optional(Decimal)
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+            curator = Optional('Teacher')
+
+        class Course(db2.Entity):
+            name = Required(str)
+            semester = Required(int)
+            lect_hours = Required(int)
+            lab_hours = Required(int, unsigned=True)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Required('Teacher')
+            PrimaryKey(name, semester)
+            description = Required(str)
+            last_update = Optional(datetime)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            gpa = Optional(float)
+            group = Required(Group)
+            courses = Set(Course)
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+            groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+            teacher = Optional(Teacher)
+
+        migration_op = "ChangeAttributeClass(entity_name='Course', attr_name='description', new_class='Required')"
+
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "description" DROP DEFAULT'
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
+
+    def test_change_optional_to_required_2a(self):
+        """
+            Changes optional nullable attribute "raiting" in entity "Departemnt" to required with initial value
         """
         self.db2 = db2 = Database(**self.db_params)
 
@@ -2504,6 +2517,82 @@ class TestMigrations(unittest.TestCase):
             courses = Set('Course')
             teachers = Set('Teacher')
             rating = Required(Decimal, initial=Decimal('1.0'))
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            major = Required(str, unique=True)
+            dept = Required(Department)
+            students = Set('Student')
+            curator = Optional('Teacher')
+
+        class Course(db2.Entity):
+            name = Required(str)
+            semester = Required(int)
+            lect_hours = Required(int)
+            lab_hours = Required(int, unsigned=True)
+            credits = Required(int, size=8)
+            dept = Required(Department)
+            students = Set('Student')
+            teacher = Required('Teacher')
+            PrimaryKey(name, semester)
+            description = Optional(str)
+            last_update = Optional(datetime)
+
+        class Student(db2.Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            dob = Required(date)
+            picture = Optional(buffer)
+            gpa = Optional(float)
+            group = Required(Group)
+            courses = Set(Course)
+
+        class Teacher(db2.Entity):
+            id = PrimaryKey(int)
+            name = Required(str)
+            surname = Optional(str)
+            dob = Required(date)
+            departments = Set(Department)
+            courses = Set(Course)
+            biography = Optional(str, nullable=True)
+            groups = Set(Group)
+            head_of_dept = Optional('DeptDirector')
+
+        class DeptDirector(Teacher):
+            is_director = Required(bool)
+            teacher = Optional(Teacher)
+
+        migration_op = "ChangeAttributeClass(entity_name='Department', attr_name='rating', new_class='Required', initial=Decimal('1.0'))" \
+
+
+        correct_sql = 'ALTER TABLE "department" ALTER COLUMN "rating" SET NOT NULL\n' \
+                      'UPDATE "department"\n' \
+                      'SET "rating" = 1.0\n' \
+                      'WHERE "rating" IS NULL'
+
+        expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
+        imports = defaultdict(set)
+        t = []
+        for op in migration.operations:
+            t.append(op.serialize(imports))
+
+        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
+
+    def test_change_optional_to_required_2b(self):
+        """
+            Changes optional nullable attribute "raiting" in entity "Departemnt" to required without initial value
+        """
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str, 100)
+            groups = Set('Group')
+            courses = Set('Course')
+            teachers = Set('Teacher')
+            rating = Required(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)

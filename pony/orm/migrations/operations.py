@@ -638,11 +638,14 @@ class ChangeDiscriminator(BaseOperation):
 
 
 class ChangeAttributeClass(BaseOperation):
-    def __init__(self, entity_name, attr_name, new_class, sql=None):
+    def __init__(self, entity_name, attr_name, new_class, sql=None, initial=None):
         self.entity_name = entity_name
         self.attr_name = attr_name
         self.new_class = new_class
         self.sql = sql
+        if initial is not None:
+            assert new_class == 'Required' or new_class is v.Required
+        self.initial = initial
 
     def apply(self, vdb):
         new_class = self.new_class
@@ -667,6 +670,7 @@ class ChangeAttributeClass(BaseOperation):
         is_string = type(attr.py_type) is type and issubclass(attr.py_type, basestring)
         type_has_empty_value = is_string or hasattr(attr.py_type, 'default_empty_value')
         attr.nullable = not isinstance(attr, v.Required) and not type_has_empty_value
+        attr.initial = self.initial
 
         if not vdb.vdb_only:
             if self.sql:
@@ -677,6 +681,7 @@ class ChangeAttributeClass(BaseOperation):
             if self.new_class is v.Required:
                 print("Warning: Changing attribute from Optional to Required assumes that you do not have empty values"
                       " for attribute `%s.%s`" % (entity.name, attr.name))
+        attr.initial = None
 
     @staticmethod
     def apply_to_schema(vdb, attr):
@@ -707,12 +712,18 @@ class ChangeAttributeClass(BaseOperation):
         for col in attr.columns:
             nullable = attr.nullable or len(attr.entity.bases) != 0
             schema.change_nullable(col, nullable)
+            if isinstance(attr, v.Required):
+                schema.change_sql_default(col, None)
+                if attr.initial is not None:
+                    is_string_column = isinstance(attr.py_type, type) and issubclass(attr.py_type, basestring)
+                    schema.set_initial(col, attr.initial, is_string_column)
 
     def serialize(self, imports):
         super(ChangeAttributeClass, self).serialize(imports)
-        return 'ChangeAttributeClass(entity_name=%r, attr_name=%r, new_class=%r%s)' \
+        return 'ChangeAttributeClass(entity_name=%r, attr_name=%r, new_class=%r%s%s)' \
                % (self.entity_name, self.attr_name, self.new_class,
-                  '' if not self.sql else ', sql=%r' % self.sql)
+                  '' if not self.sql else ', sql=%r' % self.sql,
+                  '' if self.initial is None else ', initial=%s' % serialize(self.initial, imports))
 
 
 class DropCompositeKey(BaseOperation):
