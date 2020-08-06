@@ -241,7 +241,7 @@ class Column(DBObject):
         col.nullable = attr.nullable or len(attr.entity.bases) != 0
         col.auto = attr.auto
         col.sql_default = attr.sql_default
-        if not attr.is_required and attr.py_type is basestring:
+        if not attr.is_required and isinstance(attr.py_type, type) and issubclass(attr.py_type, basestring):
             col.sql_default = ''
         col.initial = attr.initial or attr.provided.initial
         col.sql_type = attr.sql_type or converter.get_sql_type()
@@ -324,6 +324,21 @@ class Column(DBObject):
         sql_default = builder.sql
         result.append(sql_default)
         return ' '.join(result)
+
+    @sql_op
+    def get_set_initial_sql(column, initial, is_string_column):
+        schema = column.table.schema
+        column_name = column.name
+        condition = [ 'IS_NULL', [ 'COLUMN', None, column.name ]]
+        if is_string_column:
+            condition = [ 'OR', [ 'EQ', [ 'COLUMN', None, column_name ], [ 'VALUE', '' ] ], condition ]
+        sql_ast = [
+            'UPDATE', column.table.name,
+            [ (column_name, [ 'VALUE', initial ]) ],
+            [ 'WHERE', condition ]
+        ]
+        sql, adapter = schema.provider.ast2sql(sql_ast)
+        return sql
 
     @sql_op
     def get_rename_sql(self, new_name):
@@ -1138,6 +1153,8 @@ class Schema(object):
             schema.ops.extend(column.get_change_type_sql(new_sql_type, cast))
 
     def change_sql_default(schema, column, new_sql_default):
+        if column.sql_default == new_sql_default:
+            return
         column.sql_default = new_sql_default
         if new_sql_default is None:
             schema.ops.extend(column.get_drop_default_sql())
@@ -1158,9 +1175,11 @@ class Schema(object):
         else:
             schema.ops.extend(column.get_set_not_null_sql())
         for fk in fkeys:
-            if column.nullable and fk.on_delete == 'CASCADE':
-                fk.on_delete = 'SET NULL'
+            fk.on_delete = 'SET NULL' if column.nullable else 'CASCADE'
             schema.ops.extend(fk.get_create_sql())
+
+    def set_initial(schema, column, initial, is_string_column):
+        schema.ops.extend(column.get_set_initial_sql(initial, is_string_column))
 
     def add_unique_constraint(schema, cols):
         unq = schema.unique_cls(cols)

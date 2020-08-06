@@ -247,10 +247,12 @@ def attr_difference(attr1, attr2):
         if type(attr2) in non_changeable_types:
             throw(core.MigrationError, 'Attribute cannot be changed to type %s' % type(attr2).__name__)
 
-        if type(attr2) is v.Required and attr2.provided.initial is None:
-            throw(core.MigrationError, 'Initial value should be specified for Required attribute `%s`' % attr2.name)
+        initial = attr2.provided.initial
+        if type(attr2) is not v.Required and initial is not None:
+            throw(core.MigrationError, 'Initial value cannot be specified for %s attribute `%s`'
+                                       % (attr2.__class__.__name__, attr2.name))
 
-        return operations.ChangeAttributeClass(attr1.entity.name, attr1.name, type(attr2).__name__)
+        return operations.ChangeAttributeClass(attr1.entity.name, attr1.name, type(attr2).__name__, initial=initial)
 
     # if attr1.py_type != attr2.py_type:
     #     return ChangeAttributeType(attr1.entity.name, attr1.name, attr2.py_type)

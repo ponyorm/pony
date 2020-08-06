@@ -483,6 +483,8 @@ class SQLiteVirtualSchema(vdbschema.Schema):
             column.cast = cast
 
     def change_sql_default(schema, column, new_sql_default):
+        if column.sql_default == new_sql_default:
+            return
         schema.affected_tables[column.table.name].changed_columns.append(column)
         column.sql_default = new_sql_default
 
