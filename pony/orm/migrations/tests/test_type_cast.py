@@ -55,7 +55,8 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE INTEGER USING "name"::INTEGER'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': int}, cast_sql='{colname}::INTEGER')"
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=int, options={}, " \
+                       "cast_sql='{colname}::INTEGER')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -88,7 +89,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE DOUBLE PRECISION USING "name"::DOUBLE PRECISION'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': float}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=float, options={}, " \
                        "cast_sql='{colname}::DOUBLE PRECISION')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -122,7 +123,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE DECIMAL(12, 2) USING "name"::DECIMAL(12, 2)'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': Decimal}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=Decimal, options={}, " \
                        "cast_sql='{colname}::DECIMAL(12, 2)')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -156,7 +157,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE TIMESTAMP USING "name"::TIMESTAMP'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': datetime}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=datetime, options={}, " \
                        "cast_sql='{colname}::TIMESTAMP')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -190,7 +191,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE DATE USING "name"::DATE'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': date}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=date, options={}, " \
                        "cast_sql='{colname}::DATE')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -224,7 +225,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE TIME USING "name"::TIME'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': time}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=time, options={}, " \
                        "cast_sql='{colname}::TIME')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -259,7 +260,7 @@ class TestTypeCast(unittest.TestCase):
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE INTERVAL DAY TO SECOND USING ' \
                       '"name"::INTERVAL DAY TO SECOND'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': timedelta}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=timedelta, options={}, " \
                        "cast_sql='{colname}::INTERVAL DAY TO SECOND')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -293,7 +294,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE BOOLEAN USING "name"::BOOLEAN'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': bool}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=bool, options={}, " \
                        "cast_sql='{colname}::BOOLEAN')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -327,7 +328,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE BYTEA USING "name"::BYTEA'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': bytes}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=bytes, options={}, " \
                        "cast_sql='{colname}::BYTEA')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -361,7 +362,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = ''
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -395,7 +396,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE UUID USING "name"::UUID'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': UUID}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=UUID, options={}, " \
                        "cast_sql='{colname}::UUID')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -429,7 +430,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "name" TYPE JSONB USING "name"::JSONB'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', new_options={'py_type': Json}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='name', py_type=Json, options={}, " \
                        "cast_sql='{colname}::JSONB')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -463,7 +464,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -497,7 +498,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DOUBLE PRECISION USING "number"::DOUBLE PRECISION'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': float}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=float, options={}, " \
                        "cast_sql='{colname}::DOUBLE PRECISION')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -531,7 +532,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DECIMAL(12, 2) USING "number"::DECIMAL(12, 2)'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': Decimal}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=Decimal, options={}, " \
                        "cast_sql='{colname}::DECIMAL(12, 2)')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -565,7 +566,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE BOOLEAN USING "number"::BOOLEAN'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': bool}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=bool, options={}, " \
                        "cast_sql='{colname}::BOOLEAN')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -599,7 +600,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -633,7 +634,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -667,7 +668,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE INTEGER USING "number"::INTEGER'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': int}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=int, options={}, " \
                        "cast_sql='{colname}::INTEGER')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -701,7 +702,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DECIMAL(12, 2) USING "number"::DECIMAL(12, 2)'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': Decimal}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=Decimal, options={}, " \
                        "cast_sql='{colname}::DECIMAL(12, 2)')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -771,7 +772,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -805,7 +806,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -840,7 +841,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE INTEGER USING "number"::INTEGER'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': int}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=int, options={}, " \
                        "cast_sql='{colname}::INTEGER')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -874,7 +875,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DOUBLE PRECISION USING "number"::DOUBLE PRECISION'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': float}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=float, options={}, " \
                        "cast_sql='{colname}::DOUBLE PRECISION')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -944,7 +945,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -978,7 +979,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1012,7 +1013,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE DATE USING "number"::DATE'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': date}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=date, options={}, " \
                        "cast_sql='{colname}::DATE')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1046,7 +1047,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TIME USING "number"::TIME'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': time}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=time, options={}, " \
                        "cast_sql='{colname}::TIME')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1080,7 +1081,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1114,7 +1115,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1148,7 +1149,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TIMESTAMP USING "number"::TIMESTAMP'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': datetime}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=datetime, options={}, " \
                        "cast_sql='{colname}::TIMESTAMP')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1182,7 +1183,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1216,7 +1217,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1251,7 +1252,7 @@ class TestTypeCast(unittest.TestCase):
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE INTERVAL DAY TO SECOND ' \
                       'USING "number"::INTERVAL DAY TO SECOND'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': timedelta}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=timedelta, options={}, " \
                        "cast_sql='{colname}::INTERVAL DAY TO SECOND')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1285,7 +1286,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1319,7 +1320,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1353,7 +1354,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TIME USING "number"::TIME'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': time}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=time, options={}, " \
                        "cast_sql='{colname}::TIME')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1387,7 +1388,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "number" TYPE TEXT USING "number"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='number', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1421,7 +1422,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "truth" TYPE TEXT USING "truth"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='truth', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='truth', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1455,7 +1456,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "truth" TYPE INTEGER USING "truth"::INTEGER'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='truth', new_options={'py_type': int}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='truth', py_type=int, options={}, " \
                        "cast_sql='{colname}::INTEGER')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1491,8 +1492,8 @@ class TestTypeCast(unittest.TestCase):
 
         migration_op = ""
         # apply migrate () raises exceptions :
-        # psycopg2.errors.CannotCoerce: cannot cast type double precision to boolean
-        # pony.orm.dbapiprovider.ProgrammingError: cannot cast type double precision to boolean
+        # psycopg2.errors.CannotCoerce: cannot cast type boolean to double precision
+        # pony.orm.dbapiprovider.ProgrammingError: cannot cast type boolean to double precision
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1561,7 +1562,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "truth" TYPE TEXT USING "truth"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='truth', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='truth', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1595,7 +1596,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "my_attr" TYPE TEXT USING "my_attr"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='my_attr', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='my_attr', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1629,7 +1630,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "my_attr" TYPE TEXT USING "my_attr"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='my_attr', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='my_attr', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1663,7 +1664,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = ''
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1697,7 +1698,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE INTEGER USING "description"::INTEGER'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': int}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=int, options={}, " \
                        "cast_sql='{colname}::INTEGER')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1732,8 +1733,8 @@ class TestTypeCast(unittest.TestCase):
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE DOUBLE PRECISION ' \
                       'USING "description"::DOUBLE PRECISION'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': float}," \
-                       " cast_sql='{colname}::DOUBLE PRECISION')"
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=float, options={}, " \
+                       "cast_sql='{colname}::DOUBLE PRECISION')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1767,8 +1768,8 @@ class TestTypeCast(unittest.TestCase):
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE DECIMAL(12, 2) ' \
                       'USING "description"::DECIMAL(12, 2)'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', " \
-                       "new_options={'py_type': Decimal}, cast_sql='{colname}::DECIMAL(12, 2)')"
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=Decimal, options={}, " \
+                       "cast_sql='{colname}::DECIMAL(12, 2)')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1801,8 +1802,8 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE TIMESTAMP USING "description"::TIMESTAMP'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', " \
-                       "new_options={'py_type': datetime}, cast_sql='{colname}::TIMESTAMP')"
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=datetime, options={}, " \
+                       "cast_sql='{colname}::TIMESTAMP')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1835,7 +1836,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE DATE USING "description"::DATE'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': date}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=date, options={}, " \
                        "cast_sql='{colname}::DATE')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1869,7 +1870,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE TIME USING "description"::TIME'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': time}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=time, options={}, " \
                        "cast_sql='{colname}::TIME')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1904,8 +1905,8 @@ class TestTypeCast(unittest.TestCase):
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE INTERVAL DAY TO SECOND ' \
                       'USING "description"::INTERVAL DAY TO SECOND'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', " \
-                       "new_options={'py_type': timedelta}, cast_sql='{colname}::INTERVAL DAY TO SECOND')"
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=timedelta, options={}, " \
+                       "cast_sql='{colname}::INTERVAL DAY TO SECOND')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -1938,7 +1939,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE BOOLEAN USING "description"::BOOLEAN'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': bool}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=bool, options={}, " \
                        "cast_sql='{colname}::BOOLEAN')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -1972,8 +1973,8 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE BYTEA USING "description"::BYTEA'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', " \
-                       "new_options={'py_type': bytes}, cast_sql='{colname}::BYTEA')"
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=bytes, options={}, " \
+                       "cast_sql='{colname}::BYTEA')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -2006,8 +2007,8 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE UUID USING "description"::UUID'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', " \
-                       "new_options={'py_type': UUID}, cast_sql='{colname}::UUID')"
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=UUID, options={}, " \
+                       "cast_sql='{colname}::UUID')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -2040,7 +2041,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "description" TYPE JSONB USING "description"::JSONB'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', new_options={'py_type': Json}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='description', py_type=Json, options={}, " \
                        "cast_sql='{colname}::JSONB')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -2074,7 +2075,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "uuid" TYPE TEXT USING "uuid"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='uuid', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='uuid', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -2108,7 +2109,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "uuid" TYPE TEXT USING "uuid"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='uuid', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='uuid', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -2142,7 +2143,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "request" TYPE TEXT USING "request"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='request', new_options={'py_type': str}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='request', py_type=str, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -2176,7 +2177,7 @@ class TestTypeCast(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "item" ALTER COLUMN "request" TYPE TEXT USING "request"::TEXT'
 
-        migration_op = "ChangeColumnType(entity_name='Item', attr_name='request', new_options={'py_type': LongStr}, " \
+        migration_op = "ChangeColumnType(entity_name='Item', attr_name='request', py_type=LongStr, options={}, " \
                        "cast_sql='{colname}::TEXT')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
