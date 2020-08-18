@@ -672,9 +672,7 @@ class SQLTranslator(ASTTranslator):
                           aggr_func_name=None, aggr_func_distinct=None, sep=None,
                           for_update=False, nowait=False, skip_locked=False, is_not_null_checks=False):
         attr_offsets = None
-        if distinct is None:
-            if not translator.order:
-                distinct = translator.distinct
+        if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
         if for_update:
             sql_ast = [ 'SELECT_FOR_UPDATE', nowait, skip_locked ]
