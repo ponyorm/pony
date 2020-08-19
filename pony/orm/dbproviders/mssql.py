@@ -117,6 +117,10 @@ class MSSQLRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
         return 'float'
 
+class MSSQLBoolConverter(dbapiprovider.BoolConverter):
+    def sql_type(converter):
+        return 'BIT'
+
 class MSSQLBlobConverter(dbapiprovider.BlobConverter):
     def sql_type(converter):
         return 'LONGBLOB'
@@ -183,7 +187,7 @@ class MSSQLProvider(DBAPIProvider):
 
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
-        (bool, dbapiprovider.BoolConverter),
+        (bool, MSSQLBoolConverter),
         (basestring, MSSQLStrConverter),
         (int_types, dbapiprovider.IntConverter),
         (float, MSSQLRealConverter),
