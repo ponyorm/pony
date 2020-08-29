@@ -2,16 +2,23 @@ import unittest
 
 from pony.orm import *
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Person(db.Entity):
     name = Required(str)
     tel = Optional(str)
 
-db.generate_mapping(create_tables=True)
 
 class TestAutostrip(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
 
     @db_session
     def test_1(self):

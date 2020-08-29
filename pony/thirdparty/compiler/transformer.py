@@ -31,6 +31,7 @@ from pony.py23compat import PY2, unicode
 from .ast import *
 import parser
 import symbol
+import sys
 import token
 
 # Python 2.6 compatibility fix
@@ -40,6 +41,7 @@ if not hasattr(symbol, 'comp_for'): symbol.comp_for = symbol.gen_for
 if not hasattr(symbol, 'comp_if'): symbol.comp_if = symbol.gen_if
 
 atom_expr = getattr(symbol, 'atom_expr', None)
+namedexpr_test = getattr(symbol, 'namedexpr_test', None)
 
 class WalkerError(Exception):
     pass
@@ -120,6 +122,9 @@ class Transformer:
             node = self.com_apply_trailer(node, elt)
         return node
 
+    def namedexpr_test(self, nodelist):
+        return self.test(nodelist[0][1:])
+
     def __init__(self):
         self._dispatch = {}
         for value, name in symbol.sym_name.items():
@@ -136,12 +141,23 @@ class Transformer:
         if PY2: self._atom_dispatch.update({
                                token.BACKQUOTE: self.atom_backquote,
                                })
+        if not PY2: self._atom_dispatch.update({
+            token.ELLIPSIS: self.atom_ellipsis
+        })
         self.encoding = None
+
+    def print_tree(self, tree, indent=''):
+        for item in tree:
+            if isinstance(item, tuple):
+                self.print_tree(item, indent+' ')
+            else:
+                print(indent, symbol.sym_name.get(item, item))
 
     def transform(self, tree):
         """Transform an AST into a modified parse tree."""
         if not (isinstance(tree, tuple) or isinstance(tree, list)):
             tree = parser.st2tuple(tree, line_info=1)
+        # self.print_tree(tree)
         return self.compile_node(tree)
 
     def parsesuite(self, text):
@@ -610,7 +626,10 @@ class Transformer:
 
     def testlist_comp(self, nodelist):
         # test ( comp_for | (',' test)* [','] )
-        assert nodelist[0][0] == symbol.test
+        PY38 = sys.version_info >= (3, 8)
+        code = nodelist[0][0]
+        if code not in (symbol.test, namedexpr_test):
+            assert False, symbol.sym_name.get(code, code)
         if len(nodelist) == 2 and nodelist[1][0] == symbol.comp_for:
             test = self.com_node(nodelist[0])
             return self.com_generator_expression(test, nodelist[1])
@@ -785,6 +804,9 @@ class Transformer:
 
     def atom_backquote(self, nodelist):
         return Backquote(self.com_node(nodelist[1]))
+
+    def atom_ellipsis(self, nodelist):
+        return Ellipsis()
 
     def atom_number(self, nodelist):
         ### need to verify this matches compile.c
@@ -1147,7 +1169,7 @@ class Transformer:
         # listmaker: test ( list_for | (',' test)* [','] )
         values = []
         for i in range(1, len(nodelist)):
-            if nodelist[i][0] == symbol.list_for:
+            if PY2 and nodelist[i][0] == symbol.list_for:
                 assert len(nodelist[i:]) == 1
                 return self.com_list_comprehension(values[0],
                                                    nodelist[i])
@@ -1219,9 +1241,17 @@ class Transformer:
         # comp_for: 'for' exprlist 'in' test [comp_iter]
         # comp_if: 'if' test [comp_iter]
 
-        lineno = node[1][2]
+        PY37 = sys.version_info >= (3, 7)
+
         fors = []
         while node:
+            if PY37 and node[0] == symbol.comp_for:
+                node = node[1]
+                assert node[0] == symbol.sync_comp_for
+
+            lineno = node[1][2]
+            assert lineno is None or isinstance(lineno, int)
+
             t = node[1][1]
             if t == 'for':
                 assignNode = self.com_assign(node[2], OP_ASSIGN)
@@ -1244,7 +1274,7 @@ class Transformer:
             else:
                 raise SyntaxError("unexpected generator expression element: %s %d" % (node, lineno))
         fors[0].is_outmost = True
-        return GenExpr(GenExprInner(expr, fors), lineno=lineno)
+        return GenExpr(GenExprInner(expr, fors), lineno=expr.lineno)
 
     def com_dictorsetmaker(self, nodelist):
         # dictorsetmaker: ( (test ':' test (comp_for | (',' test ':' test)* [','])) |

@@ -1,20 +1,22 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, izip, xrange
+from pony.py23compat import PY2, izip, xrange, PY37, PYPY
 
-import types
+import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
+from collections import defaultdict
 
 from pony.thirdparty.compiler import ast, parse
 
-from pony.utils import throw
+from pony.utils import throw, get_codeobject_id
 
 ##ast.And.__repr__ = lambda self: "And(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 ##ast.Or.__repr__ = lambda self: "Or(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 
-ast_cache = {}
+class DecompileError(NotImplementedError):
+    pass
 
-codeobjects = {}
+ast_cache = {}
 
 def decompile(x):
     cells = {}
@@ -28,10 +30,9 @@ def decompile(x):
         else:
             if x.__closure__: cells = dict(izip(codeobject.co_freevars, x.__closure__))
     else: throw(TypeError)
-    key = id(codeobject)
+    key = get_codeobject_id(codeobject)
     result = ast_cache.get(key)
     if result is None:
-        codeobjects[key] = codeobject
         decompiler = Decompiler(codeobject)
         result = decompiler.ast, decompiler.external_names
         ast_cache[key] = result
@@ -50,8 +51,6 @@ def simplify(clause):
 
 class InvalidQuery(Exception): pass
 
-class AstGenerated(Exception): pass
-
 def binop(node_type, args_holder=tuple):
     def method(decompiler):
         oper2 = decompiler.stack.pop()
@@ -68,48 +67,114 @@ class Decompiler(object):
         if end is None: end = len(code.co_code)
         decompiler.end = end
         decompiler.stack = []
+        decompiler.jump_map = defaultdict(list)
         decompiler.targets = {}
         decompiler.ast = None
         decompiler.names = set()
         decompiler.assnames = set()
+        decompiler.conditions_end = 0
+        decompiler.instructions = []
+        decompiler.instructions_map = {}
+        decompiler.or_jumps = set()
+        decompiler.get_instructions()
+        decompiler.analyze_jumps()
         decompiler.decompile()
         decompiler.ast = decompiler.stack.pop()
-        decompiler.external_names = set(decompiler.names - decompiler.assnames)
+        decompiler.external_names = decompiler.names - decompiler.assnames
         assert not decompiler.stack, decompiler.stack
-    def decompile(decompiler):
+    def get_instructions(decompiler):
+        PY36 = sys.version_info >= (3, 6)
+        before_yield = True
         code = decompiler.code
         co_code = code.co_code
         free = code.co_cellvars + code.co_freevars
-        try:
-            while decompiler.pos < decompiler.end:
-                i = decompiler.pos
-                if i in decompiler.targets: decompiler.process_target(i)
-                op = ord(code.co_code[i])
+        decompiler.abs_jump_to_top = decompiler.for_iter_pos = -1
+        while decompiler.pos < decompiler.end:
+            i = decompiler.pos
+            op = ord(code.co_code[i])
+            if PY36:
+                extended_arg = 0
+                oparg = ord(code.co_code[i+1])
+                while op == EXTENDED_ARG:
+                    extended_arg = (extended_arg | oparg) << 8
+                    i += 2
+                    op = ord(code.co_code[i])
+                    oparg = ord(code.co_code[i+1])
+                oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
+                i += 2
+            else:
                 i += 1
                 if op >= HAVE_ARGUMENT:
-                    oparg = ord(co_code[i]) + ord(co_code[i+1])*256
+                    oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256
                     i += 2
                     if op == EXTENDED_ARG:
                         op = ord(code.co_code[i])
                         i += 1
-                        oparg = ord(co_code[i]) + ord(co_code[i+1])*256 + oparg*65536
+                        oparg = ord(co_code[i]) + ord(co_code[i + 1]) * 256 + oparg * 65536
                         i += 2
-                    if op in hasconst: arg = [code.co_consts[oparg]]
-                    elif op in hasname: arg = [code.co_names[oparg]]
-                    elif op in hasjrel: arg = [i + oparg]
-                    elif op in haslocal: arg = [code.co_varnames[oparg]]
-                    elif op in hascompare: arg = [cmp_op[oparg]]
-                    elif op in hasfree: arg = [free[oparg]]
-                    else: arg = [oparg]
-                else: arg = []
-                opname = opnames[op].replace('+', '_')
-                # print(opname, arg, decompiler.stack)
-                method = getattr(decompiler, opname, None)
-                if method is None: throw(NotImplementedError('Unsupported operation: %s' % opname))
-                decompiler.pos = i
-                x = method(*arg)
-                if x is not None: decompiler.stack.append(x)
-        except AstGenerated: pass
+            if op >= HAVE_ARGUMENT:
+                if op in hasconst: arg = [code.co_consts[oparg]]
+                elif op in hasname: arg = [code.co_names[oparg]]
+                elif op in hasjrel: arg = [i + oparg]
+                elif op in haslocal: arg = [code.co_varnames[oparg]]
+                elif op in hascompare: arg = [cmp_op[oparg]]
+                elif op in hasfree: arg = [free[oparg]]
+                else: arg = [oparg]
+            else: arg = []
+            opname = opnames[op].replace('+', '_')
+            if opname == 'FOR_ITER':
+                decompiler.for_iter_pos = decompiler.pos
+            if opname == 'JUMP_ABSOLUTE' and arg[0] == decompiler.for_iter_pos:
+                decompiler.abs_jump_to_top = decompiler.pos
+
+            if before_yield:
+                if 'JUMP' in opname:
+                    endpos = arg[0]
+                    if endpos < decompiler.pos:
+                        decompiler.conditions_end = i
+                    decompiler.jump_map[endpos].append(decompiler.pos)
+                decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
+                decompiler.instructions.append((decompiler.pos, i, opname, arg))
+            if opname == 'YIELD_VALUE':
+                before_yield = False
+            decompiler.pos = i
+    def analyze_jumps(decompiler):
+        if PYPY:
+            targets = decompiler.jump_map.pop(decompiler.abs_jump_to_top, [])
+            decompiler.jump_map[decompiler.for_iter_pos] = targets
+            for i, (x, y, opname, arg) in enumerate(decompiler.instructions):
+                if 'JUMP' in opname:
+                    target = arg[0]
+                    if target == decompiler.abs_jump_to_top:
+                        decompiler.instructions[i] = (x, y, opname, [decompiler.for_iter_pos])
+                        decompiler.conditions_end = y
+
+        i = decompiler.instructions_map[decompiler.conditions_end]
+        while i > 0:
+            pos, next_pos, opname, arg = decompiler.instructions[i]
+            if pos in decompiler.jump_map:
+                for jump_start_pos in decompiler.jump_map[pos]:
+                    if jump_start_pos > pos:
+                        continue
+                    for or_jump_start_pos in decompiler.or_jumps:
+                        if pos > or_jump_start_pos > jump_start_pos:
+                            break  # And jump
+                    else:
+                        decompiler.or_jumps.add(jump_start_pos)
+            i -= 1
+    def decompile(decompiler):
+        for pos, next_pos, opname, arg in decompiler.instructions:
+            if pos in decompiler.targets:
+                decompiler.process_target(pos)
+            method = getattr(decompiler, opname, None)
+            if method is None:
+                throw(DecompileError('Unsupported operation: %s' % opname))
+            decompiler.pos = pos
+            decompiler.next_pos = next_pos
+            x = method(*arg)
+            if x is not None:
+                decompiler.stack.append(x)
+
     def pop_items(decompiler, size):
         if not size: return ()
         result = decompiler.stack[-size:]
@@ -144,15 +209,34 @@ class Decompiler(object):
     def BINARY_SUBSCR(decompiler):
         oper2 = decompiler.stack.pop()
         oper1 = decompiler.stack.pop()
-        if isinstance(oper2, ast.Tuple): return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
-        else: return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
+        if isinstance(oper2, ast.Sliceobj) and len(oper2.nodes) == 2:
+            a, b = oper2.nodes
+            a = None if isinstance(a, ast.Const) and a.value == None else a
+            b = None if isinstance(b, ast.Const) and b.value == None else b
+            return ast.Slice(oper1, 'OP_APPLY', a, b)
+        elif isinstance(oper2, ast.Tuple):
+            return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
+        else:
+            return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
+
+    def BUILD_CONST_KEY_MAP(decompiler, length):
+        keys = decompiler.stack.pop()
+        assert isinstance(keys, ast.Const)
+        keys = [ ast.Const(key) for key in keys.value ]
+        values = decompiler.pop_items(length)
+        pairs = list(izip(keys, values))
+        return ast.Dict(pairs)
 
     def BUILD_LIST(decompiler, size):
         return ast.List(decompiler.pop_items(size))
 
-    def BUILD_MAP(decompiler, not_used):
-        # Pushes a new empty dictionary object onto the stack. The argument is ignored and set to zero by the compiler
-        return ast.Dict(())
+    def BUILD_MAP(decompiler, length):
+        if sys.version_info < (3, 5):
+            return ast.Dict(())
+        data = decompiler.pop_items(2 * length)  # [key1, value1, key2, value2, ...]
+        it = iter(data)
+        pairs = list(izip(it, it))  # [(key1, value1), (key2, value2), ...]
+        return ast.Dict(tuple(pairs))
 
     def BUILD_SET(decompiler, size):
         return ast.Set(decompiler.pop_items(size))
@@ -162,6 +246,10 @@ class Decompiler(object):
 
     def BUILD_TUPLE(decompiler, size):
         return ast.Tuple(decompiler.pop_items(size))
+
+    def BUILD_STRING(decompiler, count):
+        values = list(reversed([decompiler.stack.pop() for _ in range(count)]))
+        return ast.JoinedStr(values)
 
     def CALL_FUNCTION(decompiler, argc, star=None, star2=None):
         pop = decompiler.stack.pop
@@ -173,7 +261,10 @@ class Decompiler(object):
             args.append(ast.Keyword(key, arg))
         for i in xrange(posarg): args.append(pop())
         args.reverse()
-        tos = pop()
+        return decompiler._call_function(args, star, star2)
+
+    def _call_function(decompiler, args, star=None, star2=None):
+        tos = decompiler.stack.pop()
         if isinstance(tos, ast.GenExpr):
             assert len(args) == 1 and star is None and star2 is None
             genexpr = tos
@@ -188,12 +279,48 @@ class Decompiler(object):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
 
     def CALL_FUNCTION_KW(decompiler, argc):
-        return decompiler.CALL_FUNCTION(argc, None, decompiler.stack.pop())
+        if sys.version_info < (3, 6):
+            return decompiler.CALL_FUNCTION(argc, star2=decompiler.stack.pop())
+        keys = decompiler.stack.pop()
+        assert isinstance(keys, ast.Const)
+        keys = keys.value
+        values = decompiler.pop_items(argc)
+        assert len(keys) <= len(values)
+        args = values[:-len(keys)]
+        for key, value in izip(keys, values[-len(keys):]):
+            args.append(ast.Keyword(key, value))
+        return decompiler._call_function(args)
 
     def CALL_FUNCTION_VAR_KW(decompiler, argc):
         star2 = decompiler.stack.pop()
         star = decompiler.stack.pop()
         return decompiler.CALL_FUNCTION(argc, star, star2)
+
+    def CALL_FUNCTION_EX(decompiler, argc):
+        star2 = None
+        if argc:
+            if argc != 1: throw(DecompileError)
+            star2 = decompiler.stack.pop()
+        star = decompiler.stack.pop()
+        return decompiler._call_function([], star, star2)
+
+    def CALL_METHOD(decompiler, argc):
+        pop = decompiler.stack.pop
+        args = []
+        if argc >= 256:
+            kwargc = argc // 256
+            argc = argc % 256
+            for i in range(kwargc):
+                v = pop()
+                k = pop()
+                assert isinstance(k, ast.Const)
+                k = k.value # ast.Name(k.value)
+                args.append(ast.Keyword(k, v))
+        for i in range(argc):
+            args.append(pop())
+        args.reverse()
+        method = pop()
+        return ast.CallFunc(method, args)
 
     def COMPARE_OP(decompiler, op):
         oper2 = decompiler.stack.pop()
@@ -209,22 +336,61 @@ class Decompiler(object):
         ifs = []
         return ast.GenExprFor(assign, iter, ifs)
 
+    def FORMAT_VALUE(decompiler, flags):
+        if flags in (0, 1, 2, 3):
+            value = decompiler.stack.pop()
+            return ast.Str(value, flags)
+        elif flags == 4:
+            fmt_spec = decompiler.stack.pop()
+            value = decompiler.stack.pop()
+            return ast.FormattedValue(value, fmt_spec)
+
     def GET_ITER(decompiler):
         pass
 
     def JUMP_IF_FALSE(decompiler, endpos):
-        return decompiler.conditional_jump(endpos, ast.And)
+        return decompiler.conditional_jump(endpos, False)
 
     JUMP_IF_FALSE_OR_POP = JUMP_IF_FALSE
 
     def JUMP_IF_TRUE(decompiler, endpos):
-        return decompiler.conditional_jump(endpos, ast.Or)
+        return decompiler.conditional_jump(endpos, True)
 
     JUMP_IF_TRUE_OR_POP = JUMP_IF_TRUE
 
-    def conditional_jump(decompiler, endpos, clausetype):
-        i = decompiler.pos  # next instruction
-        if i in decompiler.targets: decompiler.process_target(i)
+    def conditional_jump(decompiler, endpos, if_true):
+        if PY37 or PYPY:
+            return decompiler.conditional_jump_new(endpos, if_true)
+        return decompiler.conditional_jump_old(endpos, if_true)
+
+    def conditional_jump_old(decompiler, endpos, if_true):
+        i = decompiler.next_pos
+        if i in decompiler.targets:
+            decompiler.process_target(i)
+        expr = decompiler.stack.pop()
+        clausetype = ast.Or if if_true else ast.And
+        clause = clausetype([expr])
+        clause.endpos = endpos
+        decompiler.targets.setdefault(endpos, clause)
+        return clause
+
+    def conditional_jump_new(decompiler, endpos, if_true):
+        expr = decompiler.stack.pop()
+        if decompiler.pos >= decompiler.conditions_end:
+            clausetype = ast.Or if if_true else ast.And
+        elif decompiler.pos in decompiler.or_jumps:
+            clausetype = ast.Or
+            if not if_true:
+                expr = ast.Not(expr)
+        else:
+            clausetype = ast.And
+            if if_true:
+                expr = ast.Not(expr)
+        decompiler.stack.append(expr)
+
+        if decompiler.next_pos in decompiler.targets:
+            decompiler.process_target(decompiler.next_pos)
+
         expr = decompiler.stack.pop()
         clause = clausetype([ expr ])
         clause.endpos = endpos
@@ -240,7 +406,7 @@ class Decompiler(object):
             top = simplify(top)
             if top is limit: break
             if isinstance(top, ast.GenExprFor): break
-
+            if not decompiler.stack: break
             top2 = decompiler.stack[-1]
             if isinstance(top2, ast.GenExprFor): break
             if partial and hasattr(top2, 'endpos') and top2.endpos == pos: break
@@ -253,13 +419,13 @@ class Decompiler(object):
                 if hasattr(top, 'endpos'):
                     top2.endpos = top.endpos
                     if decompiler.targets.get(top.endpos) is top: decompiler.targets[top.endpos] = top2
-            else: throw(NotImplementedError('Expression is too complex to decompile, try to pass query as string, e.g. select("x for x in Something")'))
+            else: throw(DecompileError('Expression is too complex to decompile, try to pass query as string, e.g. select("x for x in Something")'))
             top2.endpos = max(top2.endpos, getattr(top, 'endpos', 0))
             top = decompiler.stack.pop()
         decompiler.stack.append(top)
 
     def JUMP_FORWARD(decompiler, endpos):
-        i = decompiler.pos  # next instruction
+        i = decompiler.next_pos  # next instruction
         decompiler.process_target(i, True)
         then = decompiler.stack.pop()
         decompiler.process_target(i, False)
@@ -270,8 +436,9 @@ class Decompiler(object):
         if decompiler.targets.get(endpos) is then: decompiler.targets[endpos] = if_exp
         return if_exp
 
-    def LIST_APPEND(decompiler):
-        throw(NotImplementedError)
+    def LIST_APPEND(decompiler, offset=None):
+        throw(InvalidQuery('Use generator expression (... for ... in ...) '
+                           'instead of list comprehension [... for ... in ...] inside query'))
 
     def LOAD_ATTR(decompiler, attr_name):
         return ast.Getattr(decompiler.stack.pop(), attr_name)
@@ -295,6 +462,11 @@ class Decompiler(object):
         decompiler.names.add(varname)
         return ast.Name(varname)
 
+    def LOAD_METHOD(decompiler, methname):
+        return decompiler.LOAD_ATTR(methname)
+
+    LOOKUP_METHOD = LOAD_METHOD  # For PyPy
+
     def LOAD_NAME(decompiler, varname):
         decompiler.names.add(varname)
         return ast.Name(varname)
@@ -305,17 +477,39 @@ class Decompiler(object):
         return decompiler.MAKE_FUNCTION(argc)
 
     def MAKE_FUNCTION(decompiler, argc):
-        if argc: throw(NotImplementedError)
-        tos = decompiler.stack.pop()
-        if not PY2: tos = decompiler.stack.pop()
+        defaults = []
+        flags = 0
+        if sys.version_info >= (3, 6):
+            qualname = decompiler.stack.pop()
+            tos = decompiler.stack.pop()
+            if argc & 0x08:
+                func_closure = decompiler.stack.pop()
+            if argc & 0x04:
+                annotations = decompiler.stack.pop()
+            if argc & 0x02:
+                kwonly_defaults = decompiler.stack.pop()
+            if argc & 0x01:
+                defaults = decompiler.stack.pop()
+                throw(DecompileError)
+        else:
+            if not PY2:
+                qualname = decompiler.stack.pop()
+            tos = decompiler.stack.pop()
+            if argc:
+                defaults = [ decompiler.stack.pop() for i in range(argc) ]
+                defaults.reverse()
         codeobject = tos.value
         func_decompiler = Decompiler(codeobject)
         # decompiler.names.update(decompiler.names)  ???
         if codeobject.co_varnames[:1] == ('.0',):
             return func_decompiler.ast  # generator
-        argnames = codeobject.co_varnames[:codeobject.co_argcount]
-        defaults = []  # todo
-        flags = 0  # todo
+        argnames, varargs, keywords = inspect.getargs(codeobject)
+        if varargs:
+            argnames.append(varargs)
+            flags |= inspect.CO_VARARGS
+        if keywords:
+            argnames.append(keywords)
+            flags |= inspect.CO_VARKEYWORDS
         return ast.Lambda(argnames, defaults, flags, func_decompiler.ast)
 
     POP_JUMP_IF_FALSE = JUMP_IF_FALSE
@@ -325,10 +519,9 @@ class Decompiler(object):
         pass
 
     def RETURN_VALUE(decompiler):
-        if decompiler.pos != decompiler.end: throw(NotImplementedError)
+        if decompiler.next_pos != decompiler.end: throw(DecompileError)
         expr = decompiler.stack.pop()
-        decompiler.stack.append(simplify(expr))
-        raise AstGenerated()
+        return simplify(expr)
 
     def ROT_TWO(decompiler):
         tos = decompiler.stack.pop()
@@ -375,7 +568,8 @@ class Decompiler(object):
 
     def STORE_FAST(decompiler, varname):
         if varname.startswith('_['):
-            throw(InvalidQuery('Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query'))
+            throw(InvalidQuery('Use generator expression (... for ... in ...) '
+                               'instead of list comprehension [... for ... in ...] inside query'))
         decompiler.assnames.add(varname)
         decompiler.store(ast.AssName(varname, 'OP_ASSIGN'))
 
@@ -429,8 +623,7 @@ class Decompiler(object):
                 fors.append(top)
             else: fors.append(top)
         fors.reverse()
-        decompiler.stack.append(ast.GenExpr(ast.GenExprInner(simplify(expr), fors)))
-        raise AstGenerated()
+        return ast.GenExpr(ast.GenExprInner(simplify(expr), fors))
 
 test_lines = """
     (a and b if c and d else e and f for i in T if (A and B if C and D else E and F))
@@ -445,8 +638,13 @@ test_lines = """
     (a for b in T if f == 5 and r or t)
     (a for b in T if f and r and t)
 
-    (a for b in T if f == 5 and +r or not t)
-    (a for b in T if -t and ~r or `f`)
+    # (a for b in T if f == 5 and +r or not t)
+    # (a for b in T if -t and ~r or `f`)
+
+    (a for b in T if x and not y and z)
+    (a for b in T if not x and y)
+    (a for b in T if not x and y and z)
+    (a for b in T if not x and y or z) #FIXME!
 
     (a**2 for b in T if t * r > y / 3)
     (a + 2 for b in T if t + r > y // 3)
@@ -480,10 +678,12 @@ test_lines = """
     (s for s in T if s.a > 20 and (s.x.y == 123 or 'ABC' in s.p.q.r))
     (a for b in T1 if c > d for e in T2 if f < g)
 
-    (func1(a, a.attr, keyarg=123) for s in T)
-    (func1(a, a.attr, keyarg=123, *e) for s in T)
-    (func1(a, b, a.attr1, a.b.c, keyarg1=123, keyarg2='mx', *e, **f) for s in T)
-    (func(a, a.attr, keyarg=123) for a in T if a.method(x, *y, **z) == 4)
+    (func1(a, a.attr, x=123) for s in T)
+    # (func1(a, a.attr, *args) for s in T)
+    # (func1(a, a.attr, x=123, **kwargs) for s in T)
+    (func1(a, b, a.attr1, a.b.c, x=123, y='foo') for s in T)
+    # (func1(a, b, a.attr1, a.b.c, x=123, y='foo', **kwargs) for s in T)
+    # (func(a, a.attr, keyarg=123) for a in T if a.method(x, *args, **kwargs) == 4)
 
     ((x or y) and (p or q) for a in T if (a or b) and (c or d))
     (x.y for x in T if (a and (b or (c and d))) or X)

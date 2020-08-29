@@ -530,6 +530,20 @@ class For(Node):
     def __repr__(self):
         return "For(%s, %s, %s, %s)" % (repr(self.assign), repr(self.list), repr(self.body), repr(self.else_))
 
+class FormattedValue(Node):
+    def __init__(self, value, fmt_spec):
+        self.value = value
+        self.fmt_spec = fmt_spec
+
+    def getChildren(self):
+        return self.value, self.fmt_spec
+
+    def getChildNodes(self):
+        return self.value, self.fmt_spec
+
+    def __repr__(self):
+        return "FormattedValue(%s, %s)" % (self.value, self.fmt_spec)
+
 class From(Node):
     def __init__(self, modname, names, level, lineno=None):
         self.modname = modname
@@ -1230,6 +1244,33 @@ class Stmt(Node):
 
     def __repr__(self):
         return "Stmt(%s)" % (repr(self.nodes),)
+
+class Str(Node):
+    def __init__(self, value, flags):
+        self.value = value
+        self.flags = flags
+
+    def getChildren(self):
+        return self.value, self.flags
+
+    def getChildNodes(self):
+        return self.value,
+
+    def __repr__(self):
+        return "Str(%s, %d)" % (self.value, self.flags)
+
+class JoinedStr(Node):
+    def __init__(self, values):
+        self.values = values
+
+    def getChildren(self):
+        return self.values
+
+    def getChildNodes(self):
+        return self.values
+
+    def __repr__(self):
+        return "JoinedStr(%s)" % (', '.join(repr(value) for value in self.values))
 
 class Sub(Node):
     def __init__(self, leftright, lineno=None):
