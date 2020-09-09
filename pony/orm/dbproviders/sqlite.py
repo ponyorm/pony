@@ -14,7 +14,7 @@ from binascii import hexlify
 from functools import wraps
 
 from pony.orm import core, dbschema, dbapiprovider
-from pony.orm.core import log_orm, MigrationException, MigrationError, MappingError
+from pony.orm.core import log_orm, MigrationError, MappingError
 from pony.orm.ormtypes import Json, TrackedArray
 from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
 from pony.orm.sqlbuilding import SQLBuilder, Value, join, make_unary_func
