@@ -54,33 +54,51 @@ class MSSQLBuilder(SQLBuilder):
     
     def CONCAT(builder, *args):
         return 'CONCAT(',  join(', ', imap(builder, args)), ')'
+        
     def TRIM(builder, expr, chars=None):
         if chars is None: return 'TRIM(', builder(expr), ')'
         return 'TRIM(', builder(chars), ' FROM ' ,builder(expr), ')'
+
     def LTRIM(builder, expr, chars=None):
         if chars is None: return 'ltrim(', builder(expr), ')'
         return 'LTRIM(', builder(chars), ' FROM ' ,builder(expr), ')'
+
     def RTRIM(builder, expr, chars=None):
         if chars is None: return 'RTRIM(', builder(expr), ')'
         return 'RTRIM(', builder(chars), ' FROM ' ,builder(expr), ')'
+
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS int)'
+
     def TO_REAL(builder, expr):
         return 'CAST(', builder(expr), ' AS float)'
+
     def TO_STR(builder, expr):
         return 'CAST(', builder(expr), ' AS nvarchar)'
+
     def YEAR(builder, expr):
         return 'YEAR(', builder(expr), ')'
+
     def MONTH(builder, expr):
         return 'MONTH(', builder(expr), ')'
+
     def DAY(builder, expr):
         return 'DAY(', builder(expr), ')'
+
     def HOUR(builder, expr):
         return 'DATEPART(hh, ', builder(expr), ')'
+
     def MINUTE(builder, expr):
         return 'DATEPART(n, ', builder(expr), ')'
+
     def SECOND(builder, expr):
         return 'DATEPART(ss, ', builder(expr), ')'
+        
+    def LIMIT(builder, limit, offset=0):
+        if [True for ast in builder.ast if 'ORDER_BY' in ast[0]][0] == False:
+            return 'ORDER BY (SELECT NULL)' + f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
+        
+        return f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
 
 # TODO: not fixed this yet
     def DATE_ADD(builder, expr, delta):
