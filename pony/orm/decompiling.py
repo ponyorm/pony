@@ -322,6 +322,20 @@ class Decompiler(object):
         method = pop()
         return ast.CallFunc(method, args)
 
+    def IS_OP(decompiler, invert):
+        oper2 = decompiler.stack.pop()
+        oper1 = decompiler.stack.pop()
+        # invert is set to 1 if operation performs "is not"
+        # https://docs.python.org/3/library/dis.html#opcode-IS_OP
+        return ast.Compare(oper1, [('is not' if invert else 'is', oper2)])
+
+    def CONTAINS_OP(decompiler, invert):
+        oper2 = decompiler.stack.pop()
+        oper1 = decompiler.stack.pop()
+        # invert is set to 1 if operation performs "not in"
+        # https://docs.python.org/3/library/dis.html#opcode-CONTAINS_OP
+        return ast.Compare(oper1, [('not in' if invert else 'in', oper2)])
+
     def COMPARE_OP(decompiler, op):
         oper2 = decompiler.stack.pop()
         oper1 = decompiler.stack.pop()
