@@ -45,6 +45,11 @@ class MSSQLValue(Value):
             if value.microseconds:
                 return "INTERVAL '%s' HOUR_MICROSECOND" % timedelta2str(value)
             return "INTERVAL '%s' HOUR_SECOND" % timedelta2str(value)
+        
+        if isinstance(value, datetime):
+            result = value.isoformat(' ')
+            return self.quote_str(result)
+        
         return Value.__unicode__(self)
     if not PY2: __str__ = __unicode__
 
