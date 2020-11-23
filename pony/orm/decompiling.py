@@ -327,6 +327,9 @@ class Decompiler(object):
         oper1 = decompiler.stack.pop()
         return ast.Compare(oper1, [(op, oper2)])
 
+    def CONTAINS_OP(decompiler, invert):
+        return decompiler.COMPARE_OP('not in' if invert else 'in')
+
     def DUP_TOP(decompiler):
         return decompiler.stack[-1]
 
@@ -352,6 +355,9 @@ class Decompiler(object):
         return decompiler.conditional_jump(endpos, False)
 
     JUMP_IF_FALSE_OR_POP = JUMP_IF_FALSE
+
+    def JUMP_IF_NOT_EXC_MATCH(decompiler, endpos):
+        raise NotImplementedError
 
     def JUMP_IF_TRUE(decompiler, endpos):
         return decompiler.conditional_jump(endpos, True)
@@ -436,9 +442,27 @@ class Decompiler(object):
         if decompiler.targets.get(endpos) is then: decompiler.targets[endpos] = if_exp
         return if_exp
 
+    def IS_OP(decompiler, invert):
+        return decompiler.COMPARE_OP('is not' if invert else 'is')
+
     def LIST_APPEND(decompiler, offset=None):
         throw(InvalidQuery('Use generator expression (... for ... in ...) '
                            'instead of list comprehension [... for ... in ...] inside query'))
+
+    def LIST_EXTEND(decompiler, offset):
+        if offset != 1:
+            raise NotImplementedError(offset)
+        items = decompiler.stack.pop()
+        if not isinstance(items, ast.Const):
+            raise NotImplementedError(type(items))
+        if not isinstance(items.value, tuple):
+            raise NotImplementedError(type(items.value))
+        lst = decompiler.stack.pop()
+        if not isinstance(lst, ast.List):
+            raise NotImplementedError(type(lst))
+        values = tuple(ast.Const(v) for v in items.value)
+        lst.nodes = lst.nodes + values
+        return lst
 
     def LOAD_ATTR(decompiler, attr_name):
         return ast.Getattr(decompiler.stack.pop(), attr_name)
