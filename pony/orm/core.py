@@ -1952,7 +1952,10 @@ class SessionCache(object):
             obj2 = cache_index.setdefault(new_val, obj)
             if obj2 is not obj: throw(CacheIndexError, 'Cannot update %s.%s: %s with key %s already exists'
                                                  % (obj.__class__.__name__, attr.name, obj2, new_val))
-        if old_val is not None: del cache_index[old_val]
+        if old_val is NOT_LOADED:
+            old_val = None
+        if old_val is not None:
+            del cache_index[old_val]
         undo.append((cache_index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
         if old_dbval == new_dbval: return

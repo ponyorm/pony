@@ -196,6 +196,10 @@ class PGPool(Pool):
             pool.drop(con)
             raise
 
+
+ADMIN_SHUTDOWN = '57P01'
+
+
 class PGProvider(DBAPIProvider):
     dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
@@ -222,7 +226,8 @@ class PGProvider(DBAPIProvider):
         provider.table_if_not_exists_syntax = provider.server_version >= 90100
 
     def should_reconnect(provider, exc):
-        return isinstance(exc, psycopg2.OperationalError) and exc.pgcode is None
+        return isinstance(exc, psycopg2.OperationalError) \
+               and exc.pgcode in (None, ADMIN_SHUTDOWN)
 
     def get_pool(provider, *args, **kwargs):
         return PGPool(provider.dbapi_module, *args, **kwargs)
