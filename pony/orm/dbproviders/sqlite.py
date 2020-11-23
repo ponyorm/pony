@@ -87,6 +87,22 @@ class SQLiteBuilder(SQLBuilder):
         if stop is None:
             stop = [ 'VALUE', None ]
         return "py_string_slice(", builder(expr), ', ', builder(start), ', ', builder(stop), ")"
+    def IN(builder, expr1, x):
+        if not x:
+            return '0 = 1'
+        if len(x) >= 1 and x[0] == 'SELECT':
+            return builder(expr1), ' IN ', builder(x)
+        op = ' IN (VALUES ' if expr1[0] == 'ROW' else ' IN ('
+        expr_list = [ builder(expr) for expr in x ]
+        return builder(expr1), op, join(', ', expr_list), ')'
+    def NOT_IN(builder, expr1, x):
+        if not x:
+            return '1 = 1'
+        if len(x) >= 1 and x[0] == 'SELECT':
+            return builder(expr1), ' NOT IN ', builder(x)
+        op = ' NOT IN (VALUES ' if expr1[0] == 'ROW' else ' NOT IN ('
+        expr_list = [ builder(expr) for expr in x ]
+        return builder(expr1), op, join(', ', expr_list), ')'
     def TODAY(builder):
         return "date('now', 'localtime')"
     def NOW(builder):

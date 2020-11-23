@@ -968,10 +968,7 @@ class SQLTranslator(ASTTranslator):
         value = node.value
         if type(value) is frozenset:
             value = tuple(sorted(value))
-        if type(value) is not tuple:
-            return ConstMonad.new(value)
-        else:
-            return ListMonad([ ConstMonad.new(item) for item in value ])
+        return ConstMonad.new(value)
     def postEllipsis(translator, node):
         return ConstMonad.new(Ellipsis)
     def postList(translator, node):
@@ -2363,7 +2360,9 @@ class ConstMonad(Monad):
     @staticmethod
     def new(value):
         value_type, value = normalize(value)
-        if value_type in numeric_types: cls = NumericConstMonad
+        if isinstance(value_type, tuple):
+            return ListMonad([ConstMonad.new(item) for item in value])
+        elif value_type in numeric_types: cls = NumericConstMonad
         elif value_type is unicode: cls = StringConstMonad
         elif value_type is date: cls = DateConstMonad
         elif value_type is time: cls = TimeConstMonad
