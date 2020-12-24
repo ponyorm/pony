@@ -187,7 +187,7 @@ class TestFrames(unittest.TestCase):
     def test_outer_list_comprehension(self):
         names = ['John', 'Mary', 'Mike']
         persons = [ Person.select(lambda p: p.name == name).first() for name in names ]
-        self.assertEqual(set(p.name for p in persons), {'John', 'Mary', 'Mike'})
+        self.assertEqual({p.name for p in persons}, {'John', 'Mary', 'Mike'})
 
 if __name__ == '__main__':
     unittest.main()

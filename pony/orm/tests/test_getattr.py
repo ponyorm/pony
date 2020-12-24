@@ -97,7 +97,7 @@ class Test(unittest.TestCase):
     def test_lambda_1(self):
         for name, value in [('name', 'Sia'), ('age', 40), ('name', 'Sia')]:
             result = self.db.Artist.select(lambda a: getattr(a, name) == value)
-            self.assertEqual(set(obj.name for obj in result), {'Sia'})
+            self.assertEqual({obj.name for obj in result}, {'Sia'})
 
     @db_session
     def test_lambda_2(self):

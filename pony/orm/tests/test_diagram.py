@@ -137,7 +137,7 @@ class TestDiag(unittest.TestCase):
         db.generate_mapping(create_tables=True)
         if pony.__version__ >= '0.9':
             m2m_table = db.schema.tables['entity1_attr1']
-            col_names = {col for col in m2m_table.columns}
+            col_names = set(m2m_table.columns)
             self.assertEqual(col_names, {'entity1_a', 'entity1_b', 'entity2_id'})
         else:
             table_name = 'Entity1_Entity2' if db.provider.dialect == 'SQLite' else 'entity1_entity2'

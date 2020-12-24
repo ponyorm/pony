@@ -441,7 +441,7 @@ class PyFlowGraph(FlowGraph):
         """
         t = type(name)
         for i in range(len(list)):
-            if t == type(list[i]) and list[i] == name:
+            if t is type(list[i]) and list[i] == name:
                 return i
         end = len(list)
         list.append(name)

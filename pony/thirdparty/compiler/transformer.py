@@ -170,7 +170,7 @@ class Transformer:
 
     def parsefile(self, file):
         """Return a modified parse tree for the contents of the given file."""
-        if type(file) == type(''):
+        if type(file) is type(''):
             file = open(file)
         return self.parsesuite(file.read())
 
@@ -931,7 +931,7 @@ class Transformer:
         # String together the dotted names and return the string
         name = ""
         for n in node:
-            if type(n) == type(()) and n[0] == 1:
+            if type(n) is type(()) and n[0] == 1:
                 name = name + n[1] + '.'
         return name[:-1]
 

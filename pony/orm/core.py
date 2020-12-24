@@ -2819,7 +2819,7 @@ class Set(Collection):
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
         if not reverse: throw(NotImplementedError)
-        if isinstance(val, reverse.entity): items = set((val,))
+        if isinstance(val, reverse.entity): items = {val,}
         else:
             rentity = reverse.entity
             try: items = set(val)
@@ -4263,7 +4263,7 @@ class EntityMeta(type):
         where_list = [ 'WHERE' ]
 
         discr_attr = entity._discriminator_attr_
-        if discr_attr and query_attrs.get(discr_attr) != False:
+        if discr_attr and query_attrs.get(discr_attr) is False:
             discr_criteria = entity._construct_discriminator_criteria_()
             if discr_criteria: where_list.append(discr_criteria)
 

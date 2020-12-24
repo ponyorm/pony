@@ -317,7 +317,7 @@ def tostring(x):
     except: pass
     try: return repr(x)
     except: pass
-    if type(x) == types.InstanceType: return '<%s instance at 0x%X>' % (x.__class__.__name__)
+    if type(x) is types.InstanceType: return '<%s instance at 0x%X>' % (x.__class__.__name__)
     return '<%s object at 0x%X>' % (x.__class__.__name__)
 
 def strjoin(sep, strings, source_encoding='ascii', dest_encoding=None):
