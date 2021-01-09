@@ -68,6 +68,14 @@ jobs:
         coverage html -i
         coverage xml -i
         coverage report -i
+    - name: Post coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        files: coverage.xml
+        name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        fail_ci_if_error: true # optional (default = false)
+        verbose: true # optional (default = false)
 
 
   test-mysql:
@@ -120,6 +128,14 @@ jobs:
         coverage html -i
         coverage xml -i
         coverage report -i
+    - name: Post coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        files: coverage.xml
+        name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        fail_ci_if_error: true # optional (default = false)
+        verbose: true # optional (default = false)
 
 
   test-postgres:
@@ -176,6 +192,14 @@ jobs:
         coverage html -i
         coverage xml -i
         coverage report -i
+    - name: Post coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        files: coverage.xml
+        name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        fail_ci_if_error: true # optional (default = false)
+        verbose: true # optional (default = false)
 
 
   # TODO: test-cockroach
