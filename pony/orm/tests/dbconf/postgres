@@ -1,1 +1,1 @@
-settings = dict(provider='postgres', user='pony', password='pony', host='postgres', database='pony')
+settings = dict(provider='postgres', host='localhost', port=5432, user='pony', password='pony', database='pony')

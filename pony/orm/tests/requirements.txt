@@ -1,2 +1,4 @@
 flask
 psycopg2-binary
+pymysql
+cryptography
