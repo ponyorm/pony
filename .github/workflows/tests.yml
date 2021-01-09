@@ -33,6 +33,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: [2.7, 3.9]
         # database: [mysql, oracle, postgres, sqlite, cockroach]
@@ -67,17 +68,15 @@ jobs:
         python -m pip install coverage
         if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
     - name: Test with coverage
-      env:
-        pony_test_db: $(pwd)/pony/orm/tests/dbconf/${{ matrix.database }}
       run: |
         # Setup database
-        echo $pony_test_db
         export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }} && echo $pony_test_db
-        echo $pony_test_db
         # run unittest
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
+        # run sql unittest
         # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
+        # export teast results
         coverage html -i
         coverage xml -i
         coverage report -i
