@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 
-name: tests
+name: tests-and-lint
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
     branches: [ github-actions ]
 
 jobs:
-  flake8:
+  style:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -36,8 +36,19 @@ jobs:
       matrix:
         python-version: [3.7, 3.8, 3.9]
         # database: [mysql, oracle, postgres, sqlite, cockroach]
-        database: [sqlite]
+        database: [sqlite, postgres]
         # architecture: [x64]
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_DB: pony
+          POSTGRES_USER: pony
+          POSTGRES_PASSWORD: pony
+          POSTGRES_PORT: 5432
+        ports:
+          - 5432:5432
 
     steps:
     - uses: actions/checkout@v2
@@ -50,8 +61,15 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install coverage
         if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
+    - name: Setup database
+      run: |
+        echo $(pwd)/pony/orm/tests/dbconf/${{ matrix.database }}
+        export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }}
+        echo $pony_test_db
+        cat $pony_test_db
     - name: Test with coverage
       run: |
+        echo $pony_test_db
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
         # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 

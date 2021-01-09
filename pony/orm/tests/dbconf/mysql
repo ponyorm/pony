@@ -1,0 +1,1 @@
+settings = dict(provider='mysql', host='mysql', user='pony', passwd='pony', db='pony')
