@@ -4,6 +4,7 @@
 
 Pony Object-Relational Mapper
 =============================
+![tests](https://github.com/k4black/pony/workflows/tests/badge.svg)
 
 Pony is an advanced object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using Python generator expressions and lambdas. Pony analyzes the abstract syntax tree of the expression and translates it into a SQL query.
 
