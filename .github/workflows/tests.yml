@@ -21,14 +21,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flake8
+          python -m pip install flake8 pylint
           if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
       - name: Lint with flake8
         run: |
-          # stop the build if there are Python syntax errors or undefined names
-          # flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          flake8 pony --count --exit-zero --exclude tests,examples,flask,thirdparty  --max-complexity=10 --max-line-length=127 --statistics
+      - name: Lint with pylint
+        run:
+          pylint --ignore tests,examples,flask,thirdparty --exit-zero --max-line-length=127 --confidence INFERENCE --jobs 2 pony/
 
   test:
     runs-on: ubuntu-latest
@@ -55,7 +55,7 @@ jobs:
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
         # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
-        coverage html
-        coverage xml
+        coverage html -i
+        coverage xml -i
         coverage report -i
 
