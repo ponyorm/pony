@@ -4,7 +4,8 @@
 
 Pony Object-Relational Mapper
 =============================
-![tests](https://github.com/k4black/pony/workflows/tests-and-lint/badge.svg?branch=github-actions)
+
+[![tests](https://github.com/k4black/pony/workflows/tests-and-lint/badge.svg?branch=github-actions)](https://github.com/k4black/pony/actions)
 [![codecov](https://codecov.io/gh/k4black/pony/branch/github-actions/graph/badge.svg?token=JDSZTDES6O)](https://codecov.io/gh/k4black/pony)
 
 [comment]: <> ([![Build history]&#40;https://buildstats.info/github/chart/k4black/pony&#41;]&#40;https://ci.appveyor.com/project/dustinmoris/ci-buildstats/history&#41;)
@@ -29,14 +30,6 @@ All this helps the developer to focus on implementing the business logic of an a
 
 See the example [here](https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/estore.py)
 
-| Tables        | Are           | Cool  |
-| ------------- |:-------------:| -----:|
-| col 3 is      | right-aligned | $1600 |
-| col 2 is      | centered      |   $12 |
-| zebra stripes | are neat      |    $1 |
-
-![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/k4black/pony/shields/shields.json) 
-![](https://byob.yarr.is/k4black/pony/time)
 
 Support Pony ORM Development
 ----------------------------
