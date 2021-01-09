@@ -1,11 +1,13 @@
 # Downloads
-[![Downloads](https://pepy.tech/badge/pony)](https://pepy.tech/project/pony) [![Downloads](https://pepy.tech/badge/pony/month)](https://pepy.tech/project/pony/month) [![Downloads](https://pepy.tech/badge/pony/week)](https://pepy.tech/project/pony/week)
-
+[![Downloads](https://pepy.tech/badge/pony)](https://pepy.tech/project/pony) [![Downloads](https://pepy.tech/badge/pony/month)](https://pepy.tech/project/pony/month) [![Downloads](https://pepy.tech/badge/pony/week)](https://pepy.tech/project/pony/week)  
+[![pip](https://badge.fury.io/py/pony.svg)](https://pypi.org/project/pony)
 
 Pony Object-Relational Mapper
 =============================
-![tests](https://github.com/k4black/pony/workflows/tests-and-lint/badge.svg)
-[![coverage](https://coveralls.io/repos/github/k4black/pony/badge.svg?branch=orm)](https://coveralls.io/github/k4black/pony?branch=orm)
+![tests](https://github.com/k4black/pony/workflows/tests-and-lint/badge.svg?branch=github-actions)
+[![codecov](https://codecov.io/gh/k4black/pony/branch/github-actions/graph/badge.svg?token=JDSZTDES6O)](https://codecov.io/gh/k4black/pony)
+
+[comment]: <> ([![Build history]&#40;https://buildstats.info/github/chart/k4black/pony&#41;]&#40;https://ci.appveyor.com/project/dustinmoris/ci-buildstats/history&#41;)
 
 Pony is an advanced object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using Python generator expressions and lambdas. Pony analyzes the abstract syntax tree of the expression and translates it into a SQL query.
 
@@ -27,6 +29,14 @@ All this helps the developer to focus on implementing the business logic of an a
 
 See the example [here](https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/estore.py)
 
+| Tables        | Are           | Cool  |
+| ------------- |:-------------:| -----:|
+| col 3 is      | right-aligned | $1600 |
+| col 2 is      | centered      |   $12 |
+| zebra stripes | are neat      |    $1 |
+
+![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/k4black/pony/shields/shields.json) 
+![](https://byob.yarr.is/k4black/pony/time)
 
 Support Pony ORM Development
 ----------------------------

@@ -42,6 +42,14 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
 
     steps:
+    - name: Time badge
+      uses: RubbaBoy/BYOB@v1.2.0
+      with:
+        NAME: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        LABEL: 'test'
+        STATUS: 'failed'
+        COLOR: red
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -52,9 +60,6 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install coverage
         if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
-    - name: Test
-      run: |
-        echo ${{ job.services.postgres.ports[5432] }}
     - name: Test with coverage
       run: |
         # Setup database
@@ -65,7 +70,6 @@ jobs:
         # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
         # export teast results
-        coverage html -i
         coverage xml -i
         coverage report -i
     - name: Post coverage
@@ -76,7 +80,14 @@ jobs:
         name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
         fail_ci_if_error: true # optional (default = false)
         verbose: true # optional (default = false)
-
+    - name: Time badge
+      uses: RubbaBoy/BYOB@v1.2.0
+      with:
+        NAME: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        LABEL: 'test'
+        STATUS: 'passing'
+        COLOR: green
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test-mysql:
     strategy:
@@ -102,6 +113,14 @@ jobs:
           - 3306:3306
 
     steps:
+    - name: Time badge
+      uses: RubbaBoy/BYOB@v1.2.0
+      with:
+        NAME: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        LABEL: 'test'
+        STATUS: 'failed'
+        COLOR: red
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -112,9 +131,6 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install coverage
         if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
-    - name: Test
-      run: |
-        echo ${{ job.services.mysql.ports[3306] }}
     - name: Test with coverage
       run: |
         # Setup database
@@ -125,7 +141,6 @@ jobs:
         # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
         # export teast results
-        coverage html -i
         coverage xml -i
         coverage report -i
     - name: Post coverage
@@ -136,6 +151,14 @@ jobs:
         name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
         fail_ci_if_error: true # optional (default = false)
         verbose: true # optional (default = false)
+    - name: Time badge
+      uses: RubbaBoy/BYOB@v1.2.0
+      with:
+        NAME: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        LABEL: 'test'
+        STATUS: 'passing'
+        COLOR: green
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
   test-postgres:
@@ -166,6 +189,14 @@ jobs:
           - 5432:5432
 
     steps:
+    - name: Time badge
+      uses: RubbaBoy/BYOB@v1.2.0
+      with:
+        NAME: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        LABEL: 'test'
+        STATUS: 'failed'
+        COLOR: red
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -176,9 +207,6 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install coverage
         if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
-    - name: Test
-      run: |
-        echo ${{ job.services.postgres.ports[5432] }}
     - name: Test with coverage
       run: |
         # Setup database
@@ -189,7 +217,6 @@ jobs:
         # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
         # export teast results
-        coverage html -i
         coverage xml -i
         coverage report -i
     - name: Post coverage
@@ -200,9 +227,31 @@ jobs:
         name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
         fail_ci_if_error: true # optional (default = false)
         verbose: true # optional (default = false)
+    - name: Time badge
+      uses: RubbaBoy/BYOB@v1.2.0
+      with:
+        NAME: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        LABEL: 'test'
+        STATUS: 'passing'
+        COLOR: green
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
   # TODO: test-cockroach
 
 
   # TODO: test-oracle
+
+  badge_job:
+    runs-on: ubuntu-latest
+    steps:
+      - id: date
+        run: echo "##[set-output name=data;]$(date)"
+      - name: Time badge
+        uses: RubbaBoy/BYOB@v1.2.0
+        with:
+          NAME: time
+          LABEL: 'Updated at'
+          STATUS: ${{ steps.date.outputs.data }}
+          COLOR: 00EEFF
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
