@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        python-version: [2.7, 3.9]
         # database: [mysql, oracle, postgres, sqlite, cockroach]
         database: [sqlite, postgres]
         # architecture: [x64]
@@ -47,6 +47,11 @@ jobs:
           POSTGRES_USER: pony
           POSTGRES_PASSWORD: pony
           POSTGRES_PORT: 5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
         ports:
           - 5432:5432
 
@@ -61,15 +66,15 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install coverage
         if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
-    - name: Setup database
-      run: |
-        echo $(pwd)/pony/orm/tests/dbconf/${{ matrix.database }}
-        export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }}
-        echo $pony_test_db
-        cat $pony_test_db
     - name: Test with coverage
+      env:
+        pony_test_db: $(pwd)/pony/orm/tests/dbconf/${{ matrix.database }}
       run: |
+        # Setup database
         echo $pony_test_db
+        export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }} && echo $pony_test_db
+        echo $pony_test_db
+        # run unittest
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
         # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
