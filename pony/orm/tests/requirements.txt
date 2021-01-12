@@ -1,4 +1,5 @@
 flask
 psycopg2-binary
 pymysql
+cx_Oracle==7.3
 cryptography

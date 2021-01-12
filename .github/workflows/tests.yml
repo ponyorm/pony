@@ -58,7 +58,8 @@ jobs:
         # run unittest
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
         # run sql unittest
-        # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony\orm\tests\sql_tests.py
+        set PYTHONPATH=%CD%
+        coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony\orm\tests\sql_tests.py
 
         # export teast results
         coverage xml -i
@@ -101,8 +102,8 @@ jobs:
         export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }} && echo $pony_test_db
         # run unittest
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
-        # run sql unittest
-        # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
+        # run sql test
+        PYTHONPATH=$(pwd) coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
         # export teast results
         coverage xml -i
@@ -157,7 +158,7 @@ jobs:
         # run unittest
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
         # run sql unittest
-        # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
+        PYTHONPATH=$(pwd) coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
         # export teast results
         coverage xml -i
@@ -217,7 +218,7 @@ jobs:
         # run unittest
         coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
         # run sql unittest
-        # coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
+        PYTHONPATH=$(pwd) coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
 
         # export teast results
         coverage xml -i
