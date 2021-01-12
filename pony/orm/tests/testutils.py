@@ -138,4 +138,4 @@ class TestDatabase(Database):
         database.arguments = arguments
         return test_cursor
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
-        return Database.generate_mapping(database, filename, check_tables=check_tables, create_tables=create_tables)
+        return Database.generate_mapping(database, filename, create_tables=False, check_tables=False)
