@@ -1049,7 +1049,7 @@ class Database(object):
                         m2m_table = attr.meta.m2m_table
                         fix_obsolete_table(m2m_table)
                         processed_m2m_attrs.add(attr)
-                    attr.table = m2m_table.name
+                        attr.table = m2m_table.name
                     attr.columns = [c.name for c in attr.meta.reverse.m2m_columns]
                     attr.converters = [c.converter for c in attr.meta.reverse.m2m_columns]
                     if attr.symmetric:
