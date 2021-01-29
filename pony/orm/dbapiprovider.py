@@ -429,8 +429,12 @@ class Converter(object):
 class EnumConverter(Converter):
     def __init__(self, provider, py_type, attr=None):
         self.provider = provider
+        # first let it convert it to the underlying class: IntEnum -> int
+        self.real_type = normalize_enum_type(py_type)
+        # now get the correct converter for that
         self.converter_class = self._get_real_converter(py_type)
-        self.converter = self.converter_class(provider=provider, py_type=py_type, attr=attr)
+        # and make an instance of that
+        self.converter = self.converter_class(provider=provider, py_type=self.real_type, attr=attr)
         super(EnumConverter, self).__init__(provider=provider, py_type=py_type, attr=attr)
     # end if
 
@@ -439,8 +443,6 @@ class EnumConverter(Converter):
         Gets a converter for the underlying type.
         :return: Type[Converter]
         """
-        # first let it convert it to the underlying class: IntEnum -> int
-        real_type = normalize_enum_type(py_type)
 
         # now search for a provider of that type
         for type_tuple, converter_cls in self.provider.converter_classes:
@@ -454,7 +456,7 @@ class EnumConverter(Converter):
                     # we don't want to call ourself in an endless recursion.
                     continue
                 # end if
-                if issubclass(real_type, t):
+                if issubclass(self.real_type, t):
                     return converter_cls
                 # end if
             # end for
