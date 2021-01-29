@@ -435,14 +435,21 @@ class EnumConverter(Converter):
         Gets a converter for the underlying type.
         :return: Type[Converter]
         """
-        for t, converter_cls in self.provider.converter_classes:
-            if issubclass(t, EnumConverter):
-                # skip our own type, otherwise this could get ugly
-                continue
+        for type_tuple, converter_cls in self.provider.converter_classes:
+            if not isinstance(type_tuple, tuple):
+                # workaround as there's `int_types = (int,)`
+                # so we just work with tuples and make everything which isn't a tuple a tuple to fit that
+                type_tuple = (type_tuple,)
             # end if
-            if issubclass(py_type, t):
-                return converter_cls
-            # end if
+            for t in type_tuple:
+                if issubclass(t, Enum):
+                    # skip our own type, otherwise this could get ugly
+                    continue
+                # end if
+                if issubclass(py_type, t):
+                    return converter_cls
+                # end if
+            # end for
         # end for
         throw(TypeError, 'No database converter found for enum base type %s' % py_type)
     # end def
