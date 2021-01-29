@@ -99,6 +99,7 @@ class TestEnumInsertion(unittest.TestCase):
 
     def setUp(self):
         db = self.db = Database()
+        rollback()
 
         with db_session:
             class FavoriteFruit(db.Entity):
@@ -120,6 +121,7 @@ class TestEnumInsertion(unittest.TestCase):
     # end def
 
     def tearDown(self):
+        rollback()
         teardown_database(self.db)
     # end def
 
@@ -134,7 +136,7 @@ class TestEnumInsertion(unittest.TestCase):
         FavoriteFruit = self.FavoriteFruit
         with db_session:
             FavoriteFruit(user="Me", fruit=Fruits.MANGO)
-            FavoriteFruit(user="Me", fruit=Fruits.BANANA)
+            FavoriteFruit(user="You", fruit=Fruits.BANANA)
         # end with
     # end def
 
@@ -160,6 +162,22 @@ class TestEnumInsertion(unittest.TestCase):
             select(tl for tl in TrafficLight if tl.state == TrafficLightState.GREEN)
             select(tl for tl in TrafficLight if tl.state != TrafficLightState.GREEN)
         # end with
+    # end def
+
+    def test__load__int_enum(self):
+        FavoriteFruit = self.FavoriteFruit
+        with db_session:
+            ff1_original = FavoriteFruit(user="Me", fruit=Fruits.MANGO)
+            ff2_original = FavoriteFruit(user="You", fruit=Fruits.BANANA)
+        # end with
+        with db_session:
+            ff1 = FavoriteFruit.get(user="Me")
+            ff2 = FavoriteFruit.get(fruit=Fruits.BANANA)
+            ff3 = FavoriteFruit.get(fruit=Fruits.CUCUMBER)
+        # end with
+        self.assertEqual(ff1_original.to_dict(), ff1.to_dict())
+        self.assertEqual(ff2_original.to_dict(), ff2.to_dict())
+        self.assertIsNone(ff3)
     # end def
 # end class
 
