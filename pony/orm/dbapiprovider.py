@@ -424,10 +424,10 @@ class Converter(object):
 
 class EnumConverter(Converter):
     def __init__(self, provider, py_type, attr=None):
-        super(EnumConverter, self).__init__(provider=provider, py_type=py_type, attr=attr)
         self.provider = provider
-        self.converter_class = self._get_real_converter(self.py_type)
-        self.converter = self.converter_class(provider=self.provider, py_type=self.py_type, attr=self.attr)
+        self.converter_class = self._get_real_converter(py_type)
+        self.converter = self.converter_class(provider=provider, py_type=py_type, attr=attr)
+        super(EnumConverter, self).__init__(provider=provider, py_type=py_type, attr=attr)
     # end if
 
     def _get_real_converter(self, py_type):
