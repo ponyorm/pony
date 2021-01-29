@@ -5,6 +5,7 @@ import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
+from enum import Enum
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
@@ -419,6 +420,78 @@ class Converter(object):
         if sql_type.isupper(): return fk_types.get(sql_type, sql_type)
         sql_type = sql_type.upper()
         return fk_types.get(sql_type, sql_type).lower()
+
+
+class EnumConverter(Converter):
+    def __init__(self, provider, py_type, attr=None):
+        super(EnumConverter, self).__init__(provider=provider, py_type=py_type, attr=attr)
+        self.provider = provider
+        self.converter_class = self._get_real_converter(self.py_type)
+        self.converter = self.converter_class(provider=self.provider, py_type=self.py_type, attr=self.attr)
+    # end if
+
+    def _get_real_converter(self, py_type):
+        """
+        Gets a converter for the underlying type.
+        :return: Type[Converter]
+        """
+        for t, converter_cls in self.provider.converter_classes:
+            if issubclass(t, EnumConverter):
+                # skip our own type, otherwise this could get ugly
+                continue
+            # end if
+            if issubclass(py_type, t):
+                return converter_cls
+            # end if
+        # end for
+        throw(TypeError, 'No database converter found for enum base type %s' % py_type)
+    # end def
+
+    def init(self, kwargs):
+        self.converter.init(kwargs=kwargs)
+    # end def
+
+    def validate(self, val, obj=None):
+        assert issubclass(self.py_type, Enum)
+        assert issubclass(self.py_type, (int, str))
+        return self.converter.validate(val=val, obj=obj)
+    # end def
+
+    def py2sql(self, val):
+        return self.converter.py2sql(val=val)
+    # end def
+
+    def sql2py(self, val):
+        return self.converter.sql2py(val=val)
+    # end def
+
+    def val2dbval(self, val, obj=None):
+        """ passes on the value to the right converter """
+        return self.converter.val2dbval(val=val, obj=obj)
+    # end def
+
+    def dbval2val(self, dbval, obj=None):
+        """ passes on the value to the right converter """
+        py_val = self.converter.dbval2val(self, dbval=dbval, obj=obj)
+        if py_val is None:
+            return None
+        # end if
+        return self.py_type(py_val)  # SomeEnum(123) => SomeEnum.SOMETHING
+    # end def
+
+    def dbvals_equal(self, x, y):
+        self.converter.dbvals_equal(self, x=x, y=y)
+    # end def
+
+    def get_sql_type(self, attr=None):
+        return self.converter.get_sql_type(attr=attr)
+    # end def
+
+    def get_fk_type(self, sql_type):
+        return self.converter.get_fk_type(sql_type=sql_type)
+    # end def
+# end class
+
 
 class NoneConverter(Converter):  # used for raw_sql() parameters only
     def __init__(converter, provider, py_type, attr=None):

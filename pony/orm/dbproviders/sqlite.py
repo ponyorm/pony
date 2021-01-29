@@ -9,6 +9,7 @@ from random import random
 from time import strptime
 from threading import Lock
 from uuid import UUID
+from enum import Enum
 from binascii import hexlify
 from functools import wraps
 
@@ -325,6 +326,7 @@ class SQLiteProvider(DBAPIProvider):
     server_version = sqlite.sqlite_version_info
 
     converter_classes = [
+        (Enum, dbapiprovider.EnumConverter),
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
         (basestring, dbapiprovider.StrConverter),

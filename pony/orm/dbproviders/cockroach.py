@@ -4,6 +4,7 @@ from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
+from enum import Enum
 
 try:
     import psycopg2
@@ -94,6 +95,7 @@ class CRProvider(PGProvider):
             cache.in_transaction = True
 
     converter_classes = [
+        (Enum, dbapiprovider.EnumConverter),
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
         (basestring, PGStrConverter),
