@@ -202,17 +202,38 @@ def normalize_type(t):
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
     if issubclass(t, Array): return t
-    if issubclass(t, Enum):
-        # Example: `class Fruits(IntEnum)` with `IntEnum(int, Enum)`
-        # t.__mro__ = (<enum 'Fruits'>, <enum 'IntEnum'>, <class 'int'>, <enum 'Enum'>, <class 'object'>)
-        # we wanna ignore everything which is Enum or a subclass of it (Enum, IntEnum, Fruits)
-        # we also wanna ignore the base object itself, as every class has those
-        clazz_types = [clazz for clazz in t.__mro__ if not issubclass(clazz, Enum) and clazz != object]
-        if len(clazz_types) != 1:
-            throw(TypeError, 'Enum %r has multiple base types: %r' % (t.__name__, [c.__name__ for c in clazz_types]))
-        # end if
-        return clazz_types[0]
+    if issubclass(t, Enum): return normalize_enum_type(t)
     throw(TypeError, 'Unsupported type %r' % t.__name__)
+
+
+def normalize_enum_type(t):
+    """
+    Loads the base type this enum is made of.
+
+    Example:
+        `class Fruits(IntEnum)` with `IntEnum(int, Enum)`
+
+    For that we can look in the `.__mro__` value:
+        `t.__mro__ = (<enum 'Fruits'>, <enum 'IntEnum'>, <class 'int'>, <enum 'Enum'>, <class 'object'>)`
+
+    We wanna ignore everything which is Enum or a subclass of it (`Enum`, `IntEnum`, `Fruits`)
+        `(<class 'int'>, <class 'object'>)`
+
+    We also wanna ignore the base object itself, as every class has that as parent..
+        `(<class 'int'>)`
+
+    After making sure we got exactly 1 element, we can return that
+        `<class 'int'>`
+    """
+    clazz_types = [clazz for clazz in t.__mro__ if not issubclass(clazz, Enum) and clazz != object]
+    if len(clazz_types) > 1:
+        throw(TypeError, 'Enum %r has multiple base types: %r' % (t.__name__, [c.__name__ for c in clazz_types]))
+    if len(clazz_types) == 0:
+        throw(TypeError, 'Enum %r has no base type. The enum must extend a type supported by ponyorm.' % (t.__name__,))
+    # end if
+    return clazz_types[0]
+# end def
+
 
 coercions = {
     (int, float): float,
