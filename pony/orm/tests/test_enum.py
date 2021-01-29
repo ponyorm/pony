@@ -233,6 +233,35 @@ class TestEnumLoad(unittest.TestCase):
         self.assertIsInstance(ff2.fruit, Fruits, msg="Loaded one must be Fruits Enum")
     # end def
 
+    def test__load__str_enum(self):
+        TrafficLight = self.TrafficLight
+        with db_session:
+            tl1 = TrafficLight.get(state=TrafficLightState.RED)
+            tl2 = TrafficLight.get(state=TrafficLightState.GREEN)
+            tl0 = TrafficLight.get(state=TrafficLightState.OFF)
+        # end with
+
+        self.assertIsNone(tl0, msg="Requesting a value not in the database must return None")
+
+        self.assertEqual(self.tl1.id, tl1.id, msg="ID must be the same as the one inserted to the database")
+        self.assertEqual(self.tl2.id, tl2.id, msg="ID must be the same as the one inserted to the database")
+
+        self.assertEqual(self.tl1.state, tl1.state, msg="State (enum) must be the same as the one inserted to the database")
+        self.assertEqual(self.tl2.state, tl2.state, msg="State (enum) must be the same as the one inserted to the database")
+
+        self.assertIsInstance(self.tl1.state, Enum, msg="Original must be Enum")
+        self.assertIsInstance(self.tl2.state, Enum, msg="Original must be Enum")
+
+        self.assertIsInstance(self.tl1.state, TrafficLightState, msg="Original must be TrafficLightState Enum")
+        self.assertIsInstance(self.tl2.state, TrafficLightState, msg="Original must be TrafficLightState Enum")
+
+        self.assertIsInstance(tl1.state, Enum, msg="Loaded one must be Enum")
+        self.assertIsInstance(tl2.state, Enum, msg="Loaded one must be Enum")
+
+        self.assertIsInstance(tl1.state, TrafficLightState, msg="Loaded one must be TrafficLightState Enum")
+        self.assertIsInstance(tl2.state, TrafficLightState, msg="Loaded one must be TrafficLightState Enum")
+    # end def
+
     def test__to_json__int_enum(self):
         self.assertEqual(Fruits.MANGO.value, +42, msg="Just to be sure the number of the enum is correct; needed below")
         self.assertEqual(Fruits.BANANA.value, -7, msg="Just to be sure the number of the enum is correct; needed below")
@@ -242,6 +271,17 @@ class TestEnumLoad(unittest.TestCase):
 
         self.assertDictEqual(dict1, {"id": 1, "user": "Me", "fruit": +42})
         self.assertDictEqual(dict2, {"id": 2, "user": "You", "fruit": -7})
+    # end def
+
+    def test__to_json__str_enum(self):
+        self.assertEqual(TrafficLightState.RED.value, '#f00', msg="Just to be sure the number of the enum is correct; needed below")
+        self.assertEqual(TrafficLightState.GREEN.value, '#00ff00', msg="Just to be sure the number of the enum is correct; needed below")
+
+        dict1 = self.tl1.to_dict()
+        dict2 = self.tl2.to_dict()
+
+        self.assertDictEqual(dict1, {"id": 1, "state": '#f00'})
+        self.assertDictEqual(dict2, {"id": 2, "state": '#00ff00'})
     # end def
 # end class
 
