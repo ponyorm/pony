@@ -163,33 +163,103 @@ class TestEnumInsertion(unittest.TestCase):
             select(tl for tl in TrafficLight if tl.state != TrafficLightState.GREEN)
         # end with
     # end def
+# end def
+
+
+# noinspection DuplicatedCode
+class TestEnumLoad(unittest.TestCase):
+    def setUp(self):
+        db = self.db = Database()
+        rollback()
+
+        class FavoriteFruit(db.Entity):
+            id = PrimaryKey(int, auto=True)
+            user = Required(str)
+            fruit = Required(Fruits, size=16)
+        # end class
+
+        class TrafficLight(db.Entity):
+            id = PrimaryKey(int, auto=True)
+            state = Required(TrafficLightState)
+        # end class
+
+        # as those are not global, keep them around
+        self.FavoriteFruit = FavoriteFruit
+        self.TrafficLight = TrafficLight
+        setup_database(db)
+
+        with db_session:
+            self.ff1 = FavoriteFruit(user="Me", fruit=Fruits.MANGO)
+            self.ff2 = FavoriteFruit(user="You", fruit=Fruits.BANANA)
+
+            self.tl1 = TrafficLight(state=TrafficLightState.RED)
+            self.tl2 = TrafficLight(state=TrafficLightState.GREEN)
+        # end with
+    # end def
+
+    def tearDown(self):
+        teardown_database(self.db)
+    # end def
 
     def test__load__int_enum(self):
         FavoriteFruit = self.FavoriteFruit
         with db_session:
-            ff1_original = FavoriteFruit(user="Me", fruit=Fruits.MANGO)
-            ff2_original = FavoriteFruit(user="You", fruit=Fruits.BANANA)
-        # end with
-        with db_session:
             ff1 = FavoriteFruit.get(user="Me")
             ff2 = FavoriteFruit.get(fruit=Fruits.BANANA)
-            ff3 = FavoriteFruit.get(fruit=Fruits.CUCUMBER)
+            ff0 = FavoriteFruit.get(fruit=Fruits.CUCUMBER)
         # end with
-        self.assertEqual(ff1_original.to_dict(), ff1.to_dict())
-        self.assertEqual(ff2_original.to_dict(), ff2.to_dict())
-        self.assertIsNone(ff3)
 
-        self.assertIsInstance(ff1_original.fruit, Enum, msg="Original must be Enum")
-        self.assertIsInstance(ff2_original.fruit, Enum, msg="Original must be Enum")
+        self.assertIsNone(ff0, msg="Requesting a value not in the database must return None")
 
-        self.assertIsInstance(ff1_original.fruit, Fruits, msg="Original must be Fruits Enum")
-        self.assertIsInstance(ff2_original.fruit, Fruits, msg="Original must be Fruits Enum")
+        self.assertEqual(self.ff1.id, ff1.id, msg="ID must be the same as the one inserted to the database")
+        self.assertEqual(self.ff2.id, ff2.id, msg="ID must be the same as the one inserted to the database")
+
+        self.assertEqual(self.ff1.user, ff1.user, msg="User must be the same as the one inserted to the database")
+        self.assertEqual(self.ff2.user, ff2.user, msg="User must be the same as the one inserted to the database")
+
+        self.assertEqual(self.ff1.fruit, ff1.fruit, msg="Fruit (enum) must be the same as the one inserted to the database")
+        self.assertEqual(self.ff2.fruit, ff2.fruit, msg="Fruit (enum) must be the same as the one inserted to the database")
+
+        self.assertIsInstance(self.ff1.fruit, Enum, msg="Original must be Enum")
+        self.assertIsInstance(self.ff2.fruit, Enum, msg="Original must be Enum")
+
+        self.assertIsInstance(self.ff1.fruit, Fruits, msg="Original must be Fruits Enum")
+        self.assertIsInstance(self.ff2.fruit, Fruits, msg="Original must be Fruits Enum")
 
         self.assertIsInstance(ff1.fruit, Enum, msg="Loaded one must be Enum")
         self.assertIsInstance(ff2.fruit, Enum, msg="Loaded one must be Enum")
 
         self.assertIsInstance(ff1.fruit, Fruits, msg="Loaded one must be Fruits Enum")
         self.assertIsInstance(ff2.fruit, Fruits, msg="Loaded one must be Fruits Enum")
+    # end def
+
+    def test__load__str_enum(self):
+        TrafficLight = self.TrafficLight
+        with db_session:
+            tl1 = TrafficLight.get(state=TrafficLightState.RED)
+            tl2 = TrafficLight.get(state=TrafficLightState.GREEN)
+            tl0 = TrafficLight.get(state=TrafficLightState.OFF)
+        # end with
+
+        self.assertIsNone(tl0, msg="Requesting a value not in the database must return None")
+
+        self.assertEqual(self.tl1.id, tl1.id, msg="ID must be the same as the one inserted to the database")
+        self.assertEqual(self.tl2.id, tl2.id, msg="ID must be the same as the one inserted to the database")
+
+        self.assertEqual(self.tl1.state, tl1.state, msg="State (enum) must be the same as the one inserted to the database")
+        self.assertEqual(self.tl2.state, tl2.state, msg="State (enum) must be the same as the one inserted to the database")
+
+        self.assertIsInstance(self.tl1.state, Enum, msg="Original must be Enum")
+        self.assertIsInstance(self.tl2.state, Enum, msg="Original must be Enum")
+
+        self.assertIsInstance(self.tl1.state, TrafficLightState, msg="Original must be TrafficLightState Enum")
+        self.assertIsInstance(self.tl2.state, TrafficLightState, msg="Original must be TrafficLightState Enum")
+
+        self.assertIsInstance(tl1.state, Enum, msg="Loaded one must be Enum")
+        self.assertIsInstance(tl2.state, Enum, msg="Loaded one must be Enum")
+
+        self.assertIsInstance(tl1.state, TrafficLightState, msg="Loaded one must be TrafficLightState Enum")
+        self.assertIsInstance(tl2.state, TrafficLightState, msg="Loaded one must be TrafficLightState Enum")
     # end def
 # end class
 
