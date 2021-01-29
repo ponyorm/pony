@@ -489,7 +489,7 @@ class EnumConverter(Converter):
 
     def dbval2val(self, dbval, obj=None):
         """ passes on the value to the right converter """
-        py_val = self.converter.dbval2val(self, dbval=dbval, obj=obj)
+        py_val = self.converter.dbval2val(dbval=dbval, obj=obj)
         if py_val is None:
             return None
         # end if
@@ -497,7 +497,7 @@ class EnumConverter(Converter):
     # end def
 
     def dbvals_equal(self, x, y):
-        self.converter.dbvals_equal(self, x=x, y=y)
+        self.converter.dbvals_equal(x=x, y=y)
     # end def
 
     def get_sql_type(self, attr=None):
