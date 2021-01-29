@@ -10,7 +10,11 @@ from enum import Enum
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedArray, Json, QueryType, Array
+from pony.orm.ormtypes import (
+    LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedArray, Json, QueryType, Array,
+    normalize_enum_type,
+)
+
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -435,23 +439,29 @@ class EnumConverter(Converter):
         Gets a converter for the underlying type.
         :return: Type[Converter]
         """
+        # first let it convert it to the underlying class: IntEnum -> int
+        real_type = normalize_enum_type(py_type)
+
+        # now search for a provider of that type
         for type_tuple, converter_cls in self.provider.converter_classes:
             if not isinstance(type_tuple, tuple):
-                # workaround as there's `int_types = (int,)`
-                # so we just work with tuples and make everything which isn't a tuple a tuple to fit that
+                # workaround as there's fun stuff like `int_types = (int,)`,
+                # so we just make everything which isn't a tuple a tuple to easily work with that.
                 type_tuple = (type_tuple,)
             # end if
             for t in type_tuple:
                 if issubclass(t, Enum):
-                    # skip our own type, otherwise this could get ugly
+                    # we don't want to call ourself in an endless recursion.
                     continue
                 # end if
-                if issubclass(py_type, t):
+                if issubclass(real_type, t):
                     return converter_cls
                 # end if
             # end for
         # end for
-        throw(TypeError, 'No database converter found for enum base type %s' % py_type)
+
+        # didn't find a fitting converter
+        throw(TypeError, 'No database converter found for enum base type %s (of enum type %s)' % (real_type, py_type))
     # end def
 
     def init(self, kwargs):
