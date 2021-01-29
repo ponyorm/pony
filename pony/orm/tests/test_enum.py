@@ -178,6 +178,18 @@ class TestEnumInsertion(unittest.TestCase):
         self.assertEqual(ff1_original.to_dict(), ff1.to_dict())
         self.assertEqual(ff2_original.to_dict(), ff2.to_dict())
         self.assertIsNone(ff3)
+
+        self.assertIsInstance(ff1_original.fruit, Enum, msg="Original must be Enum")
+        self.assertIsInstance(ff2_original.fruit, Enum, msg="Original must be Enum")
+
+        self.assertIsInstance(ff1_original.fruit, Fruits, msg="Original must be Fruits Enum")
+        self.assertIsInstance(ff2_original.fruit, Fruits, msg="Original must be Fruits Enum")
+
+        self.assertIsInstance(ff1.fruit, Enum, msg="Loaded one must be Enum")
+        self.assertIsInstance(ff2.fruit, Enum, msg="Loaded one must be Enum")
+
+        self.assertIsInstance(ff1.fruit, Fruits, msg="Loaded one must be Fruits Enum")
+        self.assertIsInstance(ff2.fruit, Fruits, msg="Loaded one must be Fruits Enum")
     # end def
 # end class
 
