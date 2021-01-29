@@ -6,6 +6,7 @@ from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from functools import wraps, WRAPPER_ASSIGNMENTS
 from uuid import UUID
+from enum import Enum
 
 from pony.utils import throw, parse_expr, deref_proxy
 
@@ -201,6 +202,16 @@ def normalize_type(t):
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
     if issubclass(t, Array): return t
+    if issubclass(t, Enum):
+        # Example: `class Fruits(IntEnum)` with `IntEnum(int, Enum)`
+        # t.__mro__ = (<enum 'Fruits'>, <enum 'IntEnum'>, <class 'int'>, <enum 'Enum'>, <class 'object'>)
+        # we wanna ignore everything which is Enum or a subclass of it (Enum, IntEnum, Fruits)
+        # we also wanna ignore the base object itself, as every class has those
+        clazz_types = [clazz for clazz in t.__mro__ if not issubclass(clazz, Enum) and clazz != object]
+        if len(clazz_types) != 1:
+            throw(TypeError, 'Enum %r has multiple base types: %r' % (t.__name__, [c.__name__ for c in clazz_types]))
+        # end if
+        return clazz_types[0]
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
