@@ -493,6 +493,9 @@ class EnumConverter(Converter):
         if py_val is None:
             return None
         # end if
+
+        # make a enum value out of the base type (int => IntEnum)
+        # py_type is the actual Enum class, so we can call the "constructor" to get the actual enum from that base type.
         return self.py_type(py_val)  # SomeEnum(123) => SomeEnum.SOMETHING
     # end def
 
