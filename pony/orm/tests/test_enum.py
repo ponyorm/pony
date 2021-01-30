@@ -11,6 +11,11 @@ from pony.orm.core import *
 from pony.orm.tests.testutils import *
 from pony.orm.tests import setup_database, teardown_database
 
+"""
+Unittests for the EnumConverter
+"""
+
+
 class Fruits(IntEnum):
     APPLE = 0
     MANGO = 42
@@ -20,7 +25,7 @@ class Fruits(IntEnum):
 # end class
 
 
-class TrafficLightState(str, Enum):
+class LightState(str, Enum):
     RED = '#f00'
     YELLOW = '#FFFF00'
     GREEN = '#00ff00'
@@ -72,7 +77,7 @@ class TestEnumCreation(unittest.TestCase):
 
         class TrafficLight(db.Entity):
             id = PrimaryKey(int, auto=True)
-            state = Required(TrafficLightState)
+            state = Required(LightState)
         # end class
 
         setup_database(db)
@@ -110,7 +115,7 @@ class TestEnumInsertion(unittest.TestCase):
 
             class TrafficLight(db.Entity):
                 id = PrimaryKey(int, auto=True)
-                state = Required(TrafficLightState)
+                state = Required(LightState)
             # end class
 
             # as those are not global, keep them around
@@ -143,8 +148,8 @@ class TestEnumInsertion(unittest.TestCase):
     def test__insert__str_enum(self):
         TrafficLight = self.TrafficLight
         with db_session:
-            TrafficLight(state=TrafficLightState.YELLOW)
-            TrafficLight(state=TrafficLightState.RED)
+            TrafficLight(state=LightState.YELLOW)
+            TrafficLight(state=LightState.RED)
         # end with
     # end def
 
@@ -159,8 +164,8 @@ class TestEnumInsertion(unittest.TestCase):
     def test__select__str_enum(self):
         TrafficLight = self.TrafficLight
         with db_session:
-            select(tl for tl in TrafficLight if tl.state == TrafficLightState.GREEN)
-            select(tl for tl in TrafficLight if tl.state != TrafficLightState.GREEN)
+            select(tl for tl in TrafficLight if tl.state == LightState.GREEN)
+            select(tl for tl in TrafficLight if tl.state != LightState.GREEN)
         # end with
     # end def
 # end def
@@ -180,7 +185,7 @@ class TestEnumLoad(unittest.TestCase):
 
         class TrafficLight(db.Entity):
             id = PrimaryKey(int, auto=True)
-            state = Required(TrafficLightState)
+            state = Required(LightState)
         # end class
 
         # as those are not global, keep them around
@@ -192,8 +197,8 @@ class TestEnumLoad(unittest.TestCase):
             self.ff1 = FavoriteFruit(user="Me", fruit=Fruits.MANGO)
             self.ff2 = FavoriteFruit(user="You", fruit=Fruits.BANANA)
 
-            self.tl1 = TrafficLight(state=TrafficLightState.RED)
-            self.tl2 = TrafficLight(state=TrafficLightState.GREEN)
+            self.tl1 = TrafficLight(state=LightState.RED)
+            self.tl2 = TrafficLight(state=LightState.GREEN)
         # end with
     # end def
 
@@ -236,9 +241,9 @@ class TestEnumLoad(unittest.TestCase):
     def test__load__str_enum(self):
         TrafficLight = self.TrafficLight
         with db_session:
-            tl1 = TrafficLight.get(state=TrafficLightState.RED)
-            tl2 = TrafficLight.get(state=TrafficLightState.GREEN)
-            tl0 = TrafficLight.get(state=TrafficLightState.OFF)
+            tl1 = TrafficLight.get(state=LightState.RED)
+            tl2 = TrafficLight.get(state=LightState.GREEN)
+            tl0 = TrafficLight.get(state=LightState.OFF)
         # end with
 
         self.assertIsNone(tl0, msg="Requesting a value not in the database must return None")
@@ -252,14 +257,14 @@ class TestEnumLoad(unittest.TestCase):
         self.assertIsInstance(self.tl1.state, Enum, msg="Original must be Enum")
         self.assertIsInstance(self.tl2.state, Enum, msg="Original must be Enum")
 
-        self.assertIsInstance(self.tl1.state, TrafficLightState, msg="Original must be TrafficLightState Enum")
-        self.assertIsInstance(self.tl2.state, TrafficLightState, msg="Original must be TrafficLightState Enum")
+        self.assertIsInstance(self.tl1.state, LightState, msg="Original must be LightState Enum")
+        self.assertIsInstance(self.tl2.state, LightState, msg="Original must be LightState Enum")
 
         self.assertIsInstance(tl1.state, Enum, msg="Loaded one must be Enum")
         self.assertIsInstance(tl2.state, Enum, msg="Loaded one must be Enum")
 
-        self.assertIsInstance(tl1.state, TrafficLightState, msg="Loaded one must be TrafficLightState Enum")
-        self.assertIsInstance(tl2.state, TrafficLightState, msg="Loaded one must be TrafficLightState Enum")
+        self.assertIsInstance(tl1.state, LightState, msg="Loaded one must be LightState Enum")
+        self.assertIsInstance(tl2.state, LightState, msg="Loaded one must be LightState Enum")
     # end def
 
     def test__to_json__int_enum(self):
@@ -274,8 +279,8 @@ class TestEnumLoad(unittest.TestCase):
     # end def
 
     def test__to_json__str_enum(self):
-        self.assertEqual(TrafficLightState.RED.value, '#f00', msg="Just to be sure the number of the enum is correct; needed below")
-        self.assertEqual(TrafficLightState.GREEN.value, '#00ff00', msg="Just to be sure the number of the enum is correct; needed below")
+        self.assertEqual(LightState.RED.value, '#f00', msg="Just to be sure the number of the enum is correct; needed below")
+        self.assertEqual(LightState.GREEN.value, '#00ff00', msg="Just to be sure the number of the enum is correct; needed below")
 
         dict1 = self.tl1.to_dict()
         dict2 = self.tl2.to_dict()
