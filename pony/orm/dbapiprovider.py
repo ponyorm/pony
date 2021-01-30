@@ -471,15 +471,15 @@ class EnumConverter(Converter):
     def init(self, kwargs):
         # let's find some cool automatic values, if those aren't given
         if issubclass(self.converter_class, IntConverter):
-            kwargs = self._prepare_int_kwargs(attr=self.attr, py_type=self.py_type, kwargs=kwargs)
+            kwargs = self._prepare_int_kwargs(py_enum_type=self.py_type, kwargs=kwargs, attr=self.attr)
         elif issubclass(self.converter_class, StrConverter):
-            kwargs = self._prepare_str_kwargs(attr=self.attr, py_type=self.py_type, kwargs=kwargs)
+            kwargs = self._prepare_str_kwargs(py_enum_type=self.py_type, kwargs=kwargs, attr=self.attr)
         # end if
         self.converter.init(kwargs=kwargs)
     # end def
 
     @staticmethod
-    def _prepare_int_kwargs(attr, py_type, kwargs):
+    def _prepare_int_kwargs(py_enum_type, kwargs, attr=None):
         """
         Sane defaults for integer based enums.
         For an int enum it calculates the minimum and maximum of the enum's numeric values.
@@ -492,7 +492,7 @@ class EnumConverter(Converter):
 
         # get min and max values of the enum
         enum_min = enum_max = None
-        for enum_value in py_type:
+        for enum_value in py_enum_type:
             value = int(enum_value.value)
             if enum_min is None or enum_min > value:
                 enum_min = value
@@ -502,7 +502,7 @@ class EnumConverter(Converter):
             # end if
         # end for
         if enum_min is None or enum_max is None:
-            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_type, attr))
+            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_enum_type, attr))
         # end if
 
         # check that the given min/max (if any) fits all enum values
@@ -512,7 +512,7 @@ class EnumConverter(Converter):
             throw(
                 TypeError,
                 "Enum option {enum!r} with numeric value {calculated!r} would not fit within the given min={given_value!r} limit (attribute {attribute!s}).".format(
-                    enum=py_type(enum_min), calculated=enum_min, given_value=min_val, attribute=attr,
+                    enum=py_enum_type(enum_min), calculated=enum_min, given_value=min_val, attribute=attr,
                 )
             )
         # end if
@@ -522,7 +522,7 @@ class EnumConverter(Converter):
             throw(
                 TypeError,
                 "Enum option {enum!r} with numeric value {calculated!r} would not fit within the given max={given_value!r} limit (attribute {attribute!s}).".format(
-                    enum=py_type(enum_max), calculated=enum_max, given_value=max_val, attribute=attr,
+                    enum=py_enum_type(enum_max), calculated=enum_max, given_value=max_val, attribute=attr,
                 )
             )
         # end if
@@ -534,7 +534,7 @@ class EnumConverter(Converter):
             throw(
                 TypeError,
                 "Enum option {enum!r} with negative numeric value {calculated!r} cannot fit an unsigned number (attribute {attribute!s}).".format(
-                    enum=py_type(enum_min), calculated=enum_min, given_value=max_val, attribute=attr,
+                    enum=py_enum_type(enum_min), calculated=enum_min, given_value=max_val, attribute=attr,
                 )
             )
         elif unsigned and min_val < 0:
@@ -590,7 +590,7 @@ class EnumConverter(Converter):
                         "Enum option {enum!r} with numeric value {calculated!r} cannot fit the biggest unsigned "
                         "integer 64 bit type with it's maximum value of {size_max!r} (attribute {attribute!s})."
                     ).format(
-                        enum=py_type(failing_value), calculated=failing_value,
+                        enum=py_enum_type(failing_value), calculated=failing_value,
                         given_value=max_val, size_max=size_max, attribute=attr,
                     )
                 )
@@ -607,7 +607,7 @@ class EnumConverter(Converter):
                     "size {given_value!r} with range [{given_min!r} - {given_max!r}]. "
                     "Needs to be at least of size {fitting_size}. (attribute {attribute!s})."
                 ).format(
-                    enum=py_type(failing_value), calculated=failing_value, attribute=attr,
+                    enum=py_enum_type(failing_value), calculated=failing_value, attribute=attr,
                     singned_type="unsigned" if unsigned else "signed", fitting_size=fitting_size,
                     given_value=size,  given_min=size_min, given_max=size_max,
                 )
@@ -622,7 +622,7 @@ class EnumConverter(Converter):
     # end def
 
     @staticmethod
-    def _prepare_str_kwargs(attr, py_type, kwargs):
+    def _prepare_str_kwargs(py_enum_type, kwargs, attr=None):
         """
         Sane defaults for string based enums.
         For an str enum it calculates the maximum length the enum's string values, and sets autostrip to False..
@@ -632,7 +632,7 @@ class EnumConverter(Converter):
 
         # get min and max values of the enum
         enum_len = longest_text = None
-        for enum_value in py_type:
+        for enum_value in py_enum_type:
             value = enum_value.value
             assert isinstance(value, str)
             value_len = len(value)
@@ -642,7 +642,7 @@ class EnumConverter(Converter):
             # end if
         # end for
         if enum_len is None:
-            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_type, attr))
+            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_enum_type, attr))
         # end if
 
         # check that the given max length (if any) fits all enum values
@@ -655,7 +655,7 @@ class EnumConverter(Converter):
                     "Enum option {enum!r} with string value {calculated!r} having a length of {enum_len!r} would not "
                     "fit within the given max_len={given_value!r} limit (attribute {attribute!s})."
                 ).format(
-                    enum=py_type(longest_text), calculated=longest_text, attribute=attr,
+                    enum=py_enum_type(longest_text), calculated=longest_text, attribute=attr,
                     calculated_len=enum_len, given_value=max_len,
                 )
             )
