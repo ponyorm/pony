@@ -471,7 +471,7 @@ class EnumConverter(Converter):
     def init(self, kwargs):
         # let's find some cool automatic values, if those aren't given
         if issubclass(self.converter_class, IntConverter):
-            kwargs = self._prepare_int_kwargs(py_enum_type=self.py_type, kwargs=kwargs, attr=self.attr)
+            kwargs = self._prepare_int_kwargs(py_enum_type=self.py_type, kwargs=kwargs, uint64_support=self.provider.uint64_support, attr=self.attr)
         elif issubclass(self.converter_class, StrConverter):
             kwargs = self._prepare_str_kwargs(py_enum_type=self.py_type, kwargs=kwargs, attr=self.attr)
         # end if
@@ -479,11 +479,23 @@ class EnumConverter(Converter):
     # end def
 
     @staticmethod
-    def _prepare_int_kwargs(py_enum_type, kwargs, attr=None):
+    def _prepare_int_kwargs(py_enum_type, kwargs, uint64_support, attr=None):
         """
         Sane defaults for integer based enums.
         For an int enum it calculates the minimum and maximum of the enum's numeric values.
         Based on that it checks or sets the unsigned state, min/max values and the integer size.
+
+        :param py_enum_type: class of the enum, as given as first parameter to `Required(...)`, `Optional(...)`, etc.
+        :type  py_enum_type: type | Type[Enum]
+
+        :param kwargs: The additional arguments to the function
+        :type  kwargs: dict
+
+        :param uint64_support: Whether or not the database provider can represent the biggest 64bit (8bytes) number in an unsigned way, doubling the positive range.
+        :type  uint64_support: bool
+
+        :param attr: Name of the field for error output
+        :type  attr: Required | Optional | Attribute
         """
         min_val = kwargs.pop('min', None)
         max_val = kwargs.pop('max', None)
@@ -528,8 +540,10 @@ class EnumConverter(Converter):
         # end if
 
         # check that the given unsigned (if any) fits all enum values
+        unsigned_is_automatic = False
         if unsigned is None:
             unsigned = not min_val < 0
+            unsigned_is_automatic = True
         elif unsigned and enum_min < 0:
             throw(
                 TypeError,
@@ -550,26 +564,38 @@ class EnumConverter(Converter):
         # first calculate required size
         fitting_size = size_min = size_max = failing_value = 0
         if unsigned:
-            for fitting_size in (8, 16, 24, 32, 64):
+            sizes = (8, 16, 24, 32)
+            if uint64_support:
+                sizes = sizes + (64,)
+            # end if
+            for fitting_size in sizes:
                 size_max = 2 ** fitting_size
-                if max_val < size_max:
+                if max_val <= size_max:
                     # size is the first size which does fit us
                     break
                 # end if
                 failing_value = max_val
             else:
                 # no break, nothing did fit
-                throw(
-                    TypeError,
-                    (
-                        "The maximum value {given_value!r} does not fit the biggest unsigned integer 64 bit type "
-                        "with it's maximum value of {size_max!r} (attribute {attribute!s})."
-                    ).format(
-                        given_value=max_val, attribute=attr, calculated=size_max,
+                if not uint64_support and unsigned_is_automatic:
+                    assert fitting_size == 32
+                    size_max = 2 ** (64 - 1) - 1
+                # end if
+                if max_val <= size_max:
+                    unsigned = False
+                else:
+                    throw(
+                        TypeError,
+                        (
+                            "The maximum value {given_value!r} does not fit the biggest unsigned integer 64 bit type "
+                            "with it's maximum value of {size_max!r} (attribute {attribute!s})."
+                        ).format(
+                            given_value=max_val, attribute=attr, calculated=size_max,
+                        )
                     )
-                )
             # end for
-        else:
+        # end if
+        if not unsigned:
             # is signed
             for fitting_size in (8, 16, 24, 32, 64):
                 size_max = (2 ** (fitting_size - 1))
