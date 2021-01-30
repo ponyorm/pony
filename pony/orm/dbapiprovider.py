@@ -615,8 +615,7 @@ class EnumConverter(Converter):
     # end def
 
     def validate(self, val, obj=None):
-        assert issubclass(self.py_type, Enum)
-        assert issubclass(self.py_type, (int, str))
+        assert isinstance(val, self.py_type)
         return self.converter.validate(val=val, obj=obj)
     # end def
 
