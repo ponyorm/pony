@@ -8,6 +8,7 @@ import unittest
 from enum import IntEnum, Enum
 
 from pony.orm.core import *
+from pony.orm.dbapiprovider import EnumConverter
 from pony.orm.tests.testutils import *
 from pony.orm.tests import setup_database, teardown_database
 
@@ -325,6 +326,78 @@ class TestEnumLoad(unittest.TestCase):
 
         self.assertDictEqual(dict1, {"id": 1, "state": '#f00'})
         self.assertDictEqual(dict2, {"id": 2, "state": '#00ff00'})
+    # end def
+# end class
+
+
+class TestEnumDefaults(unittest.TestCase):
+    """
+    Test for kwargs modifications
+    """
+
+    def test___prepare_int_kwargs__default(self):
+        """
+        Default sane parameters
+        """
+        input_enum = Fruits
+        input_kwargs = {}
+        expected_kwargs = {"min": -7, "max": 4458, "unsigned": False, "size": 16}
+
+        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, 'the_best_field')
+
+        self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_int_kwargs__default(self):
+        """
+        Default sane parameters
+        """
+        input_enum = Fruits
+        input_kwargs = {}
+        expected_kwargs = {"min": -7, "max": 4458, "unsigned": False, "size": 16}
+
+        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, 'the_best_field')
+
+        self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_str_kwargs__default(self):
+        """
+        Default sane parameters
+        """
+        input_enum = LightState
+        input_kwargs = {}
+        expected_kwargs = {"max_len": 7, "autostrip": False}
+
+        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, 'the_best_field')
+
+        self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_str_kwargs__length_longer_kept(self):
+        """
+        That a longer manual max_len is not overwritten.
+        """
+        input_enum = LightState
+        input_kwargs = {"max_len": 123}
+        expected_kwargs = {"max_len": 123, "autostrip": False}
+
+        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, 'the_best_field')
+
+        self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_str_kwargs__autostrip_off_is_okey(self):
+        """
+        Setting the autostrip to off should be valid.
+        """
+        input_enum = LightState
+        input_kwargs = {"autostrip": False}
+        expected_kwargs = {"max_len": 7, "autostrip": False}
+
+        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, 'the_best_field')
+
+        self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
     # end def
 # end class
 
