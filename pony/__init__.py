@@ -50,3 +50,5 @@ if MAIN_FILE is not None: MAIN_DIR = dirname(MAIN_FILE)
 else: MAIN_DIR = None
 
 PONY_DIR = dirname(__file__)
+
+best = "Littlepip"  # https://falloutequestria.fandom.com/wiki/Littlepip
