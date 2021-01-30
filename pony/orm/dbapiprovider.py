@@ -470,14 +470,21 @@ class EnumConverter(Converter):
 
     def init(self, kwargs):
         # let's find some cool automatic values, if those aren't given
-        if self.converter_class == IntConverter:
+        if issubclass(self.converter_class, IntConverter):
             kwargs = self._prepare_int_kwargs(attr=self.attr, py_type=self.py_type, kwargs=kwargs)
+        elif issubclass(self.converter_class, StrConverter):
+            kwargs = self._prepare_str_kwargs(attr=self.attr, py_type=self.py_type, kwargs=kwargs)
         # end if
         self.converter.init(kwargs=kwargs)
     # end def
 
     @staticmethod
     def _prepare_int_kwargs(attr, py_type, kwargs):
+        """
+        Sane defaults for integer based enums.
+        For an int enum it calculates the minimum and maximum of the enum's numeric values.
+        Based on that it checks or sets the unsigned state, min/max values and the integer size.
+        """
         min_val = kwargs.pop('min', None)
         max_val = kwargs.pop('max', None)
         unsigned = kwargs.pop('unsigned', None)
@@ -611,6 +618,49 @@ class EnumConverter(Converter):
         kwargs['max'] = max_val
         kwargs['unsigned'] = unsigned
         kwargs['size'] = size
+        return kwargs
+    # end def
+
+    @staticmethod
+    def _prepare_str_kwargs(attr, py_type, kwargs):
+        """
+        Sane defaults for string based enums.
+        For an str enum it calculates the minimum and maximum length the enum's string values.
+        """
+        max_len = kwargs.pop('max_len', None)
+
+        # get min and max values of the enum
+        enum_len = longest_text = None
+        for enum_value in py_type:
+            value = enum_value.value
+            assert isinstance(value, str)
+            value_len = len(value)
+            if enum_len is None or enum_len < value_len:
+                enum_len = value_len
+                longest_text = value
+            # end if
+        # end for
+        if enum_len is None:
+            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_type, attr))
+        # end if
+
+        # check that the given max length (if any) fits all enum values
+        if max_len is None:
+            max_len = enum_len
+        elif enum_len > max_len:
+            throw(
+                TypeError,
+                (
+                    "Enum option {enum!r} with string value {calculated!r} having a length of {enum_len!r} would not "
+                    "fit within the given max_len={given_value!r} limit (attribute {attribute!s})."
+                ).format(
+                    enum=py_type(longest_text), calculated=longest_text, attribute=attr,
+                    calculated_len=enum_len, given_value=max_len,
+                )
+            )
+        # end if
+
+        kwargs['max_len'] = max_len
         return kwargs
     # end def
 
