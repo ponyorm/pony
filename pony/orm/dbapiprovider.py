@@ -432,18 +432,20 @@ class EnumConverter(Converter):
         # first let it convert it to the underlying class: IntEnum -> int
         self.real_type = normalize_enum_type(py_type)
         # now get the correct converter for that
-        self.converter_class = self._get_real_converter(py_type)
+        self.converter_class = self._get_real_converter(py_type, attr)
         # and make an instance of that
         self.converter = self.converter_class(provider=provider, py_type=self.real_type, attr=attr)
         super(EnumConverter, self).__init__(provider=provider, py_type=py_type, attr=attr)
     # end if
 
-    def _get_real_converter(self, py_type):
+    def _get_real_converter(self, py_type, attr=None):
         """
         Gets a converter for the underlying type.
         :return: Type[Converter]
         """
-
+        assert issubclass(py_type, Enum)  # the EnumProvider class should only be used for enums.
+        if len(py_type) == 0:
+            throw(TypeError, "Enum %r (of attribute %s) has no values." % (py_type, attr))
         # now search for a provider of that type
         for type_tuple, converter_cls in self.provider.converter_classes:
             if not isinstance(type_tuple, tuple):
@@ -463,11 +465,153 @@ class EnumConverter(Converter):
         # end for
 
         # didn't find a fitting converter
-        throw(TypeError, 'No database converter found for enum base type %s (of enum type %s)' % (real_type, py_type))
+        throw(TypeError, 'No database converter found for enum base type %s (of enum type %s)' % (self.real_type, py_type))
     # end def
 
     def init(self, kwargs):
+        # let's find some cool automatic values, if those aren't given
+        if self.converter_class == IntConverter:
+            kwargs = self._prepare_int_kwargs(attr=self.attr, py_type=self.py_type, kwargs=kwargs)
+        # end if
         self.converter.init(kwargs=kwargs)
+    # end def
+
+    @staticmethod
+    def _prepare_int_kwargs(attr, py_type, kwargs):
+        min_val = kwargs.pop('min', None)
+        max_val = kwargs.pop('max', None)
+        unsigned = kwargs.pop('unsigned', None)
+        size = kwargs.pop('size', None)
+
+        # get min and max values of the enum
+        enum_min = enum_max = None
+        for enum_value in py_type:
+            value = int(enum_value.value)
+            if enum_min is None or enum_min > value:
+                enum_min = value
+            # end if
+            if enum_max is None or value > enum_max:
+                enum_max = value
+            # end if
+        # end for
+        if enum_min is None or enum_max is None:
+            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_type, attr))
+        # end if
+
+        # check that the given min/max (if any) fits all enum values
+        if min_val is None:
+            min_val = enum_min
+        elif enum_min > min_val:
+            throw(
+                TypeError,
+                "Enum option {enum!r} with numeric value {calculated!r} would not fit within the given min={given_value!r} limit (attribute {attribute!s}).".format(
+                    enum=py_type(enum_min), calculated=enum_min, given_value=min_val, attribute=attr,
+                )
+            )
+        # end if
+        if max_val is None:
+            max_val = enum_max
+        elif max_val < enum_max:
+            throw(
+                TypeError,
+                "Enum option {enum!r} with numeric value {calculated!r} would not fit within the given max={given_value!r} limit (attribute {attribute!s}).".format(
+                    enum=py_type(enum_max), calculated=enum_max, given_value=max_val, attribute=attr,
+                )
+            )
+        # end if
+
+        # check that the given unsigned (if any) fits all enum values
+        if unsigned is None:
+            unsigned = not min_val < 0
+        elif unsigned and enum_min < 0:
+            throw(
+                TypeError,
+                "Enum option {enum!r} with negative numeric value {calculated!r} cannot fit an unsigned number (attribute {attribute!s}).".format(
+                    enum=py_type(enum_min), calculated=enum_min, given_value=max_val, attribute=attr,
+                )
+            )
+        elif unsigned and min_val < 0:
+            throw(
+                TypeError,
+                "Unsigned field can't have a negative min={given_value!r} value (attribute {attribute!s}).".format(
+                    given_value=min_val, attribute=attr,
+                )
+            )
+        # end if
+
+        # check that the given size (if any) fits all enum values
+        # first calculate required size
+        fitting_size = size_min = size_max = failing_value = 0
+        if unsigned:
+            for fitting_size in (8, 16, 24, 32, 64):
+                size_max = 2 ** fitting_size
+                if max_val < size_max:
+                    # size is the first size which does fit us
+                    break
+                # end if
+                failing_value = max_val
+            else:
+                # no break, nothing did fit
+                throw(
+                    TypeError,
+                    (
+                        "The maximum value {given_value!r} does not fit the biggest unsigned integer 64 bit type "
+                        "with it's maximum value of {size_max!r} (attribute {attribute!s})."
+                    ).format(
+                        given_value=max_val, attribute=attr, calculated=size_max,
+                    )
+                )
+            # end for
+        else:
+            # is signed
+            for fitting_size in (8, 16, 24, 32, 64):
+                size_max = 2 ** (fitting_size - 1)
+                size_min = 1 - size_max
+                if max_val > size_max:
+                    failing_value = max_val
+                elif min_val < size_min:
+                    failing_value = min_val
+                else:
+                    # size is the first size which does fit us
+                    break
+                # end if
+            else:
+                # no break, nothing did fit
+                throw(
+                    TypeError,
+                    (
+                        "Enum option {enum!r} with numeric value {calculated!r} cannot fit the biggest unsigned "
+                        "integer 64 bit type with it's maximum value of {size_max!r} (attribute {attribute!s})."
+                    ).format(
+                        enum=py_type(failing_value), calculated=failing_value,
+                        given_value=max_val, size_max=size_max, attribute=attr,
+                    )
+                )
+            # end for
+        # end if
+
+        if size is None:
+            size = fitting_size
+        elif size < fitting_size:
+            throw(
+                TypeError,
+                (
+                    "Enum option {enum!r} with numeric value {calculated!r} cannot fit the {singned_type!s} "
+                    "size {given_value!r} with range [{given_min!r} - {given_max!r}]. "
+                    "Needs to be at least of size {fitting_size}. (attribute {attribute!s})."
+                ).format(
+                    enum=py_type(failing_value), calculated=failing_value, attribute=attr,
+                    singned_type="unsigned" if unsigned else "signed", fitting_size=fitting_size,
+                    given_value=size,  given_min=size_min, given_max=size_max,
+                )
+            )
+        # end if
+
+        kwargs['min'] = min_val
+        kwargs['max'] = max_val
+        kwargs['unsigned'] = unsigned
+        kwargs['size'] = size
+        return kwargs
     # end def
 
     def validate(self, val, obj=None):
