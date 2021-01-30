@@ -625,9 +625,10 @@ class EnumConverter(Converter):
     def _prepare_str_kwargs(attr, py_type, kwargs):
         """
         Sane defaults for string based enums.
-        For an str enum it calculates the minimum and maximum length the enum's string values.
+        For an str enum it calculates the maximum length the enum's string values, and sets autostrip to False..
         """
         max_len = kwargs.pop('max_len', None)
+        autostrip = kwargs.pop('autostrip', None)
 
         # get min and max values of the enum
         enum_len = longest_text = None
@@ -660,13 +661,27 @@ class EnumConverter(Converter):
             )
         # end if
 
+        # check that the given max length (if any) fits all enum values
+        if autostrip is None:
+            autostrip = False
+        elif autostrip:
+            throw(
+                TypeError, "Autostrip is not allowed for string enums (attribute {attribute!s}).".format(attribute=attr)
+            )
+        # end if
+
         kwargs['max_len'] = max_len
+        kwargs['autostrip'] = autostrip
         return kwargs
     # end def
 
     def validate(self, val, obj=None):
         assert isinstance(val, self.py_type)
-        return self.converter.validate(val=val, obj=obj)
+        val = self.converter.validate(val=val, obj=obj)
+        if not isinstance(val, Enum):
+            raise TypeError('validator removed Enum class.')
+        # end if
+        return val
     # end def
 
     def py2sql(self, val):
