@@ -28,12 +28,6 @@ class TrafficLightState(str, Enum):
 # end class
 
 
-class Power(bool, Enum):
-    ON = True
-    OFF = False
-# end class
-
-
 class TestEnumCreation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -64,7 +58,6 @@ class TestEnumCreation(unittest.TestCase):
     def test__table_creation__int_enum(self):
         db = self.db
 
-        # noinspection PyUnusedLocal
         class FavoriteFruit(db.Entity):
             id = PrimaryKey(int, auto=True)
             user = Required(str)
@@ -77,22 +70,9 @@ class TestEnumCreation(unittest.TestCase):
     def test__table_creation__str_enum(self):
         db = self.db
 
-        # noinspection PyUnusedLocal
         class TrafficLight(db.Entity):
             id = PrimaryKey(int, auto=True)
             state = Required(TrafficLightState)
-        # end class
-
-        setup_database(db)
-    # end def
-
-    def test__table_creation__bool_enum(self):
-        db = self.db
-
-        # noinspection PyUnusedLocal
-        class LightSwitch(db.Entity):
-            id = PrimaryKey(int, auto=True)
-            button = Required(Power)
         # end class
 
         setup_database(db)
@@ -133,15 +113,9 @@ class TestEnumInsertion(unittest.TestCase):
                 state = Required(TrafficLightState)
             # end class
 
-            class LightSwitch(db.Entity):
-                id = PrimaryKey(int, auto=True)
-                button = Required(Power)
-            # end class
-
             # as those are not global, keep them around
             self.FavoriteFruit = FavoriteFruit
             self.TrafficLight = TrafficLight
-            self.LightSwitch = LightSwitch
         # end with
         setup_database(db)
     # end def
@@ -156,7 +130,6 @@ class TestEnumInsertion(unittest.TestCase):
         db = self.db
         self.assertEqual(self.FavoriteFruit, db.FavoriteFruit)
         self.assertEqual(self.TrafficLight, db.TrafficLight)
-        self.assertEqual(self.LightSwitch, db.LightSwitch)
     # end def
 
     def test__insert__int_enum(self):
@@ -175,14 +148,6 @@ class TestEnumInsertion(unittest.TestCase):
         # end with
     # end def
 
-    def test__insert__bool_enum(self):
-        LightSwitch = self.LightSwitch
-        with db_session:
-            LightSwitch(button=Power.ON)
-            LightSwitch(button=Power.OFF)
-        # end with
-    # end def
-
     def test__select__int_enum(self):
         FavoriteFruit = self.FavoriteFruit
         with db_session:
@@ -196,14 +161,6 @@ class TestEnumInsertion(unittest.TestCase):
         with db_session:
             select(tl for tl in TrafficLight if tl.state == TrafficLightState.GREEN)
             select(tl for tl in TrafficLight if tl.state != TrafficLightState.GREEN)
-        # end with
-    # end def
-
-    def test__select__bool_enum(self):
-        LightSwitch = self.LightSwitch
-        with db_session:
-            select(tl for tl in LightSwitch if tl.state == Power.ON)
-            select(tl for tl in LightSwitch if tl.state != Power.OFF)
         # end with
     # end def
 # end def
@@ -226,15 +183,9 @@ class TestEnumLoad(unittest.TestCase):
             state = Required(TrafficLightState)
         # end class
 
-        class LightSwitch(db.Entity):
-            id = PrimaryKey(int, auto=True)
-            button = Required(Power)
-        # end class
-
         # as those are not global, keep them around
         self.FavoriteFruit = FavoriteFruit
         self.TrafficLight = TrafficLight
-        self.LightSwitch = LightSwitch
         setup_database(db)
 
         with db_session:
@@ -243,9 +194,6 @@ class TestEnumLoad(unittest.TestCase):
 
             self.tl1 = TrafficLight(state=TrafficLightState.RED)
             self.tl2 = TrafficLight(state=TrafficLightState.GREEN)
-
-            self.ls1 = LightSwitch(button=Power.ON)
-            self.ls2 = LightSwitch(button=Power.OFF)
         # end with
     # end def
 
@@ -314,35 +262,6 @@ class TestEnumLoad(unittest.TestCase):
         self.assertIsInstance(tl2.state, TrafficLightState, msg="Loaded one must be TrafficLightState Enum")
     # end def
 
-    def test__load__bool_enum(self):
-        LightSwitch = self.LightSwitch
-        with db_session:
-            ls1 = LightSwitch.get(button=Power.ON)
-            ls2 = LightSwitch.get(button=Power.OFF)
-            ls0 = LightSwitch.get(button=None)
-        # end with
-
-        self.assertIsNone(ls0, msg="Requesting a value not in the database must return None")
-
-        self.assertEqual(self.ls1.id, ls1.id, msg="ID must be the same as the one inserted to the database")
-        self.assertEqual(self.ls2.id, ls2.id, msg="ID must be the same as the one inserted to the database")
-
-        self.assertEqual(self.ls1.button, ls1.button, msg="State (enum) must be the same as the one inserted to the database")
-        self.assertEqual(self.ls2.button, ls2.button, msg="State (enum) must be the same as the one inserted to the database")
-
-        self.assertIsInstance(self.ls1.button, Enum, msg="Original must be Enum")
-        self.assertIsInstance(self.ls2.button, Enum, msg="Original must be Enum")
-
-        self.assertIsInstance(self.ls1.button, Power, msg="Original must be Power Enum")
-        self.assertIsInstance(self.ls2.button, Power, msg="Original must be Power Enum")
-
-        self.assertIsInstance(ls1.button, Enum, msg="Loaded one must be Enum")
-        self.assertIsInstance(ls2.button, Enum, msg="Loaded one must be Enum")
-
-        self.assertIsInstance(ls1.button, Power, msg="Loaded one must be Power Enum")
-        self.assertIsInstance(ls2.button, Power, msg="Loaded one must be Power Enum")
-    # end def
-
     def test__to_json__int_enum(self):
         self.assertEqual(Fruits.MANGO.value, +42, msg="Just to be sure the number of the enum is correct; needed below")
         self.assertEqual(Fruits.BANANA.value, -7, msg="Just to be sure the number of the enum is correct; needed below")
@@ -355,31 +274,14 @@ class TestEnumLoad(unittest.TestCase):
     # end def
 
     def test__to_json__str_enum(self):
-        self.assertEqual(
-            TrafficLightState.RED.value, '#f00',
-            msg="Just to be sure the value of the enum is correct; needed below"
-        )
-        self.assertEqual(
-            TrafficLightState.GREEN.value, '#00ff00',
-            msg="Just to be sure the value of the enum is correct; needed below"
-        )
+        self.assertEqual(TrafficLightState.RED.value, '#f00', msg="Just to be sure the number of the enum is correct; needed below")
+        self.assertEqual(TrafficLightState.GREEN.value, '#00ff00', msg="Just to be sure the number of the enum is correct; needed below")
 
         dict1 = self.tl1.to_dict()
         dict2 = self.tl2.to_dict()
 
         self.assertDictEqual(dict1, {"id": 1, "state": '#f00'})
         self.assertDictEqual(dict2, {"id": 2, "state": '#00ff00'})
-    # end def
-
-    def test__to_json__bool_enum(self):
-        self.assertEqual(Power.ON.value, True, msg="Just to be sure the value of the enum is correct; needed below")
-        self.assertEqual(Power.OFF.value, False, msg="Just to be sure the value of the enum is correct; needed below")
-
-        dict1 = self.ls1.to_dict()
-        dict2 = self.ls2.to_dict()
-
-        self.assertDictEqual(dict1, {"id": 1, "button": True})
-        self.assertDictEqual(dict2, {"id": 2, "button": False})
     # end def
 # end class
 
