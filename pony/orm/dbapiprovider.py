@@ -572,8 +572,9 @@ class EnumConverter(Converter):
         else:
             # is signed
             for fitting_size in (8, 16, 24, 32, 64):
-                size_max = 2 ** (fitting_size - 1)
-                size_min = 1 - size_max
+                size_max = (2 ** (fitting_size - 1))
+                size_min = - size_max
+                size_max -= 1
                 if max_val > size_max:
                     failing_value = max_val
                 elif min_val < size_min:
