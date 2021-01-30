@@ -34,6 +34,10 @@ class LightState(str, Enum):
 
 
 class TestEnumCreation(unittest.TestCase):
+    """
+    Simple tests for table creation.
+    Creating a table, but not yet writing or reading data.
+    """
     @classmethod
     def setUpClass(cls):
         # setup_database(db)
@@ -61,6 +65,9 @@ class TestEnumCreation(unittest.TestCase):
     # end def
 
     def test__table_creation__int_enum(self):
+        """
+        Table creation for an integer Enum
+        """
         db = self.db
 
         class FavoriteFruit(db.Entity):
@@ -73,6 +80,9 @@ class TestEnumCreation(unittest.TestCase):
     # end def
 
     def test__table_creation__str_enum(self):
+        """
+        Table creation for a string Enum
+        """
         db = self.db
 
         class TrafficLight(db.Entity):
@@ -86,6 +96,10 @@ class TestEnumCreation(unittest.TestCase):
 
 
 class TestEnumInsertion(unittest.TestCase):
+    """
+    More advanced tests already writing to the database,
+    but not yet reading.
+    """
     @classmethod
     def setUpClass(cls):
         # setup_database(db)
@@ -138,6 +152,9 @@ class TestEnumInsertion(unittest.TestCase):
     # end def
 
     def test__insert__int_enum(self):
+        """
+        Inserting integer Enums into the database
+        """
         FavoriteFruit = self.FavoriteFruit
         with db_session:
             FavoriteFruit(user="Me", fruit=Fruits.MANGO)
@@ -146,6 +163,9 @@ class TestEnumInsertion(unittest.TestCase):
     # end def
 
     def test__insert__str_enum(self):
+        """
+        Inserting string Enums into the database
+        """
         TrafficLight = self.TrafficLight
         with db_session:
             TrafficLight(state=LightState.YELLOW)
@@ -154,6 +174,9 @@ class TestEnumInsertion(unittest.TestCase):
     # end def
 
     def test__select__int_enum(self):
+        """
+        Integer Enums in an select statement
+        """
         FavoriteFruit = self.FavoriteFruit
         with db_session:
             select(ff for ff in FavoriteFruit if ff.fruit == Fruits.PEAR)
@@ -162,6 +185,9 @@ class TestEnumInsertion(unittest.TestCase):
     # end def
 
     def test__select__str_enum(self):
+        """
+        String Enums in an select statement
+        """
         TrafficLight = self.TrafficLight
         with db_session:
             select(tl for tl in TrafficLight if tl.state == LightState.GREEN)
@@ -207,6 +233,9 @@ class TestEnumLoad(unittest.TestCase):
     # end def
 
     def test__load__int_enum(self):
+        """
+        Retrieving integer Enums from the database
+        """
         FavoriteFruit = self.FavoriteFruit
         with db_session:
             ff1 = FavoriteFruit.get(user="Me")
@@ -239,6 +268,9 @@ class TestEnumLoad(unittest.TestCase):
     # end def
 
     def test__load__str_enum(self):
+        """
+        Retrieving string Enums from the database
+        """
         TrafficLight = self.TrafficLight
         with db_session:
             tl1 = TrafficLight.get(state=LightState.RED)
@@ -268,6 +300,9 @@ class TestEnumLoad(unittest.TestCase):
     # end def
 
     def test__to_json__int_enum(self):
+        """
+        to_json() of integer Enums
+        """
         self.assertEqual(Fruits.MANGO.value, +42, msg="Just to be sure the number of the enum is correct; needed below")
         self.assertEqual(Fruits.BANANA.value, -7, msg="Just to be sure the number of the enum is correct; needed below")
 
@@ -279,6 +314,9 @@ class TestEnumLoad(unittest.TestCase):
     # end def
 
     def test__to_json__str_enum(self):
+        """
+        to_json() of string Enums
+        """
         self.assertEqual(LightState.RED.value, '#f00', msg="Just to be sure the number of the enum is correct; needed below")
         self.assertEqual(LightState.GREEN.value, '#00ff00', msg="Just to be sure the number of the enum is correct; needed below")
 
