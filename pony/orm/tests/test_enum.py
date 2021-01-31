@@ -522,7 +522,7 @@ class TestEnumDefaults(unittest.TestCase):
         input_kwargs = {}
         expected_kwargs = {"min": -7, "max": 4458, "unsigned": False, "size": 16}
 
-        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, 'the_best_field')
+        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
 
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
     # end def
@@ -548,7 +548,7 @@ class TestEnumDefaults(unittest.TestCase):
         input_kwargs = {}
         expected_kwargs = {"max_len": 7, "autostrip": False}
 
-        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, 'the_best_field')
+        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, attr='the_best_field')
 
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
     # end def
@@ -561,7 +561,7 @@ class TestEnumDefaults(unittest.TestCase):
         input_kwargs = {"max_len": 123}
         expected_kwargs = {"max_len": 123, "autostrip": False}
 
-        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, 'the_best_field')
+        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, attr='the_best_field')
 
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
     # end def
@@ -574,7 +574,7 @@ class TestEnumDefaults(unittest.TestCase):
         input_kwargs = {"autostrip": False}
         expected_kwargs = {"max_len": 7, "autostrip": False}
 
-        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, 'the_best_field')
+        output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, attr='the_best_field')
 
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
     # end def
