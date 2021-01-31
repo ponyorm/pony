@@ -184,6 +184,25 @@ class TestEnumCreation(unittest.TestCase):
 
         setup_database(db)
     # end def
+
+    def test___prepare_str_kwargs__empty_enum_causes_error(self):
+        """
+        Empty enums are not allowed
+        """
+        db = self.db
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            # noinspection PyUnusedLocal
+            class BoomEnum(db.Entity):
+                id = PrimaryKey(int, auto=True)
+                oh_no = Required(Emptiness)
+            # end class
+
+            setup_database(db)
+        # end with
+        expected_msg = "Enum <enum 'Emptiness'> has no values defined (attribute BoomEnum.oh_no)."
+        self.assertEquals(expected_msg, str(e_context.exception))
+    # end def
 # end class
 
 

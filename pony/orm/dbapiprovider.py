@@ -445,7 +445,7 @@ class EnumConverter(Converter):
         """
         assert issubclass(py_type, Enum)  # the EnumProvider class should only be used for enums.
         if len(py_type) == 0:
-            throw(TypeError, "Enum %r has no values (attribute %s)." % (py_type, attr))
+            throw(TypeError, "Enum %r has no values defined (attribute %s)." % (py_type, attr))
         # now search for a provider of that type
         for type_tuple, converter_cls in self.provider.converter_classes:
             if not isinstance(type_tuple, tuple):
