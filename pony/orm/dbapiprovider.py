@@ -588,7 +588,7 @@ class EnumConverter(Converter):
                         TypeError,
                         (
                             "The maximum value {given_value!r} does not fit the biggest unsigned integer 64 bit type "
-                            "with it's maximum value of {size_max!r} (attribute {attribute!s})."
+                            "with it's maximum value of {calculated!r} (attribute {attribute!s})."
                         ).format(
                             given_value=max_val, attribute=attr, calculated=size_max,
                         )
