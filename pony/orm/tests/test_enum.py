@@ -121,6 +121,29 @@ class OfStrangeType(Foo):
 # end class
 
 
+class ProofThatICanCountToTen(int, Enum):
+    ZERO = 0
+    ONE = 1
+    TWO = 2
+    THREE = 3
+    FOUR = 4
+    FIVE = 5
+    SIX = 6
+    SEVEN = 7
+    EIGHT = auto()
+    NINE = auto()
+    TEN = auto()
+# end class
+
+
+class TheDatabaseBreaker(IntEnum):
+    GOOD_VALUE = 0
+    ANOTHER_GOOD_VALUE = 42
+    THE_BEST_VALUE = 4458
+    THE_NUMBER_THAT_BREAKS_SOME_DATABASES = 18446744073709551616
+# end class
+
+
 class TestEnumCreation(unittest.TestCase):
     """
     Simple tests for table creation.
@@ -658,7 +681,35 @@ class TestEnumDefaults(unittest.TestCase):
         with self.assertRaises(TypeError, msg="should fail") as e_context:
             EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
         # end with
-        expected_msg = "Enum option <Fruits.CUCUMBER: 4458> with numeric value 4458 cannot fit the signed size 8 with range [-32768 - 32767]. Needs to be at least of size 16. (attribute the_best_field)."
+        expected_msg = "Enum option <Fruits.CUCUMBER: 4458> with numeric value 4458 cannot fit the signed size 8 with range [-32768 - 32767]. Needs to be at least of size 16 (attribute the_best_field)."
+        self.assertEquals(expected_msg, str(e_context.exception))
+    # end def
+
+    def test___prepare_int_kwargs__negative_enum_unsigned_error(self):
+        """
+        needing a bigger size should cause an exception
+        """
+        input_enum = Fruits
+        input_kwargs = {"unsigned": True}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+        # end with
+        expected_msg = "Enum option <Fruits.BANANA: -7> with negative numeric value -7 cannot fit an unsigned number (attribute the_best_field)."
+        self.assertEquals(expected_msg, str(e_context.exception))
+    # end def
+
+    def test___prepare_int_kwargs__negative_min_unsigned_error(self):
+        """
+        needing a bigger size should cause an exception
+        """
+        input_enum = ProofThatICanCountToTen
+        input_kwargs = {"unsigned": True, "min": -1}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+        # end with
+        expected_msg = "Unsigned field can't have a negative min=-1 value (attribute the_best_field)."
         self.assertEquals(expected_msg, str(e_context.exception))
     # end def
 
@@ -671,6 +722,20 @@ class TestEnumDefaults(unittest.TestCase):
 
         with self.assertRaises(TypeError, msg="should fail") as e_context:
             EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+        # end with
+        expected_msg = "Enum <enum 'Emptiness'> has no values defined (attribute the_best_field)."
+        self.assertEquals(expected_msg, str(e_context.exception))
+    # end def
+
+    def test___prepare_int_kwargs__unsigned64bit_not_supported_error(self):
+        """
+        Empty enums are not allowed
+        """
+        input_enum = TheDatabaseBreaker
+        input_kwargs = {}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=False, attr='the_best_field')
         # end with
         expected_msg = "Enum <enum 'Emptiness'> has no values defined (attribute the_best_field)."
         self.assertEquals(expected_msg, str(e_context.exception))

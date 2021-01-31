@@ -583,16 +583,30 @@ class EnumConverter(Converter):
                 # end if
                 if max_val <= size_max:
                     unsigned = False
+                elif max_val == enum_max:
+                    # we did fail, but because of a enum max, not a user set max
+                    throw(
+                        TypeError,
+                        (
+                            "Enum option {enum!r} with the numeric value {given_value!r} "
+                            "does not fit the biggest {signed} integer 64 bit type "
+                            "with it's maximum value of {calculated!r} (attribute {attribute!s})."
+                        ).format(
+                            enum=py_enum_type(max_val), given_value=max_val,  calculated=size_max, attribute=attr,
+                            signed="unsigned" if unsigned else "signed",
+                        )
+                    )
                 else:
                     throw(
                         TypeError,
                         (
-                            "The maximum value {given_value!r} does not fit the biggest unsigned integer 64 bit type "
+                            "The set maximum value max={given_value!r} does not fit the biggest unsigned integer 64 bit type "
                             "with it's maximum value of {calculated!r} (attribute {attribute!s})."
                         ).format(
-                            given_value=max_val, attribute=attr, calculated=size_max,
+                            enum=py_enum_type(size_max), calculated=size_max, given_value=max_val, attribute=attr,
                         )
                     )
+                # end if
             # end for
         # end if
         if not unsigned:
@@ -632,7 +646,7 @@ class EnumConverter(Converter):
                 (
                     "Enum option {enum!r} with numeric value {calculated!r} cannot fit the {singned_type!s} "
                     "size {given_value!r} with range [{given_min!r} - {given_max!r}]. "
-                    "Needs to be at least of size {fitting_size}. (attribute {attribute!s})."
+                    "Needs to be at least of size {fitting_size} (attribute {attribute!s})."
                 ).format(
                     enum=py_enum_type(failing_value), calculated=failing_value, attribute=attr,
                     singned_type="unsigned" if unsigned else "signed", fitting_size=fitting_size,
