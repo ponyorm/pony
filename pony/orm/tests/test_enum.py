@@ -529,7 +529,7 @@ class TestEnumDefaults(unittest.TestCase):
 
     def test___prepare_int_kwargs__min_smaller_kept(self):
         """
-        Keep smaller min -> extrem one wins
+        Keep smaller min -> extreme one wins
         """
         input_enum = Fruits
         input_kwargs = {"min": -42}
@@ -551,6 +551,32 @@ class TestEnumDefaults(unittest.TestCase):
             EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
         # end with
         self.assertEquals(str(e_context.exception), "Enum option <Fruits.BANANA: -7> with numeric value -7 would not fit within the given min=-1 limit (attribute the_best_field).")
+    # end def
+
+    def test___prepare_int_kwargs__max_bigger_kept(self):
+        """
+        Keep bigger max -> extreme one wins
+        """
+        input_enum = Fruits
+        input_kwargs = {"max": 4459}
+        expected_kwargs = {"min": -7, "max": 4459, "unsigned": False, "size": 16}
+
+        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+
+        self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_int_kwargs__max_bigger_error(self):
+        """
+        needing a bigger max should cause an exception
+        """
+        input_enum = Fruits
+        input_kwargs = {"max": 42}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+        # end with
+        self.assertEquals(str(e_context.exception), "Enum option <Fruits.CUCUMBER: 4458> with numeric value 4458 would not fit within the given max=42 limit (attribute the_best_field).")
     # end def
 
     def test___prepare_str_kwargs__default(self):
