@@ -527,17 +527,30 @@ class TestEnumDefaults(unittest.TestCase):
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
     # end def
 
-    def test___prepare_int_kwargs__default(self):
+    def test___prepare_int_kwargs__min_smaller_kept(self):
         """
-        Default sane parameters
+        Keep smaller min -> extrem one wins
         """
         input_enum = Fruits
-        input_kwargs = {}
-        expected_kwargs = {"min": -7, "max": 4458, "unsigned": False, "size": 16}
+        input_kwargs = {"min": -42}
+        expected_kwargs = {"min": -42, "max": 4458, "unsigned": False, "size": 16}
 
-        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, 'the_best_field')
+        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
 
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_int_kwargs__min_bigger_error(self):
+        """
+        needing a smaller min should cause an exception
+        """
+        input_enum = Fruits
+        input_kwargs = {"min": -1}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+        # end with
+        self.assertEquals(str(e_context.exception), "Enum option <Fruits.BANANA: -7> with numeric value -7 would not fit within the given min=-1 limit (attribute the_best_field).")
     # end def
 
     def test___prepare_str_kwargs__default(self):

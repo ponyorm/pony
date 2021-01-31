@@ -520,7 +520,7 @@ class EnumConverter(Converter):
         # check that the given min/max (if any) fits all enum values
         if min_val is None:
             min_val = enum_min
-        elif enum_min > min_val:
+        elif enum_min < min_val:
             throw(
                 TypeError,
                 "Enum option {enum!r} with numeric value {calculated!r} would not fit within the given min={given_value!r} limit (attribute {attribute!s}).".format(
