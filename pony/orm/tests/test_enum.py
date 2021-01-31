@@ -105,6 +105,11 @@ class BinaryStuff(IntFlag):
 # end class
 
 
+class Emptiness(int, Enum):
+    pass
+# end class
+
+
 class TestEnumCreation(unittest.TestCase):
     """
     Simple tests for table creation.
@@ -550,7 +555,8 @@ class TestEnumDefaults(unittest.TestCase):
         with self.assertRaises(TypeError, msg="should fail") as e_context:
             EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
         # end with
-        self.assertEquals(str(e_context.exception), "Enum option <Fruits.BANANA: -7> with numeric value -7 would not fit within the given min=-1 limit (attribute the_best_field).")
+        expected_msg = "Enum option <Fruits.BANANA: -7> with numeric value -7 would not fit within the given min=-1 limit (attribute the_best_field)."
+        self.assertEquals(expected_msg, str(e_context.exception))
     # end def
 
     def test___prepare_int_kwargs__max_bigger_kept(self):
@@ -566,7 +572,7 @@ class TestEnumDefaults(unittest.TestCase):
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
     # end def
 
-    def test___prepare_int_kwargs__max_bigger_error(self):
+    def test___prepare_int_kwargs__max_smaller_error(self):
         """
         needing a bigger max should cause an exception
         """
@@ -576,7 +582,49 @@ class TestEnumDefaults(unittest.TestCase):
         with self.assertRaises(TypeError, msg="should fail") as e_context:
             EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
         # end with
-        self.assertEquals(str(e_context.exception), "Enum option <Fruits.CUCUMBER: 4458> with numeric value 4458 would not fit within the given max=42 limit (attribute the_best_field).")
+        expected_msg = "Enum option <Fruits.CUCUMBER: 4458> with numeric value 4458 would not fit within the given max=42 limit (attribute the_best_field)."
+        self.assertEquals(expected_msg, str(e_context.exception))
+    # end def
+
+    def test___prepare_int_kwargs__size_bigger_kept(self):
+        """
+        Keep bigger size -> extreme one wins
+        """
+        input_enum = Fruits
+        input_kwargs = {"size": 24}
+        expected_kwargs = {"min": -7, "max": 4458, "unsigned": False, "size": 24}
+
+        output_kwargs = EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+
+        self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_int_kwargs__size_smaller_error(self):
+        """
+        needing a bigger size should cause an exception
+        """
+        input_enum = Fruits
+        input_kwargs = {"size": 8}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+        # end with
+        expected_msg = "Enum option <Fruits.CUCUMBER: 4458> with numeric value 4458 cannot fit the signed size 8 with range [-32768 - 32767]. Needs to be at least of size 16. (attribute the_best_field)."
+        self.assertEquals(expected_msg, str(e_context.exception))
+    # end def
+
+    def test___prepare_int_kwargs__empty_enum_causes_error(self):
+        """
+        Empty enums are not allowed
+        """
+        input_enum = Emptiness
+        input_kwargs = {}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
+        # end with
+        expected_msg = "Enum <enum 'Emptiness'> (of attribute the_best_field) has no values defined."
+        self.assertEquals(expected_msg, str(e_context.exception))
     # end def
 
     def test___prepare_str_kwargs__default(self):
