@@ -98,15 +98,26 @@ class BinaryStuff(IntFlag):
     ONE_QUINTILLION_ONE_HUNDRED_AND_FIFTY_TWO_QUADRILLION_NINE_HUNDRED_AND_TWENTY_ONE_TRILLION_FIVE_HUNDRED_AND_FOUR_BILLION_SIX_HUNDRED_AND_SIX_MILLION_EIGHT_HUNDRED_AND_FORTY_SIX_THOUSAND_NINE_HUNDRED_AND_SEVENTY_SIX = auto()
     TWO_QUINTILLION_THREE_HUNDRED_AND_FIVE_QUADRILLION_EIGHT_HUNDRED_AND_FORTY_THREE_TRILLION_NINE_BILLION_TWO_HUNDRED_AND_THIRTEEN_MILLION_SIX_HUNDRED_AND_NINETY_THREE_THOUSAND_NINE_HUNDRED_AND_FIFTY_TWO = auto()
     FOUR_QUINTILLION_SIX_HUNDRED_AND_ELEVEN_QUADRILLION_SIX_HUNDRED_AND_EIGHTY_SIX_TRILLION_EIGHTEEN_BILLION_FOUR_HUNDRED_AND_TWENTY_SEVEN_MILLION_THREE_HUNDRED_AND_EIGHTY_SEVEN_THOUSAND_NINE_HUNDRED_AND_FOUR = auto()
-
-    ZERO = 0
     # The next one would fail for databases which can't do unsigned 64-bit/8-byte.
     # NINE_QUINTILLION_TWO_HUNDRED_AND_TWENTY_THREE_QUADRILLION_THREE_HUNDRED_AND_SEVENTY_TWO_TRILLION_THIRTY_SIX_BILLION_EIGHT_HUNDRED_AND_FIFTY_FOUR_MILLION_SEVEN_HUNDRED_AND_SEVENTY_FIVE_THOUSAND_EIGHT_HUNDRED_AND_EIGHT = auto()
+
+    ZERO = 0
 # end class
 
 
 class Emptiness(int, Enum):
     pass
+# end class
+
+
+class Foo(object):
+    pass
+# end class
+
+
+class OfStrangeType(Foo):
+    A = Foo()
+    B = Foo()
 # end class
 
 
@@ -185,7 +196,7 @@ class TestEnumCreation(unittest.TestCase):
         setup_database(db)
     # end def
 
-    def test___prepare_str_kwargs__empty_enum_causes_error(self):
+    def test__table_creation__empty_enum_causes_error(self):
         """
         Empty enums are not allowed
         """
@@ -201,6 +212,25 @@ class TestEnumCreation(unittest.TestCase):
             setup_database(db)
         # end with
         expected_msg = "Enum <enum 'Emptiness'> has no values defined (attribute BoomEnum.oh_no)."
+        self.assertEquals(expected_msg, str(e_context.exception))
+    # end def
+
+    def test__table_creation__non_base_type_enum_causes_error(self):
+        """
+        Not a valid base type
+        """
+        db = self.db
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            # noinspection PyUnusedLocal
+            class BoomEnumTheComic(db.Entity):
+                id = PrimaryKey(int, auto=True)
+                uh_oh = Required(OfStrangeType)
+            # end class
+
+            setup_database(db)
+        # end with
+        expected_msg = "No database converter found for type <class 'test_enum.OfStrangeType'>"
         self.assertEquals(expected_msg, str(e_context.exception))
     # end def
 # end class
