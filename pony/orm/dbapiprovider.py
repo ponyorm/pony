@@ -445,7 +445,7 @@ class EnumConverter(Converter):
         """
         assert issubclass(py_type, Enum)  # the EnumProvider class should only be used for enums.
         if len(py_type) == 0:
-            throw(TypeError, "Enum %r (of attribute %s) has no values." % (py_type, attr))
+            throw(TypeError, "Enum %r has no values (attribute %s)." % (py_type, attr))
         # now search for a provider of that type
         for type_tuple, converter_cls in self.provider.converter_classes:
             if not isinstance(type_tuple, tuple):
@@ -514,7 +514,7 @@ class EnumConverter(Converter):
             # end if
         # end for
         if enum_min is None or enum_max is None:
-            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_enum_type, attr))
+            throw(TypeError, "Enum %r has no values defined (attribute %s)." % (py_enum_type, attr))
         # end if
 
         # check that the given min/max (if any) fits all enum values
@@ -614,7 +614,7 @@ class EnumConverter(Converter):
                 throw(
                     TypeError,
                     (
-                        "Enum option {enum!r} with numeric value {calculated!r} cannot fit the biggest unsigned "
+                        "Enum option {enum!r} with numeric value {calculated!r} cannot fit the biggest signed "
                         "integer 64 bit type with it's maximum value of {size_max!r} (attribute {attribute!s})."
                     ).format(
                         enum=py_enum_type(failing_value), calculated=failing_value,
@@ -669,7 +669,7 @@ class EnumConverter(Converter):
             # end if
         # end for
         if enum_len is None:
-            throw(TypeError, "Enum %r (of attribute %s) has no values defined." % (py_enum_type, attr))
+            throw(TypeError, "Enum %r has no values defined (attribute %s)." % (py_enum_type, attr))
         # end if
 
         # check that the given max length (if any) fits all enum values

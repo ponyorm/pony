@@ -623,7 +623,7 @@ class TestEnumDefaults(unittest.TestCase):
         with self.assertRaises(TypeError, msg="should fail") as e_context:
             EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=True, attr='the_best_field')
         # end with
-        expected_msg = "Enum <enum 'Emptiness'> (of attribute the_best_field) has no values defined."
+        expected_msg = "Enum <enum 'Emptiness'> has no values defined (attribute the_best_field)."
         self.assertEquals(expected_msg, str(e_context.exception))
     # end def
 
@@ -664,6 +664,20 @@ class TestEnumDefaults(unittest.TestCase):
         output_kwargs = EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, attr='the_best_field')
 
         self.assertDictEqual(output_kwargs, expected_kwargs, msg="Should result in the expected kwargs.")
+    # end def
+
+    def test___prepare_str_kwargs__empty_enum_causes_error(self):
+        """
+        Empty enums are not allowed
+        """
+        input_enum = Emptiness
+        input_kwargs = {}
+
+        with self.assertRaises(TypeError, msg="should fail") as e_context:
+            EnumConverter._prepare_str_kwargs(input_enum, input_kwargs, attr='the_best_field')
+        # end with
+        expected_msg = "Enum <enum 'Emptiness'> has no values defined (attribute the_best_field)."
+        self.assertEquals(expected_msg, str(e_context.exception))
     # end def
 # end class
 
