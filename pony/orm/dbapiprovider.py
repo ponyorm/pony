@@ -539,10 +539,10 @@ class IntConverter(Converter):
                 'Value type for attribute %s must be int. Got string %r' % (converter.attr, val))
         else: throw(TypeError, 'Value type for attribute %s must be int. Got: %r' % (converter.attr, type(val)))
 
-        if converter.min_val and val < converter.min_val:
+        if converter.min_val is not None and val < converter.min_val:
             throw(ValueError, 'Value %r of attr %s is less than the minimum allowed value %r'
                              % (val, converter.attr, converter.min_val))
-        if converter.max_val and val > converter.max_val:
+        if converter.max_val is not None and val > converter.max_val:
             throw(ValueError, 'Value %r of attr %s is greater than the maximum allowed value %r'
                              % (val, converter.attr, converter.max_val))
         return val
