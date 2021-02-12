@@ -737,7 +737,7 @@ class TestEnumDefaults(unittest.TestCase):
         with self.assertRaises(TypeError, msg="should fail") as e_context:
             EnumConverter._prepare_int_kwargs(input_enum, input_kwargs, uint64_support=False, attr='the_best_field')
         # end with
-        expected_msg = "Enum <enum 'Emptiness'> has no values defined (attribute the_best_field)."
+        expected_msg = "Enum option <TheDatabaseBreaker.THE_NUMBER_THAT_BREAKS_SOME_DATABASES: 18446744073709551616> with the numeric value 18446744073709551616 does not fit the biggest unsigned integer 64 bit type with it's maximum value of 9223372036854775807 (attribute the_best_field)."
         self.assertEquals(expected_msg, str(e_context.exception))
     # end def
 
