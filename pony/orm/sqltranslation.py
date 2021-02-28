@@ -75,8 +75,12 @@ class Local(localbase):
     @property
     def translator(self):
         return local.translators[-1]
+    
+
+translator_counter = itertools.count(1)
 
 local = Local()
+
 
 class SQLTranslator(ASTTranslator):
     dialect = None
@@ -115,7 +119,7 @@ class SQLTranslator(ASTTranslator):
                 monad = EntityMonad(t.item_type)
             else: throw(NotImplementedError)  # pragma: no cover
         elif tt is QueryType:
-            prev_translator = deepcopy(t.translator)
+            prev_translator = t.translator.deepcopy()
             prev_translator.parent = translator
             prev_translator.injected = True
             if translator.database is not prev_translator.database:
@@ -216,7 +220,17 @@ class SQLTranslator(ASTTranslator):
                     else: throw(TranslationError, 'Too complex aggregation, expressions cannot be combined: %s' % ast2src(node))
             return monad
 
+    def __repr__(translator):
+        return '%s<%d>' % (translator.__class__.__name__, translator.id)
+
+    def deepcopy(translator):
+        result = deepcopy(translator)
+        result.id = next(translator_counter)
+        result.copied_from = translator
+        return result
+
     def __init__(translator, tree, parent_translator, code_key=None, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
+        translator.id = next(translator_counter)
         local.translators.append(translator)
         try:
             translator.init(tree, parent_translator, code_key, filter_num, extractors, vars, vartypes, left_join, optimize)
@@ -332,7 +346,7 @@ class SQLTranslator(ASTTranslator):
                     tableref.make_join()
                     translator.namespace[name] = node.monad = ObjectIterMonad(tableref, entity)
                 elif isinstance(iterable, QueryType):
-                    prev_translator = deepcopy(iterable.translator)
+                    prev_translator = iterable.translator.deepcopy()
                     prev_limit = iterable.limit
                     prev_offset = iterable.offset
                     database = prev_translator.database
@@ -812,12 +826,12 @@ class SQLTranslator(ASTTranslator):
             return translator.tableref.used_attrs
         return ()
     def without_order(translator):
-        translator = deepcopy(translator)
+        translator = translator.deepcopy()
         translator.order = []
         return translator
     def order_by_numbers(translator, numbers):
         if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
-        translator = deepcopy(translator)
+        translator = translator.deepcopy()
         order = translator.order = translator.order[:]  # only order will be changed
         expr_monads = translator.expr_monads
         new_order = []
@@ -839,7 +853,7 @@ class SQLTranslator(ASTTranslator):
         if not isinstance(entity, EntityMeta): throw(NotImplementedError,
             'Ordering by attributes is limited to queries which return simple list of objects. '
             'Try use other forms of ordering (by tuple element numbers or by full-blown lambda expr).')
-        translator = deepcopy(translator)
+        translator = translator.deepcopy()
         order = translator.order = translator.order[:]  # only order will be changed
         alias = translator.alias
         new_order = []
@@ -860,7 +874,7 @@ class SQLTranslator(ASTTranslator):
         order[:0] = new_order
         return translator
     def apply_kwfilters(translator, filterattrs, original_names=False):
-        translator = deepcopy(translator)
+        translator = translator.deepcopy()
         with translator:
             if original_names:
                 object_monad = translator.tree.quals[0].iter.monad
@@ -881,7 +895,7 @@ class SQLTranslator(ASTTranslator):
             for m in monads: translator.conditions.extend(m.getsql())
             return translator
     def apply_lambda(translator, func_id, filter_num, order_by, func_ast, argnames, original_names, extractors, vars, vartypes):
-        translator = deepcopy(translator)
+        translator = translator.deepcopy()
         func_ast = copy_ast(func_ast)  # func_ast = deepcopy(func_ast)
         translator.code_key = func_id
         translator.filter_num = filter_num
