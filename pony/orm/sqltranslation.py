@@ -2563,7 +2563,7 @@ class HybridFuncMonad(Monad):
         try:
             func_ast, external_names, cells = decompile(func)
         except DecompileError:
-            throw(TranslationError, '%s(...) is too complex to decompile' % ast2src(monad.node))
+            throw(TranslationError, '%s(...) is too complex to decompile' % monad.func_name)
 
         func_ast, func_extractors = create_extractors(
             func_id, func_ast, func.__globals__, {}, special_functions, const_functions, outer_names=name_mapping)
