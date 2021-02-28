@@ -81,7 +81,8 @@ class Decompiler(object):
         decompiler.decompile()
         decompiler.ast = decompiler.stack.pop()
         decompiler.external_names = decompiler.names - decompiler.assnames
-        assert not decompiler.stack, decompiler.stack
+        if decompiler.stack:
+            throw(DecompileError, 'Compiled code should represent a single expression')
     def get_instructions(decompiler):
         PY36 = sys.version_info >= (3, 6)
         before_yield = True
