@@ -4324,7 +4324,7 @@ class EntityMeta(type):
             if wbits is None: continue
             rbits = get_rbits(obj.__class__)
             if rbits is None:
-                rbits = sum(obj._bits_except_volatile_.get(attr, 0) for attr in attrs)
+                rbits = builtins.sum(obj._bits_except_volatile_.get(attr, 0) for attr in attrs)
                 rbits_dict[obj.__class__] = rbits
             obj._rbits_ |= rbits & ~wbits
     def _parse_row_(entity, row, attr_offsets):
@@ -5602,7 +5602,7 @@ def make_aggrfunc(std_func):
         if type(arg) is types.GeneratorType:
             try: iterator = arg.gi_frame.f_locals['.0']
             except: return std_func(*args, **kwargs)
-            if isinstance(iterator, EntityIter):
+            if isinstance(iterator, (EntityIter, QueryResultIterator)):
                 return getattr(select(arg), std_func.__name__)(*args[1:], **kwargs)
         return std_func(*args, **kwargs)
     aggrfunc.__name__ = std_func.__name__

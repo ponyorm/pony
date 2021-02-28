@@ -55,6 +55,20 @@ class Person(db.Entity):
     def simple_method(self):
         return self.complex_method()
 
+    def method_without_return(self):
+        self.first_name == 'Alexander'
+
+    @property
+    def property_without_return(self):
+        self.first_name == 'Alexander'
+
+    def method_with_incorrect_attr_reference(self):
+        return self.foobar == 123
+
+    @property
+    def property_with_incorrect_attr_reference(self):
+        return self.foobar == 123
+
 
 class FakePerson(object):
     pass
@@ -217,17 +231,17 @@ class TestHybridsAndProperties(unittest.TestCase):
             sep = ' '
 
     @db_session
-    @raises_exception(TranslationError, 'p.complex_method(...) is too complex to decompile')
+    @raises_exception(TranslationError, 'Person.complex_method(...) is too complex to decompile')
     def test_20(self):
         q = select(p.complex_method() for p in Person)[:]
 
     @db_session
-    @raises_exception(TranslationError, 'p.to_dict(...) is too complex to decompile')
+    @raises_exception(TranslationError, 'Person.to_dict(...) is too complex to decompile')
     def test_21(self):
         q = select(p.to_dict() for p in Person)[:]
 
     @db_session
-    @raises_exception(TranslationError, 'self.complex_method(...) is too complex to decompile (inside Person.simple_method)')
+    @raises_exception(TranslationError, 'Person.complex_method(...) is too complex to decompile (inside Person.simple_method)')
     def test_22(self):
         q = select(p.simple_method() for p in Person)[:]
 
@@ -236,9 +250,58 @@ class TestHybridsAndProperties(unittest.TestCase):
         q = select(simple_func(p) for p in Person)[:]
 
     @db_session
-    @raises_exception(TranslationError, 'person.complex_method(...) is too complex to decompile (inside complex_func)')
+    @raises_exception(TranslationError, 'Person.complex_method(...) is too complex to decompile (inside complex_func)')
     def test_24(self):
         q = select(complex_func(p) for p in Person)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'Person.method_without_return(...) is too complex to decompile')
+    def test_25(self):
+        q = select(p for p in Person if p.method_without_return())[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'Person.property_without_return(...) is too complex to decompile')
+    def test_26(self):
+        q = select(p for p in Person if p.property_without_return)[:]
+
+    @db_session
+    @raises_exception(AttributeError, 'Entity Person does not have attribute foobar: self.foobar '
+                                      '(inside Person.method_with_incorrect_attr_reference)')
+    def test_27(self):
+        q = select(p for p in Person if p.method_with_incorrect_attr_reference())[:]
+
+    @db_session
+    @raises_exception(AttributeError, 'Entity Person does not have attribute foobar: self.foobar '
+                                      '(inside Person.property_with_incorrect_attr_reference)')
+    def test_28(self):
+        q = select(p for p in Person if p.property_with_incorrect_attr_reference)[:]
+
+    @db_session
+    @raises_exception(TranslationError, 'Person.method_without_return(...) is too complex to decompile')
+    def test_29(self):
+        q1 = select(p for p in Person if p.id < 4)
+        q2 = select(p.id for p in q1 if p.method_without_return())
+
+    @db_session
+    @raises_exception(TranslationError, 'Person.property_without_return(...) is too complex to decompile')
+    def test_30(self):
+        q1 = select(p for p in Person if p.id < 4)
+        q2 = select(p.id for p in q1 if p.property_without_return)
+
+    @db_session
+    @raises_exception(AttributeError, 'Entity Person does not have attribute foobar: self.foobar '
+                                      '(inside Person.method_with_incorrect_attr_reference)')
+    def test_31(self):
+        q1 = select(p for p in Person if p.id < 4)
+        q2 = select(p.id for p in q1 if p.method_with_incorrect_attr_reference())
+
+    @db_session
+    @raises_exception(AttributeError, 'Entity Person does not have attribute foobar: self.foobar '
+                                      '(inside Person.property_with_incorrect_attr_reference)')
+    def test_32(self):
+        q1 = select(p for p in Person if p.id < 4)
+        q2 = select(p.id for p in q1 if p.property_with_incorrect_attr_reference)
+
 
 
 if __name__ == '__main__':
