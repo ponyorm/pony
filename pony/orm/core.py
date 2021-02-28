@@ -5602,7 +5602,7 @@ def make_aggrfunc(std_func):
         if type(arg) is types.GeneratorType:
             try: iterator = arg.gi_frame.f_locals['.0']
             except: return std_func(*args, **kwargs)
-            if isinstance(iterator, EntityIter):
+            if isinstance(iterator, (EntityIter, QueryResultIterator)):
                 return getattr(select(arg), std_func.__name__)(*args[1:], **kwargs)
         return std_func(*args, **kwargs)
     aggrfunc.__name__ = std_func.__name__
