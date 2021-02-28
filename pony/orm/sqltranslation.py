@@ -234,13 +234,11 @@ class SQLTranslator(ASTTranslator):
         local.translators.append(translator)
         try:
             translator.init(tree, parent_translator, code_key, filter_num, extractors, vars, vartypes, left_join, optimize)
-        except UseAnotherTranslator as e:
-            translator = e.translator
-            raise
         finally:
             assert local.translators
-            t = local.translators.pop()
-            assert t is translator
+            local.translators.pop()
+            # If UseAnotherTranslator exception happened inside translator.init() then
+            # the translator we take from the stack may be different from the translator that we pushed above
 
     def init(translator, tree, parent_translator, code_key=None, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
         this = translator
