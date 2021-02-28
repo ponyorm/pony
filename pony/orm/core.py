@@ -4324,7 +4324,7 @@ class EntityMeta(type):
             if wbits is None: continue
             rbits = get_rbits(obj.__class__)
             if rbits is None:
-                rbits = sum(obj._bits_except_volatile_.get(attr, 0) for attr in attrs)
+                rbits = builtins.sum(obj._bits_except_volatile_.get(attr, 0) for attr in attrs)
                 rbits_dict[obj.__class__] = rbits
             obj._rbits_ |= rbits & ~wbits
     def _parse_row_(entity, row, attr_offsets):
