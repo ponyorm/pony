@@ -438,7 +438,7 @@ class OraProvider(DBAPIProvider):
     def normalize_name(provider, name):
         if not provider.max_name_len_checked:
             try:
-                db.provider.max_name_len = db.get('SELECT dbms_standard.ora_max_name_len_supported FROM DUAL')
+                provider.max_name_len = db.get('SELECT dbms_standard.ora_max_name_len_supported FROM DUAL')
             except DatabaseError as e:
                 pass
             finally:
