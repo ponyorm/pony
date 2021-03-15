@@ -389,6 +389,7 @@ class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
     max_name_len = 30
+    max_name_len_checked = False
     table_if_not_exists_syntax = False
     index_if_not_exists_syntax = False
     varchar_default_max_len = 1000
@@ -435,6 +436,13 @@ class OraProvider(DBAPIProvider):
                and exc.args[0].code in reconnect_error_codes
 
     def normalize_name(provider, name):
+        if not provider.max_name_len_checked:
+            try:
+                db.provider.max_name_len = db.get('SELECT dbms_standard.ora_max_name_len_supported FROM DUAL')
+            except DatabaseError as e:
+                pass
+            finally:
+                provider.max_name_len_checked = True
         return name[:provider.max_name_len].upper()
 
     def normalize_vars(provider, vars, vartypes):
