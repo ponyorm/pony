@@ -176,14 +176,12 @@ class Assign(Node):
         self.lineno = lineno
 
     def getChildren(self):
-        children = []
-        children.extend(flatten(self.nodes))
+        children = flatten(self.nodes)
         children.append(self.expr)
         return tuple(children)
 
     def getChildNodes(self):
-        nodelist = []
-        nodelist.extend(flatten_nodes(self.nodes))
+        nodelist = flatten_nodes(self.nodes)
         nodelist.append(self.expr)
         return tuple(nodelist)
 
