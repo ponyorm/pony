@@ -100,7 +100,8 @@ class MSSQLBuilder(SQLBuilder):
         return 'DATEPART(ss, ', builder(expr), ')'
         
     def LIMIT(builder, limit, offset=0):
-        if [True for ast in builder.ast if 'ORDER_BY' in ast[0]][0] == False:
+        order_by = [True for ast in builder.ast if 'ORDER_BY' in ast[0]]
+        if not order_by or order_by[0] == False:
             return 'ORDER BY (SELECT NULL)' + f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
         
         return f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
@@ -276,7 +277,12 @@ class MSSQLProvider(DBAPIProvider):
             if arguments is None: cursor.execute(sql)
             else: 
                 cursor.execute(sql, arguments)
-        if returning_id: return int(cursor.execute('SELECT SCOPE_IDENTITY() AS [SCOPE_IDENTITY]').fetchone()[0])
+        if returning_id: 
+            id = cursor.execute('SELECT SCOPE_IDENTITY() AS [SCOPE_IDENTITY]').fetchone()[0]
+            if id:
+                return int(id)
+            else:
+                return id
 
 
     @wrap_dbapi_exceptions
