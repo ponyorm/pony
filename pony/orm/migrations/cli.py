@@ -131,7 +131,7 @@ def apply(vdb, db, graph, args, sql_only=False):
             op.apply(vdb)
         vdb.validate()
 
-        if not migration.dependencies and skip_intial:
+        if not migration.dependencies and skip_initial:
             migration.save_applied(db, 0)
             return
 
@@ -150,7 +150,7 @@ def apply(vdb, db, graph, args, sql_only=False):
 
     from pony.orm import db_session, MigrationError
     route = graph.make_route()
-    skip_intial = args['fake_initial']
+    skip_initial = args['fake_initial']
     up_to = args['upto']
     verbose = args.get('verbose', False)
 

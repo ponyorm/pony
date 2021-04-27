@@ -1,6 +1,6 @@
 from pony.py23compat import basestring
 
-from pony.orm.migrations import virtuals as v
+from pony.orm.migrations import virtuals
 from pony.orm.migrations.serialize import serialize
 
 from pony.orm import core
@@ -60,12 +60,10 @@ class AddAttribute(BaseOperation):
         if attr.name in entity.new_attrs:
             throw(core.MigrationError, 'Attribute %s is already defined' % attr.name)
 
-        if isinstance(attr, v.Required):
-            if attr.is_required and attr.provided.initial is None:
-                throw(core.MigrationError, 'initial option should be specified in case of adding the Required attribute')
+        if isinstance(attr, virtuals.Required):
             attr.initial = attr.provided.initial
 
-        if isinstance(attr, v.Discriminator):
+        if isinstance(attr, virtuals.Discriminator):
             if not attr.provided.initial or not attr.initial:
                 attr.initial = attr.provided.initial = self.entity_name
 
@@ -84,7 +82,7 @@ class AddAttribute(BaseOperation):
             attr.resolve_cascade(r_attr)
             r_attr.resolve_cascade(attr)
 
-        if isinstance(attr, v.Optional) and attr.py_type is basestring:
+        if isinstance(attr, virtuals.Optional) and attr.py_type is basestring:
             attr.sql_default = ''
 
         if not vdb.vdb_only:
@@ -158,14 +156,14 @@ class AddRelation(BaseOperation):
         if not entity2:
             throw(core.MigrationError, "Entity %r was not found" % self.entity2_name)
 
-        if isinstance(attr1, v.Required):
+        if isinstance(attr1, virtuals.Required):
             if entity1.name not in vdb.new_entities:
                 if attr1.provided.initial is None:
                     throw(core.MigrationError,
                           'initial option should be specified in case of adding the Required attribute')
                 attr1.initial = attr1.provided.initial
 
-        if isinstance(attr2, v.Required):
+        if isinstance(attr2, virtuals.Required):
             if entity2.name not in vdb.new_entities:
                 if attr2.provided.initial is None:
                     throw(core.MigrationError,
@@ -259,7 +257,7 @@ class RemoveAttribute(BaseOperation):
         if self.attr_name not in entity.new_attrs:
             throw(core.MigrationError, 'Attribute %s not found' % self.attr_name)
         attr = entity.new_attrs[self.attr_name]
-        if isinstance(attr, v.PrimaryKey) or self.attr_name in entity.primary_key:
+        if isinstance(attr, virtuals.PrimaryKey) or self.attr_name in entity.primary_key:
             throw(core.MigrationError, 'Cannot change primary key for entity %s' % entity.name)
 
         entity.remove_attr(self.attr_name)
@@ -273,7 +271,7 @@ class RemoveAttribute(BaseOperation):
     @staticmethod
     def apply_to_schema(vdb, attr):
         vdb.schema.drop_columns(attr.columns)
-        if isinstance(attr, v.Set) and isinstance(attr.reverse, v.Set):
+        if isinstance(attr, virtuals.Set) and isinstance(attr.reverse, virtuals.Set):
             m2m_table_name = vdb.schema.get_m2m_table_name(attr, attr.reverse)
             vdb.schema.drop_table(vdb.schema.tables[m2m_table_name])
 
@@ -300,7 +298,7 @@ class AddEntity(BaseOperation):
         relations_attrs = []
         for attr in new_attrs:
             attr.entity = entity
-            if isinstance(attr, v.PrimaryKey):
+            if isinstance(attr, virtuals.PrimaryKey):
                 if entity.primary_key is not None:
                     if attr.name != entity.primary_key[0]:
                         throw(core.MappingError, 'Cannot specify more than one PrimaryKey attribute')
@@ -343,10 +341,10 @@ class AddEntity(BaseOperation):
         root = entity.get_root()
         if root.subclasses:
             for attr in root.new_attrs.values():
-                if isinstance(attr, v.Discriminator):
+                if isinstance(attr, virtuals.Discriminator):
                     break
             else:
-                op = AddAttribute(root.name, v.Discriminator('classtype', str, initial=root.name, column='classtype'))
+                op = AddAttribute(root.name, virtuals.Discriminator('classtype', str, initial=root.name, column='classtype'))
                 op.apply(vdb)
 
         if not vdb.vdb_only:
@@ -398,7 +396,7 @@ class RemoveEntity(BaseOperation):
         removed_attrs = []
         if root is not entity:
             for disc in root.new_attrs.values():
-                if isinstance(disc, v.Discriminator):
+                if isinstance(disc, virtuals.Discriminator):
                     break
             else:
                 throw(core.MigrationError, 'Discriminator attribute was not found')
@@ -567,7 +565,7 @@ class RenameColumns(BaseOperation):
     @staticmethod
     def apply_to_schema(vdb, entity, attr, new_names, new_reverse_names):
         schema = vdb.schema
-        if attr.reverse and isinstance(attr, v.Set) and isinstance(attr.reverse, v.Set):
+        if attr.reverse and isinstance(attr, virtuals.Set) and isinstance(attr.reverse, virtuals.Set):
             r_attr = attr.reverse
             if new_names is None and new_names is not NOT_PROVIDED:
                 new_names = [
@@ -614,7 +612,7 @@ class ChangeDiscriminator(BaseOperation):
         entity.discriminator = self.new_discriminator
         disc = None
         for attr in entity.new_attrs.values():
-            if isinstance(attr, v.Discriminator):
+            if isinstance(attr, virtuals.Discriminator):
                 disc = attr
                 break
         else:
@@ -644,24 +642,24 @@ class ChangeAttributeClass(BaseOperation):
         self.new_class = new_class
         self.sql = sql
         if initial is not None:
-            assert new_class == 'Required' or new_class is v.Required
+            assert new_class == 'Required' or new_class is virtuals.Required
         self.initial = initial
 
     def apply(self, vdb):
         new_class = self.new_class
         if isinstance(new_class, basestring):
             if new_class == 'Optional':
-                new_class = v.Optional
+                new_class = virtuals.Optional
             elif new_class == 'Required':
-                new_class = v.Required
-        if new_class not in (v.Optional, v.Required):
+                new_class = virtuals.Required
+        if new_class not in (virtuals.Optional, virtuals.Required):
             throw(core.MigrationError, 'Attribute class can only be changed to Optional or Required. Got: %s' % new_class.__name__)
 
         entity, attr = self.get_entity_attr(vdb)
         if isinstance(attr, new_class):
             throw(core.MigrationError, 'Cannot change attribute of type %s to the same type' % new_class.__name__)
 
-        if attr.reverse and new_class is v.Required and attr.reverse.__class__ is v.Required:
+        if attr.reverse and new_class is virtuals.Required and attr.reverse.__class__ is virtuals.Required:
             throw(core.MigrationError, 'Cannot change %s.%s class to Required because it has Required relation with %s.%s' %
                   (entity.name, attr.name, attr.reverse.entity.name, attr.reverse.name))
 
@@ -669,7 +667,7 @@ class ChangeAttributeClass(BaseOperation):
 
         is_string = type(attr.py_type) is type and issubclass(attr.py_type, basestring)
         type_has_empty_value = is_string or hasattr(attr.py_type, 'default_empty_value')
-        attr.nullable = not isinstance(attr, v.Required) and not type_has_empty_value
+        attr.nullable = not isinstance(attr, virtuals.Required) and not type_has_empty_value
         attr.initial = self.initial
 
         if not vdb.vdb_only:
@@ -678,7 +676,7 @@ class ChangeAttributeClass(BaseOperation):
             else:
                 self.apply_to_schema(vdb, attr)
         else:
-            if self.new_class is v.Required:
+            if self.new_class is virtuals.Required:
                 print("Warning: Changing attribute from Optional to Required assumes that you do not have empty values"
                       " for attribute `%s.%s`" % (entity.name, attr.name))
         attr.initial = None
@@ -689,20 +687,20 @@ class ChangeAttributeClass(BaseOperation):
             if not attr.reverse:
                 return False
             r_attr = attr.reverse
-            if isinstance(r_attr, v.Set):
+            if isinstance(r_attr, virtuals.Set):
                 return False
             col_provided = lambda a: a.provided.kwargs.get('column') or a.provided.kwargs.get('columns')
             if col_provided(attr) or col_provided(r_attr):
                 return False
             new_class = attr.__class__
             reverse_class = r_attr.__class__
-            if new_class is v.Required:
-                if reverse_class is v.Optional:
+            if new_class is virtuals.Required:
+                if reverse_class is virtuals.Optional:
                     return bool(r_attr.columns)
                 else:
                     assert False, 'Required - Required relation is not possible'
             else:
-                assert reverse_class is not v.Required, 'Required - Required relation is not possible'
+                assert reverse_class is not virtuals.Required, 'Required - Required relation is not possible'
                 return r_attr == min(attr, r_attr, key=lambda a: (a.name, a.entity.name))
 
         schema = vdb.schema
@@ -712,7 +710,7 @@ class ChangeAttributeClass(BaseOperation):
         for col in attr.columns:
             nullable = attr.nullable or len(attr.entity.bases) != 0
             schema.change_nullable(col, nullable)
-            if isinstance(attr, v.Required):
+            if isinstance(attr, virtuals.Required):
                 schema.change_sql_default(col, None)
                 if attr.initial is not None:
                     is_string_column = isinstance(attr.py_type, type) and issubclass(attr.py_type, basestring)
@@ -925,7 +923,7 @@ class RenameEntity(BaseOperation):
             return
 
         for attr in entity.new_attrs.values():
-            if attr.reverse and isinstance(attr, v.Set) and isinstance(attr.reverse, v.Set):
+            if attr.reverse and isinstance(attr, virtuals.Set) and isinstance(attr.reverse, virtuals.Set):
                 m2m_table = attr.m2m_table
                 new_m2m_table_name = schema.get_m2m_table_name(attr, attr.reverse)
                 if m2m_table.name != new_m2m_table_name:
@@ -995,7 +993,7 @@ class RenameAttribute(BaseOperation):
     def apply_to_schema(vdb, attr, new_name):
         schema = vdb.schema
         entity = attr.entity
-        if isinstance(attr, v.Optional) and isinstance(attr.reverse, v.Optional):
+        if isinstance(attr, virtuals.Optional) and isinstance(attr.reverse, virtuals.Optional):
             min_attr = min(attr, attr.reverse, key=lambda a: (a.name, a.entity.name))
             if not min_attr.columns:
                 schema.move_column_with_data(min_attr)
@@ -1052,7 +1050,7 @@ class ChangeColumnType(BaseOperation):
 
         is_string = type(attr.py_type) is type and issubclass(attr.py_type, basestring)
         type_has_empty_value = is_string or hasattr(attr.py_type, 'default_empty_value')
-        attr.nullable = not isinstance(attr, v.Required) and not type_has_empty_value
+        attr.nullable = not isinstance(attr, virtuals.Required) and not type_has_empty_value
 
         cast_sql = self.cast_sql
         if cast_sql is None and 'py_type' in self.options:
@@ -1236,7 +1234,7 @@ class AddUniqueConstraint(BaseOperation):
     @staticmethod
     def apply_to_schema(vdb, attr):
         cols = attr.columns
-        if isinstance(attr, v.Optional) and issubclass(attr.py_type, basestring):
+        if isinstance(attr, virtuals.Optional) and issubclass(attr.py_type, basestring):
             assert len(cols) == 1
             col = cols[0]
             # attr.nullable = True
@@ -1271,7 +1269,7 @@ class DropUniqueConstraint(BaseOperation):
     @staticmethod
     def apply_to_schema(vdb, attr):
         cols = attr.columns
-        if isinstance(attr, v.Optional) and issubclass(attr.py_type, basestring):
+        if isinstance(attr, virtuals.Optional) and issubclass(attr.py_type, basestring):
             assert len(cols) == 1
             col = cols[0]
             vdb.schema.change_nullable(col, False)
@@ -1529,7 +1527,7 @@ class ChangeCascadeDeleteOption(BaseOperation):
         new_r_fk = schema.fk_cls(r_fk.table, r_fk.table_to, r_fk.cols_from, r_fk.cols_to, new_r_fk_name)
         if cascade_delete:
             new_r_fk.on_delete = 'CASCADE'
-        elif isinstance(reverse, v.Optional) and reverse.nullable:
+        elif isinstance(reverse, virtuals.Optional) and reverse.nullable:
             new_r_fk.on_delete = 'SET NULL'
 
         schema.add_fk(new_r_fk)
