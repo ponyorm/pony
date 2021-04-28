@@ -271,7 +271,7 @@ class MSSQLProvider(DBAPIProvider):
         sql = sql.replace('`', "")
         sql = sql.replace('\n', ' ')
         sql = sql.replace('%%', '')
-        sql = PYODBC_VAR_REGEX.sub('?', '%s')
+        sql = PYODBC_VAR_REGEX.sub('?', sql)
         sql = escapify(sql)
         if type(arguments) is list:
             assert arguments and not returning_id
