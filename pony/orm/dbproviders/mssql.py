@@ -270,7 +270,6 @@ class MSSQLProvider(DBAPIProvider):
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
         sql = sql.replace('`', "")
         sql = sql.replace('\n', ' ')
-        sql = sql.replace('%%', '')
         sql = PYODBC_VAR_REGEX.sub('?', sql)
         sql = escapify(sql)
         if type(arguments) is list:
