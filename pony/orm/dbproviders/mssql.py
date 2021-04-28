@@ -5,7 +5,7 @@ import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
-
+import re
 NoneType = type(None)
 
 import warnings
@@ -24,6 +24,8 @@ from pony.orm.sqltranslation import SQLTranslator, TranslationError
 from pony.orm.sqlbuilding import Value, Param, SQLBuilder, join
 from pony.utils import throw
 from pony.converting import str2timedelta, timedelta2str
+
+PYODBC_VAR_REGEX = re.compile(r'(?<!%)[%]s')
 
 class MSSQLColumn(dbschema.Column):
     auto_template = '%(type)s IDENTITY(1,1) PRIMARY KEY'
@@ -268,7 +270,8 @@ class MSSQLProvider(DBAPIProvider):
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
         sql = sql.replace('`', "")
         sql = sql.replace('\n', ' ')
-        sql = sql.replace('%s', '?')
+        sql = sql.replace('%%', '')
+        sql = PYODBC_VAR_REGEX.sub('?', '%s')
         sql = escapify(sql)
         if type(arguments) is list:
             assert arguments and not returning_id
