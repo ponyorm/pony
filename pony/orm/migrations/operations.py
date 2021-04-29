@@ -334,9 +334,6 @@ class AddEntity(BaseOperation):
                         attr.resolve_cascade(r_attr)
                         r_attr.resolve_cascade(attr)
 
-                if attr.py_type in vdb.entities and attr.py_type in vdb.new_entities:
-                    attr.serializable = False
-
         entity.resolve_inheritance()
         root = entity.get_root()
         if root.subclasses:
