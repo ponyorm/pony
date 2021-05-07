@@ -1907,3 +1907,61 @@ class Schema(object):
                     schema.rename_key(key, old_key_name)
 
         return schema.ops
+
+
+def schema_diff(schema1: Schema, schema2: Schema):
+    differences = {}
+
+    def make_diff(table_name, left, right):
+        if isinstance(left, list):
+            left = {obj.name: obj for obj in left}
+        if isinstance(right, list):
+            right = {obj.name: obj for obj in right}
+
+        left_names = set(left.keys())
+        right_names = set(right.keys())
+
+        # missing
+        for obj_name in left_names ^ right_names:
+            differences[(table_name, obj_name)] = (left.get(obj_name), right.get(obj_name))
+
+        # others
+        for obj_name in left_names & right_names:
+            left_obj = left[obj_name]
+            right_obj = right[obj_name]
+            if left_obj != right_obj:
+                for prop_name in dir(left_obj):
+                    if prop_name.startswith('_'):
+                        continue
+                    left_prop = getattr(left_obj, prop_name)
+                    if callable(left_prop):
+                        continue
+                    if type(left_prop) not in (str, int, float, type(None), bool, list, dict, tuple, set, OrderedDict):
+                        continue
+                    right_prop = getattr(right_obj, prop_name)
+                    if left_prop != right_prop:
+                        differences[(table_name, obj_name, prop_name)] = (left_prop, getattr(right_obj, prop_name))
+
+    tables_names1 = set(schema1.tables.keys())
+    tables_names2 = set(schema2.tables.keys())
+
+    # missing tables
+    for table_name in tables_names1 ^ tables_names2:
+        differences[table_name] = (schema1.tables.get(table_name), schema2.tables.get(table_name))
+
+    # others
+    for table_name in tables_names1 & tables_names2:
+        table1 = schema1.tables.get(table_name)
+        table2 = schema2.tables.get(table_name)
+
+        make_diff(table_name, table1.columns, table2.columns)
+        make_diff(table_name, table1.foreign_keys, table2.foreign_keys)
+        make_diff(table_name, table1.constraints, table2.constraints)
+
+        if table1.is_m2m != table2.is_m2m:
+            differences[(table_name, 'is_m2m')] = (table1.is_m2m, table2.is_m2m)
+
+        if table1.primary_key != table2.primary_key:
+            differences[(table_name, 'primary_key')] = (table1.primary_key, table2.primary_key)
+
+    return differences
