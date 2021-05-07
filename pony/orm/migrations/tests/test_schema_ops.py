@@ -744,6 +744,7 @@ class AbstractTestMigrations(unittest.TestCase):
 
         expected_schema, actual_schema, migration = self.apply_migrate()
         self.assertEqual(len(migration.operations), 1)  # ChangeSQLDefault
+        schema_diff(expected_schema, actual_schema)
         self.assertEqual(expected_schema, actual_schema)
 
     def test_change_nullable(self):
