@@ -2,6 +2,7 @@ import unittest
 from datetime import date
 from pony.orm import *
 from pony.orm.migrations import VirtualDB, Migration
+from pony.orm.migrations.dbschema import schema_diff
 
 
 class AbstractTestMigrations(unittest.TestCase):
