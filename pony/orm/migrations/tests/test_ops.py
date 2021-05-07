@@ -12,6 +12,7 @@ TODO: remove max_len,
       move column after change required -> optional and vice versa
 """
 
+
 class TestMigrations(unittest.TestCase):
     db_params = dict(provider='postgres', user='ponytest', password='ponytest', host='localhost', database='ponytest')
 

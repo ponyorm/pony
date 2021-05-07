@@ -28,8 +28,8 @@ def sql_op(func):
     def wrap(obj, *args, **kwargs):
         res = func(obj, *args, **kwargs)
         if isinstance(res, list):
-            return [SQLOperation(obj, sql) for sql in res]
-        return [SQLOperation(obj, res)]
+            return [SQLOperation(obj, sql.sql if isinstance(sql, SQLOperation) else sql) for sql in res]
+        return [SQLOperation(obj, res.sql if isinstance(res, SQLOperation) else res)]
     return wrap
 
 
