@@ -1312,6 +1312,50 @@ class AbstractTestMigrations(unittest.TestCase):
         self.assertEqual(len(migration.operations), 1)  # ChangeDiscriminator
         self.assertEqual(expected_schema, actual_schema)
 
+    def test_add_optional_json(self):
+        self.db2 = db2 = Database(**self.db_params)
+
+        class Department(db2.Entity):
+            number = PrimaryKey(int, auto=True)
+            name = Required(str, unique=True)
+            groups = Set("Group")
+            courses = Set("Course")
+
+        class Group(db2.Entity):
+            number = PrimaryKey(int)
+            major = Required(str, index=True)
+            dept = Required("Department", fk_name='dept_fk')
+            students = Set("Student")
+
+        class Course(db2.Entity):
+            name = Required(str, unique=True)
+            semester = Required(int)
+            lect_hours = Required(int, check='lect_hours > 0')
+            lab_hours = Required(int)
+            credits = Required(int, index=True)
+            dept = Required(Department)
+            students = Set("Student")
+            PrimaryKey(name, semester)
+            composite_index(lect_hours, lab_hours)
+
+        class Student(db2.Entity):
+            name = Required(str)
+            dob = Required(date)
+            tel = Optional(str)
+            picture = Optional(buffer, lazy=True)
+            gpa = Required(float, default=0)
+            group = Required(Group)
+            courses = Set(Course)
+            composite_key(name, dob)
+            complex_info = Optional(Json)
+
+        class NewStudent(Student):
+            avatar = Required(str)
+
+        expected_schema, actual_schema, migration = self.apply_migrate()
+        self.assertEqual(len(migration.operations), 1)  # ChangeDiscriminator
+        self.assertEqual(expected_schema, actual_schema)
+
 
 class TestPostgresMigrations(AbstractTestMigrations):
     db_params = dict(provider='postgres', user='pony', password='pony', host='localhost', database='pony')

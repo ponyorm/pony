@@ -226,6 +226,7 @@ class Column(DBObject):
 
     @classmethod
     def from_attr(cls, table, attr):
+        from pony.orm.ormtypes import Json
         schema = table.schema
         if not attr.converters:
             attr.converters = [schema.provider.get_converter_by_attr(attr)]
@@ -241,8 +242,11 @@ class Column(DBObject):
         col.nullable = attr.nullable or len(attr.entity.bases) != 0
         col.auto = attr.auto
         col.sql_default = attr.sql_default
-        if not attr.is_required and isinstance(attr.py_type, type) and issubclass(attr.py_type, basestring):
-            col.sql_default = ''
+        if not attr.is_required and isinstance(attr.py_type, type):
+            if issubclass(attr.py_type, basestring):
+                col.sql_default = ''
+            elif issubclass(attr.py_type, Json):
+                col.sql_default = '{}'
         col.initial = attr.initial or attr.provided.initial
         col.sql_type = attr.sql_type or converter.get_sql_type()
         provided_cols = attr.provided.kwargs.get('columns', None)
