@@ -1554,6 +1554,7 @@ class TestMigrations(unittest.TestCase):
             lab_hours = Required(int, size=8)
             credits = Required(int, size=8)
             dept = Required(Department)
+            avg_mark = Optional(Decimal, scale=8)
             students = Set('Student')
             teacher = Required('Teacher')
             PrimaryKey(name, semester)
@@ -1569,6 +1570,7 @@ class TestMigrations(unittest.TestCase):
             gpa = Optional(float)
             group = Required(Group)
             courses = Set(Course)
+            mentor = Required('Teacher')
 
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
@@ -1578,8 +1580,9 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
-            groups = Set(Group)
+            groups = Set(Group, cascade_delete=True)
             head_of_dept = Optional('DeptDirector')
+            student = Optional(Student)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -4610,7 +4613,7 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
 
-    @unittest.skip
+
     def test_unset_scale(self):
         """
            Unsets scale for attribute "avg_mark" in entity "Course"
@@ -4623,7 +4626,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
-            rating = Optional(Decimal, scale=5)
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -4673,9 +4676,9 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = 'ALTER TABLE "department" ALTER COLUMN "rating" TYPE DECIMAL(12, 5)'
+        correct_sql = 'ALTER TABLE "course" ALTER COLUMN "avg_mark" TYPE DECIMAL(12, 2)'
 
-        migration_op = "ChangeColumnType(entity_name='Department', attr_name='rating', new_options={'scale': 5})"
+        migration_op = "ChangeColumnType(entity_name='Course', attr_name='avg_mark', py_type=Decimal, options={})"
         # test execution freezes at apply_migrate() call
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
