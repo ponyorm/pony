@@ -1592,7 +1592,6 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "lab_hours" TYPE SMALLINT'
 
-        # test execution freezes at apply_migrate() call
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -4372,8 +4371,8 @@ class TestMigrations(unittest.TestCase):
             name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
-            teachers = Set('Teacher')
-            rating = Optional(Decimal, scale=5)
+            teachers = Set('Teacher', table="TeachToDepts")
+            rating = Optional(Decimal)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -4612,7 +4611,6 @@ class TestMigrations(unittest.TestCase):
         self.assertEqual("\n".join(t), migration_op)
         self.assertEqual("\n".join(sql_ops), correct_sql)
         self.assertEqual(expected_schema, actual_schema)
-
 
     def test_unset_scale(self):
         """
@@ -4972,7 +4970,7 @@ class TestMigrations(unittest.TestCase):
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
             name = Required(str)
-            surname = Optional(str)
+            surname = Optional(str, index=True)
             dob = Required(date)
             departments = Set(Department)
             courses = Set(Course)
@@ -5048,7 +5046,7 @@ class TestMigrations(unittest.TestCase):
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
             name = Required(str)
-            surname = Optional(str)
+            surname = Optional(str, index=True)
             dob = Required(date)
             departments = Set(Department)
             courses = Set(Course)
@@ -5114,6 +5112,7 @@ class TestMigrations(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             name = Required(str)
             dob = Required(date)
+            last_online = Optional(time)
             picture = Optional(buffer)
             gpa = Optional(float)
             group = Required(Group)

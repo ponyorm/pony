@@ -340,11 +340,13 @@ def attr_difference(attr1, attr2):
         elif option_diff('index', bool):
             new_index = kw2.get('index', None)
             old_index = kw1.get('index', None)
-            if None not in (new_index, old_index):
+            if not new_index and not old_index:
+                return  # This is caused by fact we understand both False and None values the same way in Pony
+            if (isinstance(old_index, basestring) and new_index is True) or (old_index and isinstance(new_index, basestring)):
                 return operations.RenameIndex(attr1.entity.name, attr1.name, new_index)
-            elif new_index is not None:
+            elif not old_index and new_index:
                 return operations.AddIndex(attr1.entity.name, attr1.name, new_index)
-            else:
+            elif old_index and not new_index:
                 return operations.DropIndex(attr1.entity.name, attr1.name)
         elif option_diff('fk_name'):
             return operations.RenameForeignKey(attr1.entity.name, attr1.name, kw2.get('fk_name', None))
