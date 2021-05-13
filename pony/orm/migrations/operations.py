@@ -255,7 +255,6 @@ class RemoveAttribute(BaseOperation):
         attr = entity.new_attrs[self.attr_name]
         if isinstance(attr, virtuals.PrimaryKey) or self.attr_name in entity.primary_key:
             throw(core.MigrationError, 'Cannot change primary key for entity %s' % entity.name)
-
         entity.remove_attr(self.attr_name)
 
         if not vdb.vdb_only:
@@ -275,6 +274,33 @@ class RemoveAttribute(BaseOperation):
         super(RemoveAttribute, self).serialize(imports)
         return 'RemoveAttribute(entity_name=%r, attr_name=%r%s)' % \
                (self.entity_name, self.attr_name, '' if not self.sql else ', sql=%r' % self.sql)
+
+
+class RemoveRelation(RemoveAttribute):
+    def apply(self, vdb):
+        entity = vdb.entities.get(self.entity_name)
+        if entity is None:
+            throw(core.MigrationError, 'Entity %s does not exist' % self.entity_name)
+        if self.attr_name not in entity.new_attrs:
+            throw(core.MigrationError, 'Attribute %s not found' % self.attr_name)
+        attr = entity.new_attrs[self.attr_name]
+        if not attr.reverse:
+            throw(core.MigrationError, 'Attribute is not a part of relation')
+
+        reverse_entity = attr.reverse.entity
+        reverse_entity.remove_attr(attr.reverse.name)
+        entity.remove_attr(attr.name)
+
+        if not vdb.vdb_only:
+            if self.sql:
+                vdb.schema.add_sql(self.sql)
+            else:
+                self.apply_to_schema(vdb, attr)
+
+    def serialize(self, imports):
+        super(RemoveRelation, self).serialize(imports)
+        return 'RemoveRelation(entity_name=%r, attr_name=%r%s)' % \
+               (self.entity_name, self.attr_name, '' if not self.sql else 'sql=%r' % self.sql)
 
 
 class AddEntity(BaseOperation):
@@ -997,7 +1023,7 @@ class RenameAttribute(BaseOperation):
         if m2m_table:
             new_m2m_name = schema.get_default_m2m_table_name(attr, attr.reverse)
             if new_m2m_name != m2m_table.name:
-                schema.rename_table(m2m_table.name, new_m2m_name)
+                schema.rename_table(m2m_table, new_m2m_name)
         # m2m columns that uses this pk
         if attr.name in entity.primary_key:
             for col in attr.columns:
