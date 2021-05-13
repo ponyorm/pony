@@ -3071,31 +3071,15 @@ class TestMigrations(unittest.TestCase):
         class DeptDirector(Teacher):
             is_director = Required(bool)
             teacher = Optional(Teacher)
-            dept = Required(Department, initial=1)
+            dept = Required(Department)
 
-        correct_sql = ''
+        correct_sql = 'ALTER TABLE "teacher" ADD COLUMN "dept_number" INTEGER\n' \
+                      'ALTER TABLE "teacher" ADD CONSTRAINT "fk_teacher__dept_number" FOREIGN KEY ("dept_number") ' \
+                      'REFERENCES "department" ("number") ON DELETE CASCADE\n' \
+                      'CREATE INDEX "idx_teacher__dept_number" ON "teacher" ("dept_number")'
 
-        migration_op = ""
-        # apply_migrate raises exception: Error
-        # Traceback (most recent call last):
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 59, in testPartExecutor
-        #     yield
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 628, in run
-        #     testMethod()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 2599, in test_add_relation_opt_to_req
-        #     expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 81, in apply_migrate
-        #     self.db2.generate_mapping(check_tables=False)
-        #   File "<string>", line 2, in generate_mapping
-        #   File "/home/admin/pony/pony/utils/utils.py", line 100, in cut_traceback
-        #     reraise(exc_type, exc, last_pony_tb)
-        #   File "/home/admin/pony/pony/utils/utils.py", line 118, in reraise
-        #     try: raise exc.with_traceback(tb)
-        #   File "/home/admin/pony/pony/orm/migrations/virtuals.py", line 337, in __init__
-        #     throw(core.MappingError, "initial option cannot be used in relation")
-        #   File "/home/admin/pony/pony/utils/utils.py", line 131, in throw
-        #     raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
-        # pony.orm.core.MappingError: initial option cannot be used in relation
+        migration_op = "AddRelation(entity1_name='Department', attr1=Optional('head_of_dept', 'DeptDirector'), " \
+                       "entity2_name='DeptDirector', attr2=Required('dept', 'Department')) "
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []

@@ -158,17 +158,13 @@ class AddRelation(BaseOperation):
 
         if isinstance(attr1, virtuals.Required):
             if entity1.name not in vdb.new_entities:
-                if attr1.provided.initial is None:
-                    throw(core.MigrationError,
-                          'initial option should be specified in case of adding the Required attribute')
-                attr1.initial = attr1.provided.initial
+                if attr1.provided.initial is not None:
+                    attr1.initial = attr1.provided.initial
 
         if isinstance(attr2, virtuals.Required):
             if entity2.name not in vdb.new_entities:
-                if attr2.provided.initial is None:
-                    throw(core.MigrationError,
-                          'initial option should be specified in case of adding the Required attribute')
-                attr2.initial = attr2.provided.initial
+                if attr2.provided.initial is not None:
+                    attr2.initial = attr2.provided.initial
 
         if attr1.name in entity1.new_attrs:
             throw(core.MigrationError, 'Attribute %r is already defined' % attr1.name)
