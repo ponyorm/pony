@@ -4549,7 +4549,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set('Group')
             courses = Set('Course')
             teachers = Set('Teacher')
-            rating = Optional(Decimal)
+            rating = Optional(Decimal, scale=5)
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -4601,7 +4601,7 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "department" ALTER COLUMN "rating" TYPE DECIMAL(12, 5)'
 
-        migration_op = "ChangeColumnType(entity_name='Department', attr_name='rating', new_options={'scale': 5})"
+        migration_op = "ChangeColumnType(entity_name='Department', attr_name='rating', py_type=Decimal, options={'scale': 5})"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -5238,7 +5238,7 @@ class TestMigrations(unittest.TestCase):
         correct_sql = 'ALTER TABLE "student" ALTER COLUMN "last_online" TYPE TIME(4)'
 
         migration_op = 'ChangeColumnType(entity_name=\'Student\', attr_name=\'last_online\', ' \
-                       'new_options={\'precision\': 4})'
+                       'py_type=time, options={\'precision\': 4})'
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
