@@ -268,7 +268,8 @@ class RemoveAttribute(BaseOperation):
         vdb.schema.drop_columns(attr.columns)
         if isinstance(attr, virtuals.Set) and isinstance(attr.reverse, virtuals.Set):
             m2m_table_name = vdb.schema.get_m2m_table_name(attr, attr.reverse)
-            vdb.schema.drop_table(vdb.schema.tables[m2m_table_name])
+            if m2m_table_name in vdb.schema.tables:  # may be dropped in a first call of RemoveRelation.apply
+                vdb.schema.drop_table(vdb.schema.tables[m2m_table_name])
 
     def serialize(self, imports):
         super(RemoveAttribute, self).serialize(imports)

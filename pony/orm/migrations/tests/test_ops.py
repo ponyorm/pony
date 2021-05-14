@@ -4145,8 +4145,7 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "group" DROP COLUMN "dept_number"'
 
-        migration_op = "RemoveAttribute(entity_name='Department', attr_name='groups')\n" \
-                       "RemoveAttribute(entity_name='Group', attr_name='dept')"
+        migration_op = "RemoveRelation(entity_name='Department', attr_name='groups')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -4220,8 +4219,7 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "group" DROP COLUMN "curator_id"'
 
-        migration_op = "RemoveAttribute(entity_name='Group', attr_name='curator')\n" \
-                       "RemoveAttribute(entity_name=\'Teacher\', attr_name=\'groups\')"
+        migration_op = "RemoveRelation(entity_name='Group', attr_name='curator')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -4229,8 +4227,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_delete_relation_set_to_set(self):
@@ -4284,7 +4282,6 @@ class TestMigrations(unittest.TestCase):
             name = Required(str)
             surname = Optional(str, index=True)
             dob = Required(date)
-            departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group, cascade_delete=True)
@@ -4295,34 +4292,17 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        correct_sql = 'DROP TABLE "department_teachers"'
 
-        migration_op = ""
-
-        #apply_migrate() raises exception
-        # Error
-        # Traceback (most recent call last):
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 59, in testPartExecutor
-        #     yield
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 628, in run
-        #     testMethod()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 3516, in test_delete_relation
-        #     expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 92, in apply_migrate
-        #     op.apply(new_vdb)
-        #   File "/home/admin/pony/pony/orm/migrations/operations.py", line 267, in apply
-        #     self.apply_to_schema(vdb, attr)
-        #   File "/home/admin/pony/pony/orm/migrations/operations.py", line 275, in apply_to_schema
-        #     vdb.schema.drop_table(vdb.schema.tables[m2m_table_name])
-        # KeyError: 'department_teachers'
+        migration_op = "RemoveRelation(entity_name='Department', attr_name='teachers')"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_intermediate_table_name(self):
