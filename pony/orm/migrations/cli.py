@@ -36,9 +36,9 @@ rename_parser.add_argument('rename', nargs='+', action='store')
 
 squash_parser = subparsers.add_parser('squash', help='squash all migrations into the new one')
 
-upgrade_parser = subparsers.add_parser('upgrade', help='upgrade database to current Pony version')
-upgrade_parser.add_argument('--sql-only', action='store_true', help='only show sql of upgrade process')
-upgrade_parser.add_argument('-v', '--verbose', action='store_true', help='show sql of upgrade process')
+#upgrade_parser = subparsers.add_parser('upgrade', help='upgrade database to current Pony version')
+#upgrade_parser.add_argument('--sql-only', action='store_true', help='only show sql of upgrade process')
+#upgrade_parser.add_argument('-v', '--verbose', action='store_true', help='show sql of upgrade process')
 
 downgrade_parser = subparsers.add_parser('downgrade', help='downgrade database to Pony version 0.7.11')
 downgrade_parser.add_argument('--sql-only', action='store_true', help='only show sql of downgrade process')
@@ -66,8 +66,8 @@ def migrate(db, cmd=None):
         m_list(db, graph, args)
     elif cmd == 'squash':
         squash(db, graph, args)
-    elif cmd == 'upgrade':
-        upgrade(db, args)
+    #elif cmd == 'upgrade':
+    #    upgrade(db, args)
     elif cmd == 'downgrade':
         downgrade(db, args)
     # elif cmd == 'apply':
@@ -364,6 +364,7 @@ def squash(db, graph, args):
 
 
 def upgrade(db, args):
+    raise NotImplementedError
     from pony.orm import db_session, commit
     vdb = db.vdb
     schema = vdb.schema

@@ -78,6 +78,8 @@ __all__ = [
 
 suppress_debug_change = False
 
+supported_providers = ('postgres',)
+
 def sql_debug(value):
     # todo: make sql_debug deprecated
     if not suppress_debug_change:
@@ -795,6 +797,12 @@ class Database(object):
         if args: provider, args = args[0], args[1:]
         elif 'provider' not in kwargs: throw(TypeError, 'Database provider is not specified')
         else: provider = kwargs.pop('provider')
+        if provider not in supported_providers:
+            throw(
+                MappingError,
+                'This version of Pony is experimental and does not support provider %s. Supported providers are: %s' %
+                (provider, ', '.join(supported_providers))
+            )
         if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
             provider_cls = provider
         else:
