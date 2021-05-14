@@ -605,8 +605,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_required_attr(self):
@@ -683,8 +683,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_optional_attr(self):
@@ -760,8 +760,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_change_attr_name(self):
@@ -837,8 +837,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_change_max_length(self):
@@ -913,8 +913,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_change_int_size(self):
@@ -988,8 +988,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_unset_nullable_attr(self):
@@ -1065,8 +1065,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_nullable_attr(self):
@@ -1141,8 +1141,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_delete_attr(self):
@@ -1217,8 +1217,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_unique_attr(self):
@@ -1293,8 +1293,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_unset_unique_attr(self):
@@ -1369,8 +1369,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_unsigned_attr(self):
@@ -1445,8 +1445,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_unset_unsigned_attr_1(self):
@@ -1522,8 +1522,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_unset_unsigned_attr_2(self):
@@ -1598,8 +1598,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_default_val(self):
@@ -1674,8 +1674,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_database_column_val(self):
@@ -1750,8 +1750,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_sql_type_val(self):
@@ -1825,8 +1825,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_sql_default_val(self):
@@ -1901,8 +1901,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_decimal_precision(self):
@@ -1975,8 +1975,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual("\n".join(t), migration_op)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_set_datetime_precision(self):
