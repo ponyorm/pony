@@ -3104,7 +3104,7 @@ class TestMigrations(unittest.TestCase):
             courses = Set('Course')
             teachers = Set('Teacher')
             rating = Optional(Decimal)
-            head_of_dept = Required('DeptDirector', initial=1)
+            head_of_dept = Required('DeptDirector')
 
         class Group(db2.Entity):
             number = PrimaryKey(int, auto=True)
@@ -3155,32 +3155,13 @@ class TestMigrations(unittest.TestCase):
             teacher = Optional(Teacher)
             dept = Optional(Department)
 
-        correct_sql = ''
+        correct_sql = '\n'.join([
+            'ALTER TABLE "department" ADD COLUMN "head_of_dept_id" INTEGER NOT NULL',
+            'ALTER TABLE "department" ADD CONSTRAINT "fk_department__head_of_dept_id" FOREIGN KEY ("head_of_dept_id") REFERENCES "teacher" ("id") ON DELETE CASCADE',
+            'CREATE INDEX "idx_department__head_of_dept_id" ON "department" ("head_of_dept_id")'
+        ])
 
-        migration_op = ""
-        # apply_migrate raises exception: Error
-        # Traceback (most recent call last):
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 59, in testPartExecutor
-        #     yield
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 628, in run
-        #     testMethod()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 2716, in test_add_relation_req_to_opt
-        #     expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 81, in apply_migrate
-        #     self.db2.generate_mapping(check_tables=False)
-        #   File "/home/admin/pony/pony/orm/core.py", line 1002, in generate_mapping
-        #     database.vdb = VirtualDB.from_db(database)
-        #   File "/home/admin/pony/pony/orm/migrations/virtuals.py", line 22, in from_db
-        #     self.entities[name] = VirtualEntity.from_entity(self, db.entities[name])
-        #   File "/home/admin/pony/pony/orm/migrations/virtuals.py", line 221, in from_entity
-        #     v_attr = VirtualAttribute.from_attribute(attr)
-        #   File "/home/admin/pony/pony/orm/migrations/virtuals.py", line 452, in from_attribute
-        #     vattr = attr_class(name, py_type, *attr.given_args['args'], reverse=reverse, **attr.given_args['kwargs'])
-        #   File "/home/admin/pony/pony/orm/migrations/virtuals.py", line 337, in __init__
-        #     throw(core.MappingError, "initial option cannot be used in relation")
-        #   File "/home/admin/pony/pony/utils/utils.py", line 129, in throw
-        #     raise exc
-        # pony.orm.core.MappingError: initial option cannot be used in relation
+        migration_op = "AddRelation(entity1_name='Department', attr1=Required('head_of_dept', 'DeptDirector'), entity2_name='DeptDirector', attr2=Optional('dept', 'Department'))"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
@@ -3832,21 +3813,20 @@ class TestMigrations(unittest.TestCase):
             groups = Set(Group, cascade_delete=True)
             head_of_dept = Optional('DeptDirector')
             student = Optional(Student)
-            parent = Required('Teacher', reverse='child', initial=0)
+            parent = Required('Teacher', reverse='child')
             child = Optional('Teacher', reverse='parent')
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
             teacher = Optional(Teacher)
-        # last command appear twice
-        correct_sql = 'ALTER TABLE "teacher" ADD COLUMN "parent_id" INTEGER NOT NULL\n' \
-                      'ALTER TABLE "teacher" ADD CONSTRAINT "fk_teacher__parent_id" FOREIGN KEY ("parent_id") ' \
-                      'REFERENCES "teacher" ("id")\n' \
-                      'CREATE INDEX "idx_teacher__parent_id" ON "teacher" ("parent_id")\n' \
-                      'ALTER TABLE "teacher" ALTER COLUMN "parent_id" DROP DEFAULT\n' \
-                      'ALTER TABLE "teacher" ALTER COLUMN "parent_id" DROP DEFAULT'
 
-        migration_op = "AddRelation(entity1_name='Teacher', attr1=Required('parent', 'Teacher', initial=0), " \
+        correct_sql = '\n'.join([
+            'ALTER TABLE "teacher" ADD COLUMN "parent_id" INTEGER NOT NULL',
+            'ALTER TABLE "teacher" ADD CONSTRAINT "fk_teacher__parent_id" FOREIGN KEY ("parent_id") REFERENCES "teacher" ("id") ON DELETE CASCADE',
+            'CREATE INDEX "idx_teacher__parent_id" ON "teacher" ("parent_id")'
+        ])
+
+        migration_op = "AddRelation(entity1_name='Teacher', attr1=Required('parent', 'Teacher'), " \
                        "entity2_name='Teacher', attr2=Optional('child', 'Teacher'))"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
@@ -3855,8 +3835,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_change_relation_name(self):
