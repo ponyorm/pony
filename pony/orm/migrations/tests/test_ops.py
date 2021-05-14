@@ -2678,6 +2678,7 @@ class TestMigrations(unittest.TestCase):
             PrimaryKey(name, semester)
             description = Optional(str)
             last_update = Optional(datetime)
+            avg_mark = Optional(Decimal, scale=8)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -2688,6 +2689,7 @@ class TestMigrations(unittest.TestCase):
             gpa = Optional(float)
             group = Required(Group)
             courses = Set(Course)
+            mentor = Required('Teacher')
 
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
@@ -2697,15 +2699,15 @@ class TestMigrations(unittest.TestCase):
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
-            groups = Set(Group)
+            groups = Set(Group, cascade_delete=True)
             head_of_dept = Optional('DeptDirector')
+            student = Optional(Student)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
         migration_op = "ChangeAttributeClass(entity_name='Department', attr_name='rating', new_class='Required', initial=Decimal('1.0'))"
-
 
         correct_sql = 'ALTER TABLE "department" ALTER COLUMN "rating" SET NOT NULL\n' \
                       'UPDATE "department"\n' \
