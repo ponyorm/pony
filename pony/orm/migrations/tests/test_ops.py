@@ -2726,7 +2726,7 @@ class TestMigrations(unittest.TestCase):
 
     def test_change_optional_to_required_2b(self):
         """
-            Changes optional nullable attribute "raiting" in entity "Departemnt" to required without initial value
+            Changes optional nullable attribute "rating" in entity "Department" to required without initial value
         """
         self.db2 = db2 = Database(**self.db_params)
 
@@ -2757,6 +2757,7 @@ class TestMigrations(unittest.TestCase):
             PrimaryKey(name, semester)
             description = Optional(str)
             last_update = Optional(datetime)
+            avg_mark = Optional(Decimal, scale=8)
 
         class Student(db2.Entity):
             id = PrimaryKey(int, auto=True)
@@ -2766,17 +2767,20 @@ class TestMigrations(unittest.TestCase):
             gpa = Optional(float)
             group = Required(Group)
             courses = Set(Course)
+            last_online = Optional(time)
+            mentor = Required('Teacher')
 
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
             name = Required(str)
-            surname = Optional(str)
+            surname = Optional(str, index=True)
             dob = Required(date)
             departments = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
-            groups = Set(Group)
+            groups = Set(Group, cascade_delete=True)
             head_of_dept = Optional('DeptDirector')
+            student = Optional(Student)
 
         class DeptDirector(Teacher):
             is_director = Required(bool)
@@ -2794,7 +2798,7 @@ class TestMigrations(unittest.TestCase):
 
         self.assertEqual(migration_op, "\n".join(t))
         self.assertEqual(correct_sql, "\n".join(sql_ops))
-        self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
+        self.assertEqual(expected_schema, actual_schema)
 
     def test_change_optional_to_primary_key(self):
         """
@@ -3171,8 +3175,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_relation_set_to_req(self):
@@ -3255,8 +3259,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_relation_req_to_set(self):
@@ -3340,8 +3344,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_relation_set_to_opt(self):
@@ -3423,8 +3427,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_relation_opt_to_set(self):
@@ -3506,8 +3510,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_relation_set_to_set(self):
@@ -3598,8 +3602,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_float_as_primary_key(self):
@@ -3755,8 +3759,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_add_relation_self_reference(self):
@@ -3940,7 +3944,7 @@ class TestMigrations(unittest.TestCase):
             name = Required(str, 100)
             groups = Set('Group')
             courses = Set('Course')
-            teachers = Set('Teacher', table="TeachToDepts")
+            teachers = Set('Teacher')
             rating = Optional(Decimal)
 
         class Group(db2.Entity):
@@ -3980,6 +3984,7 @@ class TestMigrations(unittest.TestCase):
             name = Required(str)
             surname = Optional(str, index=True)
             dob = Required(date)
+            department = Set(Department)
             courses = Set(Course)
             biography = Optional(str, nullable=True)
             groups = Set(Group, cascade_delete=True)
@@ -3990,8 +3995,10 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "teacher" DROP COLUMN "teacher_id"'
 
-        migration_op = "RemoveAttribute(entity_name='Teacher', attr_name='head_of_dept')\n" \
-                       "RemoveAttribute(entity_name='DeptDirector', attr_name='teacher')"
+        migration_op = '\n'.join([
+            "RenameAttribute(entity_name='Teacher', attr_name='departments', new_attr_name='department')",
+            "RemoveRelation(entity_name='Teacher', attr_name='head_of_dept')"
+        ])
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -3999,8 +4006,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_delete_relation_opt_to_req(self):

@@ -195,9 +195,12 @@ def entity_difference(entity1, entity2, vdb1, vdb2, rename_map):
                 if isinstance(attr1, v.PrimaryKey) or isinstance(attr1, v.Discriminator) and entity1.subclasses:
                     throw(NotImplementedError, 'Cannot remove attribute which type is %s' % type(attr1).__name__)
 
-                # for ck in attr1.composite_keys:
-                #     return DropCompositeKey(entity1.name, ck)
-
+            if attr1.reverse:
+                r_attr1 = attr1.reverse
+                if r_attr1.name in vdb2.entities[r_attr1.entity.name].new_attrs:
+                    new_name = vdb2.entities[r_attr1.entity.name].new_attrs[r_attr1.name].reverse.name
+                    return operations.RenameAttribute(entity1.name, attr_name, new_name)
+                return operations.RemoveRelation(entity1.name, attr_name)
             return operations.RemoveAttribute(entity1.name, attr_name)
         else:
             if not (attr1.reverse or attr1.converters):

@@ -296,6 +296,7 @@ class RemoveRelation(RemoveAttribute):
                 vdb.schema.add_sql(self.sql)
             else:
                 self.apply_to_schema(vdb, attr)
+                self.apply_to_schema(vdb, attr.reverse)
 
     def serialize(self, imports):
         super(RemoveRelation, self).serialize(imports)
