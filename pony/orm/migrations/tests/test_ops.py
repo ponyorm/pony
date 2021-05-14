@@ -3901,36 +3901,29 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        correct_sql = '\n'.join([
+            'ALTER TABLE "department_teachers" RENAME TO "department_tchrs"',
+            'ALTER TABLE "department_tchrs" RENAME CONSTRAINT "fk_department_teachers__department_number" TO "fk_department_tchrs__department_number"',
+            'ALTER TABLE "department_tchrs" RENAME CONSTRAINT "fk_department_teachers__teacher_id" TO "fk_department_tchrs__teacher_id"',
+            'ALTER INDEX "idx_department_teachers__department_number" RENAME TO "idx_department_tchrs__department_number"',
+            'ALTER INDEX "idx_department_teachers__teacher_id" RENAME TO "idx_department_tchrs__teacher_id"'
+        ])
 
-        migration_op = ""
+        migration_op = '\n'.join([
+            "RenameAttribute(entity_name='Department', attr_name='teachers', new_attr_name='tchrs')",
+            "RenameAttribute(entity_name='Teacher', attr_name='departments', new_attr_name='dprtmnts')"
+        ])
         rename_map = {('Department', 'teachers'): ('Department', 'tchrs'),
                       ('Teacher', 'departments'): ('Teacher', 'dprtmnts')}
-        # apply_migrate raises exception: Error
-        # Traceback (most recent call last):
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 59, in testPartExecutor
-        #     yield
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 628, in run
-        #     testMethod()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 3427, in test_change_relation_name
-        #     expected_schema, actual_schema, migration, sql_ops = self.apply_migrate(rename_map=rename_map)
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 91, in apply_migrate
-        #     op.apply(new_vdb)
-        #   File "/home/admin/pony/pony/orm/migrations/operations.py", line 998, in apply
-        #     self.apply_to_schema(vdb, attr, self.new_attr_name)
-        #   File "/home/admin/pony/pony/orm/migrations/operations.py", line 1016, in apply_to_schema
-        #     schema.rename_table(m2m_table.name, new_m2m_name)
-        #   File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 898, in rename_table
-        #     del schema.tables[table.name]
-        # AttributeError: 'Name' object has no attribute 'name'
+
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate(rename_map=rename_map)
         imports = defaultdict(set)
         t = []
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_delete_relation_opt_to_opt(self):
