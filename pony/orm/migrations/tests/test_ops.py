@@ -3079,7 +3079,7 @@ class TestMigrations(unittest.TestCase):
                       'CREATE INDEX "idx_teacher__dept_number" ON "teacher" ("dept_number")'
 
         migration_op = "AddRelation(entity1_name='Department', attr1=Optional('head_of_dept', 'DeptDirector'), " \
-                       "entity2_name='DeptDirector', attr2=Required('dept', 'Department')) "
+                       "entity2_name='DeptDirector', attr2=Required('dept', 'Department'))"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
