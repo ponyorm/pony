@@ -4071,8 +4071,7 @@ class TestMigrations(unittest.TestCase):
 
         correct_sql = 'ALTER TABLE "student" DROP COLUMN "mentor_id"'
 
-        migration_op = "RemoveAttribute(entity_name='Student', attr_name='mentor')\n" \
-                       "RemoveAttribute(entity_name='Teacher', attr_name='student')"
+        migration_op = "RemoveRelation(entity_name='Student', attr_name='mentor')"
 
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
@@ -4080,8 +4079,8 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
         self.assertEqual(expected_schema, actual_schema)
 
     def test_delete_relation_req_to_set(self):
