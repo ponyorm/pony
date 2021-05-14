@@ -3516,7 +3516,7 @@ class TestMigrations(unittest.TestCase):
 
     def test_add_relation_set_to_set(self):
         """
-            Adds set-set relation in entity "Department"(attribute "students") and entity "Student"
+            Adds m2m relation in entity "Department"(attribute "students") and entity "Student"
             (attribute "depts")
         """
         self.db2 = db2 = Database(**self.db_params)
