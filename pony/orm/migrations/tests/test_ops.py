@@ -5119,33 +5119,9 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        correct_sql = ''
+        correct_sql = 'DROP INDEX "idx_teacher__surname"'
 
-        migration_op = ""
-        # apply_migrate() raises exception
-        # Error
-        # Traceback (most recent call last):
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 59, in testPartExecutor
-        #     yield
-        #   File "/usr/lib64/python3.7/unittest/case.py", line 628, in run
-        #     testMethod()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 4670, in test_set_index_false
-        #     expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
-        #   File "/home/admin/pony/pony/orm/migrations/tests/test_ops.py", line 95, in apply_migrate
-        #     op.apply(new_vdb)
-        #   File "/home/admin/pony/pony/orm/migrations/operations.py", line 1413, in apply
-        #     self.apply_to_schema(vdb, attr)
-        #   File "/home/admin/pony/pony/orm/migrations/operations.py", line 1422, in apply_to_schema
-        #     vdb.schema.rename_index(index, attr.index)
-        #   File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 1214, in rename_index
-        #     schema.ops.extend(index.get_rename_sql(new_name))
-        #   File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 28, in wrap
-        #     res = func(obj, *args, **kwargs)
-        #   File "/home/admin/pony/pony/orm/migrations/dbschema.py", line 618, in get_rename_sql
-        #     result.append(quote(new_name))
-        #   File "/home/admin/pony/pony/orm/dbapiprovider.py", line 262, in quote_name
-        #     return '.'.join(provider.quote_name(item) for item in name)
-        # TypeError: 'bool' object is not iterable
+        migration_op = "DropIndex(entity_name='Teacher', attr_name='surname')"
         expected_schema, actual_schema, migration, sql_ops = self.apply_migrate()
         imports = defaultdict(set)
         t = []
