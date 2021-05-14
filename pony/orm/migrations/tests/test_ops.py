@@ -2533,6 +2533,7 @@ class TestMigrations(unittest.TestCase):
             gpa = Optional(float)
             group = Required(Group)
             courses = Set(Course)
+            mentor = Required('Teacher')
 
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
@@ -2550,8 +2551,7 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        migration_op = "ChangeAttributeClass(entity_name='Course', attr_name='description', " \
-                                            "new_class='Required', initial='Empty description')"
+        migration_op = "ChangeAttributeClass(entity_name='Course', attr_name='description', new_class='Required', initial='Empty description')"
 
         correct_sql = 'ALTER TABLE "course" ALTER COLUMN "description" DROP DEFAULT\n' \
                       'UPDATE "course"\n' \
@@ -2564,9 +2564,9 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
+        self.assertEqual(expected_schema, actual_schema)
 
     def test_change_optional_to_required_1b(self):
         """
@@ -2613,6 +2613,7 @@ class TestMigrations(unittest.TestCase):
             group = Required(Group)
             courses = Set(Course)
             mentor = Required('Teacher')
+            last_online = Optional(time)
 
         class Teacher(db2.Entity):
             id = PrimaryKey(int)
@@ -2640,9 +2641,9 @@ class TestMigrations(unittest.TestCase):
         for op in migration.operations:
             t.append(op.serialize(imports))
 
-        self.assertEqual("\n".join(t), migration_op)
-        self.assertEqual("\n".join(sql_ops), correct_sql)
-        self.assertEqual(expected_schema, actual_schema) # Test fails on schemas comparing
+        self.assertEqual(migration_op, "\n".join(t))
+        self.assertEqual(correct_sql, "\n".join(sql_ops))
+        self.assertEqual(expected_schema, actual_schema)
 
     def test_change_optional_to_required_2a(self):
         """
@@ -2703,7 +2704,7 @@ class TestMigrations(unittest.TestCase):
             is_director = Required(bool)
             teacher = Optional(Teacher)
 
-        migration_op = "ChangeAttributeClass(entity_name='Department', attr_name='rating', new_class='Required', initial=Decimal('1.0'))" \
+        migration_op = "ChangeAttributeClass(entity_name='Department', attr_name='rating', new_class='Required', initial=Decimal('1.0'))"
 
 
         correct_sql = 'ALTER TABLE "department" ALTER COLUMN "rating" SET NOT NULL\n' \
