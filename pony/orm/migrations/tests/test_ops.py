@@ -4771,6 +4771,7 @@ class TestMigrations(unittest.TestCase):
             id = PrimaryKey(int, auto=True)
             name = Required(str)
             dob = Required(date)
+            last_online = Optional(time)
             picture = Optional(buffer)
             gpa = Optional(float)
             group = Required(Group)
