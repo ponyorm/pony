@@ -428,6 +428,9 @@ class RemoveEntity(BaseOperation):
             for attr in list(entity.new_attrs.values()):
                 removed_attrs.append(attr)
                 entity.remove_attr(attr.name)
+                if attr.reverse:
+                    removed_attrs.append(attr.reverse)
+                    attr.reverse.entity.remove_attr(attr.reverse.name)
         else:
             disc = None
             for attr in entity.new_attrs.values():

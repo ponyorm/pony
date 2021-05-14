@@ -515,8 +515,7 @@ class TestMigrations(unittest.TestCase):
             groups = Set(Group, cascade_delete=True)
             student = Optional(Student)
 
-        migration_op = "RemoveEntity('DeptDirector')\n" \
-                       "RemoveAttribute(entity_name='Teacher', attr_name='head_of_dept')"
+        migration_op = "RemoveEntity('DeptDirector')"
 
         correct_sql = 'ALTER TABLE "teacher" DROP COLUMN "classtype"\n' \
                       'ALTER TABLE "teacher" DROP COLUMN "is_director"\n' \

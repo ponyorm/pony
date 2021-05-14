@@ -196,9 +196,9 @@ def entity_difference(entity1, entity2, vdb1, vdb2, rename_map):
                     throw(NotImplementedError, 'Cannot remove attribute which type is %s' % type(attr1).__name__)
 
             if attr1.reverse:
-                r_attr1 = attr1.reverse
-                if r_attr1.name in vdb2.entities[r_attr1.entity.name].new_attrs:
-                    new_name = vdb2.entities[r_attr1.entity.name].new_attrs[r_attr1.name].reverse.name
+                rattr1 = attr1.reverse
+                if rattr1.entity.name in vdb2.entities and rattr1.name in vdb2.entities[rattr1.entity.name].new_attrs:
+                    new_name = vdb2.entities[rattr1.entity.name].new_attrs[rattr1.name].reverse.name
                     return operations.RenameAttribute(entity1.name, attr_name, new_name)
                 return operations.RemoveRelation(entity1.name, attr_name)
             return operations.RemoveAttribute(entity1.name, attr_name)
