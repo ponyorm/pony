@@ -4566,7 +4566,7 @@ class EntityMeta(type):
                 for attrname in only:
                     attr = get_attr(attrname)
                     if attr is None: throw(AttributeError,
-                        'Entity %s does not have attriute %s' % (entity.__name__, attrname))
+                        'Entity %s does not have attribute %s' % (entity.__name__, attrname))
                     else: append(attr)
             else:
                 for attr in entity._attrs_:
@@ -4579,7 +4579,7 @@ class EntityMeta(type):
                 if isinstance(exclude, basestring): exclude = exclude.replace(',', ' ').split()
                 for attrname in exclude:
                     if attrname not in entity._adict_: throw(AttributeError,
-                        'Entity %s does not have attriute %s' % (entity.__name__, attrname))
+                        'Entity %s does not have attribute %s' % (entity.__name__, attrname))
                 attrs = (attr for attr in attrs if attr.name not in exclude)
             attrs = tuple(attrs)
             entity._attrnames_cache_[key] = attrs
