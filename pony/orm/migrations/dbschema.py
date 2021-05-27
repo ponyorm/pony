@@ -242,7 +242,7 @@ class Column(DBObject):
         col.nullable = attr.nullable or len(attr.entity.bases) != 0
         col.auto = attr.auto
         col.sql_default = attr.sql_default
-        if not attr.is_required and isinstance(attr.py_type, type):
+        if not attr.provided.kwargs.get('nullable') and not attr.is_required and isinstance(attr.py_type, type):
             if issubclass(attr.py_type, basestring):
                 col.sql_default = ''
             elif issubclass(attr.py_type, Json):

@@ -53,6 +53,7 @@ class AddAttribute(BaseOperation):
         self.sql = sql
 
     def apply(self, vdb):
+        from pony.orm.ormtypes import Json
         entity = vdb.entities.get(self.entity_name)
         attr = self.attr
         if entity is None:
@@ -82,8 +83,11 @@ class AddAttribute(BaseOperation):
             attr.resolve_cascade(r_attr)
             r_attr.resolve_cascade(attr)
 
-        if isinstance(attr, virtuals.Optional) and attr.py_type is basestring:
-            attr.sql_default = ''
+        if not attr.provided.kwargs.get('nullable') and isinstance(attr, virtuals.Optional):
+            if issubclass(attr.py_type, basestring):
+                attr.sql_default = ''
+            elif issubclass(attr.py_type, Json):
+                attr.sql_default = '{}'
 
         if not vdb.vdb_only:
             if self.sql:
