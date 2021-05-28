@@ -72,8 +72,7 @@ WHERE "passport"."id" IS NOT NULL''')
         flush()
         sql = self.db.last_sql
         self.assertEqual(sql, '''DELETE FROM "Person"
-WHERE "id" = ?
-  AND "name" = ?''')
+WHERE "id" = ?''')
 
     @raises_exception(ConstraintError, 'Cannot unlink Passport[1] from previous Person[1] object, because Passport.person attribute is required')
     @db_session

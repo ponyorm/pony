@@ -5355,20 +5355,12 @@ class Entity(with_metaclass(EntityMeta)):
         values = []
         values.extend(obj._get_raw_pkval_())
         cache = obj._session_cache_
-        optimistic_session = cache.db_session is None or cache.db_session.optimistic
-        if optimistic_session and obj not in cache.for_update:
-            optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
-                obj._construct_optimistic_criteria_()
-            values.extend(optimistic_values)
-        else: optimistic_columns = optimistic_converters = optimistic_ops = ()
-        query_key = tuple(optimistic_columns), tuple(optimistic_ops)
+        query_key = ()
         database = obj._database_
         cached_sql = obj._delete_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_, repeat('EQ'))
-            if optimistic_columns: populate_criteria_list(
-                where_list, optimistic_columns, optimistic_converters, optimistic_ops, params_count, optimistic=True)
             from_ast = [ 'FROM', [ None, 'TABLE', obj._table_ ] ]
             sql_ast = [ 'DELETE', None, from_ast, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
@@ -5376,8 +5368,6 @@ class Entity(with_metaclass(EntityMeta)):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments, start_transaction=True)
-        if cursor.rowcount == 0 and cache.db_session.optimistic:
-            throw(OptimisticCheckError, obj.find_updated_attributes())
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
 
