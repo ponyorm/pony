@@ -280,7 +280,8 @@ class MSSQLProvider(DBAPIProvider):
             else: 
                 cursor.execute(sql, arguments)
         if returning_id: 
-            id = cursor.execute('SELECT SCOPE_IDENTITY() AS [SCOPE_IDENTITY]').fetchone()[0]
+            id = cursor.execute('SELECT @@Identity').fetchone()[0]
+            # id = cursor.execute('SELECT SCOPE_IDENTITY() AS [SCOPE_IDENTITY]').fetchone()[0]
             if id:
                 return int(id)
             else:
