@@ -58,6 +58,13 @@ class MSSQLValue(Value):
 class MSSQLBuilder(SQLBuilder):
     dialect = 'MSSQL'
     value_class = MSSQLValue
+
+    def INSERT(builder, table_name, columns, values, returning=None):
+        result = SQLBuilder.INSERT(builder, table_name, columns, values)
+        if returning is not None:
+            values_index = result.index(') VALUES (')
+            result[values_index] = ') OUTPUT Inserted.ID VALUES ('
+        return result
     
     def CONCAT(builder, *args):
         return 'CONCAT(',  join(', ', imap(builder, args)), ')'
@@ -277,15 +284,17 @@ class MSSQLProvider(DBAPIProvider):
             cursor.executemany(sql, arguments)
         else:
             if arguments is None: cursor.execute(sql)
-            else: 
-                cursor.execute(sql, arguments)
-        if returning_id: 
-            id = cursor.execute('SELECT @@Identity').fetchone()[0]
-            # id = cursor.execute('SELECT SCOPE_IDENTITY() AS [SCOPE_IDENTITY]').fetchone()[0]
-            if id:
-                return int(id)
             else:
-                return id
+                if returning_id:
+                    sql = sql
+                    _id = cursor.execute(sql, arguments).fetchone()[0]
+                    
+                    if not _id:
+                        _id = cursor.execute('SELECT @@Identity').fetchone()[0]
+                    
+                    return _id
+                else:
+                    cursor.execute(sql, arguments)
 
 
     @wrap_dbapi_exceptions
