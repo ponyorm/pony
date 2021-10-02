@@ -254,10 +254,17 @@ class MSSQLProvider(DBAPIProvider):
     def get_pool(provider, *args, **kwargs):
         driver      = kwargs['driver']
         server      = kwargs['server']
-        database    = kwargs['database']
         username    = kwargs['username']
         password    = kwargs['password']
-        connection_string = f'Driver={driver};Server={server};Database={database};UID={username};PWD={password};MARS_Connection=Yes'
+        connection_string = f'Driver={driver};Server={server};UID={username};PWD={password};MARS_Connection=Yes'
+
+        if 'encrypt' in kwargs:
+            connection_string += f';Encrypt={kwargs["encrypt"]}'
+        if 'trust_server_certificate' in kwargs:
+            connection_string += f';TrustServerCertificate={kwargs["trust_server_certificate"]}'
+        if 'database' in kwargs:
+            connection_string += f';Database={kwargs["database"]}'
+
         return Pool(mssql_module, connection_string, **kwargs)
 
     @wrap_dbapi_exceptions
