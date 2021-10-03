@@ -6,6 +6,7 @@ from datetime import datetime, date, time
 from pony.orm.tests.testutils import raises_exception
 from pony.converting import str2time
 
+
 class TestTimeParsing(unittest.TestCase):
     def test_time_1(self):
         self.assertEqual(str2time('1:2'), time(1, 2))

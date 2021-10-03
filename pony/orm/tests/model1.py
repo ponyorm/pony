@@ -1,8 +1,9 @@
 from __future__ import absolute_import, print_function, division
 
 from pony.orm.core import *
+from pony.orm.tests import db_params
 
-db = Database('sqlite', ':memory:')
+db = Database(**db_params)
 
 class Student(db.Entity):
     _table_ = "Students"
@@ -33,7 +34,8 @@ class Mark(db.Entity):
     PrimaryKey(student, subject)
 
 
-db.generate_mapping(create_tables=True)
+db.generate_mapping(check_tables=False)
+
 
 @db_session
 def populate_db():
@@ -56,4 +58,3 @@ def populate_db():
     Mark(student=s102, subject=Chemistry, value=5)
     Mark(student=s103, subject=Physics, value=2)
     Mark(student=s103, subject=Chemistry, value=4)
-populate_db()

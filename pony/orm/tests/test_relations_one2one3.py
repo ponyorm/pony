@@ -4,10 +4,13 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database, only_for
 
+
+@only_for('sqlite')
 class TestOneToOne3(unittest.TestCase):
     def setUp(self):
-        self.db = Database('sqlite', ':memory:')
+        self.db = Database()
 
         class Person(self.db.Entity):
             name = Required(unicode)
@@ -17,14 +20,14 @@ class TestOneToOne3(unittest.TestCase):
             code = Required(unicode)
             person = Required("Person")
 
-        self.db.generate_mapping(create_tables=True)
+        setup_database(self.db)
 
         with db_session:
             p1 = Person(name='John')
             Passport(code='123', person=p1)
 
     def tearDown(self):
-        self.db = None
+        teardown_database(self.db)
 
     @db_session
     def test_1(self):
@@ -38,9 +41,9 @@ class TestOneToOne3(unittest.TestCase):
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
 FROM "Person" "p"
-  LEFT JOIN "Passport" "passport-1"
-    ON "p"."id" = "passport-1"."person"
-WHERE "passport-1"."id" IS NULL''')
+  LEFT JOIN "Passport" "passport"
+    ON "p"."id" = "passport"."person"
+WHERE "passport"."id" IS NULL''')
 
     @db_session
     def test_3(self):
@@ -48,9 +51,9 @@ WHERE "passport-1"."id" IS NULL''')
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
 FROM "Person" "p"
-  LEFT JOIN "Passport" "passport-1"
-    ON "p"."id" = "passport-1"."person"
-WHERE "passport-1"."id" IS NULL''')
+  LEFT JOIN "Passport" "passport"
+    ON "p"."id" = "passport"."person"
+WHERE "passport"."id" IS NULL''')
 
     @db_session
     def test_4(self):
@@ -58,9 +61,9 @@ WHERE "passport-1"."id" IS NULL''')
         sql = self.db.last_sql
         self.assertEqual(sql, '''SELECT "p"."id", "p"."name"
 FROM "Person" "p"
-  LEFT JOIN "Passport" "passport-1"
-    ON "p"."id" = "passport-1"."person"
-WHERE "passport-1"."id" IS NOT NULL''')
+  LEFT JOIN "Passport" "passport"
+    ON "p"."id" = "passport"."person"
+WHERE "passport"."id" IS NOT NULL''')
 
     @db_session
     def test_5(self):
@@ -70,7 +73,7 @@ WHERE "passport-1"."id" IS NOT NULL''')
         sql = self.db.last_sql
         self.assertEqual(sql, '''DELETE FROM "Person"
 WHERE "id" = ?
-  AND "name" = ?''')        
+  AND "name" = ?''')
 
     @raises_exception(ConstraintError, 'Cannot unlink Passport[1] from previous Person[1] object, because Passport.person attribute is required')
     @db_session

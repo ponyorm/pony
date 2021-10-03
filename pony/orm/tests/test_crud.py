@@ -6,8 +6,9 @@ from datetime import date
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Group(db.Entity):
     id = PrimaryKey(int)
@@ -16,6 +17,7 @@ class Group(db.Entity):
 
 class Student(db.Entity):
     name = Required(unicode)
+    age = Optional(int)
     scholarship = Required(Decimal, default=0)
     picture = Optional(buffer, lazy=True)
     email = Required(unicode, unique=True)
@@ -24,25 +26,31 @@ class Student(db.Entity):
     group = Optional('Group')
 
 class Course(db.Entity):
+    id = PrimaryKey(int)
     name = Required(unicode)
     semester = Required(int)
     students = Set(Student)
     composite_key(name, semester)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(id=1, major='Math')
-    g2 = Group(id=2, major='Physics')
-    s1 = Student(id=1, name='S1', email='s1@example.com', group=g1)
-    s2 = Student(id=2, name='S2', email='s2@example.com', group=g1)
-    s3 = Student(id=3, name='S3', email='s3@example.com', group=g2)
-    c1 = Course(name='Math', semester=1)
-    c2 = Course(name='Math', semester=2)
-    c3 = Course(name='Physics', semester=1)
-
 
 class TestCRUD(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(id=1, major='Math')
+            g2 = Group(id=2, major='Physics')
+            s1 = Student(id=1, name='S1', age=19, email='s1@example.com', group=g1)
+            s2 = Student(id=2, name='S2', age=21, email='s2@example.com', group=g1)
+            s3 = Student(id=3, name='S3', email='s3@example.com', group=g2)
+            c1 = Course(id=1, name='Math', semester=1)
+            c2 = Course(id=2, name='Math', semester=2)
+            c3 = Course(id=3, name='Physics', semester=1)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -71,6 +79,20 @@ class TestCRUD(unittest.TestCase):
         g1 = Group[1]
         x = Student.exists(group=g1)
         self.assertEqual(x, True)
+
+    def test_numeric_nonzero(self):
+        result = select(s.id for s in Student if s.age)[:]
+        self.assertEqual(set(result), {1, 2})
+
+    def test_numeric_negate_1(self):
+        result = select(s.id for s in Student if not s.age)[:]
+        self.assertEqual(set(result), {3})
+        self.assertTrue('is null' in db.last_sql.lower())
+
+    def test_numeric_negate_2(self):
+        result = select(c.id for c in Course if not c.semester)[:]
+        self.assertEqual(result, [])
+        self.assertTrue('is null' not in db.last_sql.lower())
 
     def test_set1(self):
         s1 = Student[1]
@@ -106,6 +128,7 @@ class TestCRUD(unittest.TestCase):
     @raises_exception(ValueError, "Value type for attribute Group.id must be int. Got string 'not a number'")
     def test_validate_5(self):
         s4 = Student(id=3, name='S4', email='s4@example.com', group='not a number')
+
     @raises_exception(TypeError, "Attribute Student.group must be of Group type. Got: datetime.date(2011, 1, 1)")
     def test_validate_6(self):
         s4 = Student(id=3, name='S4', email='s4@example.com', group=date(2011, 1, 1))

@@ -2,6 +2,7 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2
 
 import re, os, os.path, sys
+from datetime import datetime, timedelta
 
 from pony import orm
 from pony.orm import core
@@ -55,6 +56,7 @@ def do_test(provider_name, raw_server_version):
         return
     module = sys.modules[module_name]
     globals = vars(module).copy()
+    globals.update(datetime=datetime, timedelta=timedelta)
     with orm.db_session:
         for statement in statements[:-1]:
             code = compile(statement, '<string>', 'exec')

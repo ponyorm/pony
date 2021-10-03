@@ -1,6 +1,9 @@
-import sys
+import sys, platform
 
 PY2 = sys.version_info[0] == 2
+PYPY = platform.python_implementation() == 'PyPy'
+PYPY2 = PYPY and PY2
+PY37 = sys.version_info[:2] >= (3, 7)
 
 if PY2:
     from future_builtins import zip as izip, map as imap

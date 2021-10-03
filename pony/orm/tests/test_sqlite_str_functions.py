@@ -7,13 +7,16 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import only_for
 
 db = Database('sqlite', ':memory:')
+
 
 class Person(db.Entity):
     name = Required(unicode)
     age = Optional(int)
     image = Optional(buffer)
+
 
 db.generate_mapping(create_tables=True)
 
@@ -22,6 +25,7 @@ with db_session:
     p2 = Person(name=u'Иван')  # u'\u0418\u0432\u0430\u043d'
 
 
+@only_for('sqlite')
 class TestUnicode(unittest.TestCase):
     @db_session
     def test1(self):
@@ -57,6 +61,7 @@ class TestUnicode(unittest.TestCase):
     def test7(self):
         ages = db.select('select py_lower(image) from person')
         self.assertEqual(ages, [u'abcdef', None])
+
 
 if __name__ == '__main__':
     unittest.main()

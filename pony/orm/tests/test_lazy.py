@@ -3,19 +3,24 @@ from __future__ import absolute_import, print_function, division
 import unittest
 
 from pony.orm.core import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestLazy(unittest.TestCase):
     def setUp(self):
-        self.db = Database('sqlite', ':memory:')
+        db = self.db = Database()
         class X(self.db.Entity):
             a = Required(int)
             b = Required(unicode, lazy=True)
         self.X = X
-        self.db.generate_mapping(create_tables=True)
+        setup_database(db)
         with db_session:
-            x1 = X(a=1, b='first')
-            x2 = X(a=2, b='second')
-            x3 = X(a=3, b='third')
+            x1 = X(id=1, a=1, b='first')
+            x2 = X(id=2, a=2, b='second')
+            x3 = X(id=3, a=3, b='third')
+
+    def tearDown(self):
+        teardown_database(self.db)
 
     @db_session
     def test_lazy_1(self):

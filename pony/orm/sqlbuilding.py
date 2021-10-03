@@ -1,24 +1,44 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, izip, imap, itervalues, basestring, unicode, buffer
+from pony.py23compat import PY2, izip, imap, itervalues, basestring, unicode, buffer, int_types
 
 from operator import attrgetter
 from decimal import Decimal
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from binascii import hexlify
 
 from pony import options
-from pony.utils import datetime2timestamp, throw
-from pony.orm.ormtypes import RawSQL
+from pony.utils import datetime2timestamp, throw, is_ident
+from pony.converting import timedelta2str
+from pony.orm.ormtypes import RawSQL, Json
 
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'style', 'id', 'paramkey', 'py2sql'
-    def __init__(param, paramstyle, id, paramkey, converter=None):
+    __slots__ = 'style', 'id', 'paramkey', 'converter', 'optimistic'
+    def __init__(param, paramstyle, paramkey, converter=None, optimistic=False):
         param.style = paramstyle
-        param.id = id
+        param.id = None
         param.paramkey = paramkey
-        param.py2sql = converter.py2sql if converter else (lambda val: val)
+        param.converter = converter
+        param.optimistic = optimistic
+    def eval(param, values):
+        varkey, i, j = param.paramkey
+        value = values[varkey]
+        if i is not None:
+            t = type(value)
+            if t is tuple: value = value[i]
+            elif t is RawSQL: value = value.values[i]
+            elif hasattr(value, '_get_items'): value = value._get_items()[i]
+            else: assert False, t
+        if j is not None:
+            assert type(type(value)).__name__ == 'EntityMeta'
+            value = value._get_raw_pkval_()[j]
+        converter = param.converter
+        if value is not None and converter is not None:
+            if converter.attr is None:
+                value = converter.val2dbval(value)
+            value = converter.py2sql(value)
+        return value
     def __unicode__(param):
         paramstyle = param.style
         if paramstyle == 'qmark': return u'?'
@@ -31,6 +51,17 @@ class Param(object):
     def __repr__(param):
         return '%s(%r)' % (param.__class__.__name__, param.paramkey)
 
+class CompositeParam(Param):
+    __slots__ = 'items', 'func'
+    def __init__(param, paramstyle, paramkey, items, func):
+        for item in items: assert isinstance(item, (Param, Value)), item
+        Param.__init__(param, paramstyle, paramkey)
+        param.items = items
+        param.func = func
+    def eval(param, values):
+        args = [ item.eval(values) if isinstance(item, Param) else item.value for item in param.items ]
+        return param.func(args)
+
 class Value(object):
     __slots__ = 'paramstyle', 'value'
     def __init__(self, paramstyle, value):
@@ -38,19 +69,31 @@ class Value(object):
         self.value = value
     def __unicode__(self):
         value = self.value
-        if value is None: return 'null'
-        if isinstance(value, bool): return value and '1' or '0'
-        if isinstance(value, basestring): return self.quote_str(value)
-        if isinstance(value, datetime): return self.quote_str(datetime2timestamp(value))
-        if isinstance(value, date): return self.quote_str(str(value))
+        if value is None:
+            return 'null'
+        if isinstance(value, bool):
+            return value and '1' or '0'
+        if isinstance(value, basestring):
+            return self.quote_str(value)
+        if isinstance(value, datetime):
+            return 'TIMESTAMP ' + self.quote_str(datetime2timestamp(value))
+        if isinstance(value, date):
+            return 'DATE ' + self.quote_str(str(value))
+        if isinstance(value, timedelta):
+            return "INTERVAL '%s' HOUR TO SECOND" % timedelta2str(value)
         if PY2:
-            if isinstance(value, (int, long, float, Decimal)): return str(value)
-            if isinstance(value, buffer): return "X'%s'" % hexlify(value)
+            if isinstance(value, (int, long, float, Decimal)):
+                return str(value)
+            if isinstance(value, buffer):
+                return "X'%s'" % hexlify(value)
         else:
-            if isinstance(value, (int, float, Decimal)): return str(value)
-            if isinstance(value, bytes): return "X'%s'" % hexlify(value).decode('ascii')
-        assert False, value  # pragma: no cover
-    if not PY2: __str__ = __unicode__
+            if isinstance(value, (int, float, Decimal)):
+                return str(value)
+            if isinstance(value, bytes):
+                return "X'%s'" % hexlify(value).decode('ascii')
+        assert False, repr(value)  # pragma: no cover
+    if not PY2:
+        __str__ = __unicode__
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):
@@ -67,9 +110,9 @@ def flat(tree):
         x = stack_pop()
         if isinstance(x, basestring): result_append(x)
         else:
-            try: stack_extend(reversed(x))
+            try: stack_extend(x)
             except TypeError: result_append(x)
-    return result
+    return result[::-1]
 
 def flat_conditions(conditions):
     result = []
@@ -127,27 +170,14 @@ def indentable(method):
     new_method.__name__ = method.__name__
     return new_method
 
-def convert(values, params):
-    for param in params:
-        varkey, i, j = param.paramkey
-        value = values[varkey]
-        t = type(value)
-        if i is not None:
-            if t is tuple: value = value[i]
-            elif t is RawSQL: value = value.values[i]
-            else: assert False
-        if j is not None:
-            assert type(type(value)).__name__ == 'EntityMeta'
-            value = value._get_raw_pkval_()[j]
-        if value is not None:  # can value be None at all?
-            value = param.py2sql(value)
-        yield value
-
 class SQLBuilder(object):
     dialect = None
-    make_param = Param
-    make_value = Value
+    param_class = Param
+    composite_param_class = CompositeParam
+    value_class = Value
     indent_spaces = " " * 4
+    least_func_name = 'least'
+    greatest_func_name = 'greatest'
     def __init__(builder, provider, ast):
         builder.provider = provider
         builder.quote_name = provider.quote_name
@@ -158,22 +188,24 @@ class SQLBuilder(object):
         builder.inner_join_syntax = options.INNER_JOIN_SYNTAX
         builder.suppress_aliases = False
         builder.result = flat(builder(ast))
+        params = tuple(x for x in builder.result if isinstance(x, Param))
+        layout = []
+        for i, param in enumerate(params):
+            if param.id is None: param.id = i + 1
+            layout.append(param.paramkey)
+        builder.layout = layout
         builder.sql = u''.join(imap(unicode, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
-            params = tuple(x for x in builder.result if isinstance(x, Param))
             def adapter(values):
-                return tuple(convert(values, params))
+                return tuple(param.eval(values) for param in params)
         elif paramstyle == 'numeric':
-            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
-                return tuple(convert(values, params))
+                return tuple(param.eval(values) for param in params)
         elif paramstyle in ('named', 'pyformat'):
-            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
-                return dict(('p%d' % param.id, value) for param, value in izip(params, convert(values, params)))
+                return {'p%d' % param.id: param.eval(values) for param in params}
         else: throw(NotImplementedError, paramstyle)
         builder.params = params
-        builder.layout = tuple(param.paramkey for param in params)
         builder.adapter = adapter
     def __call__(builder, ast):
         if isinstance(ast, basestring):
@@ -217,7 +249,7 @@ class SQLBuilder(object):
             if alias is not None: builder.suppress_aliases = True
             if not where: return 'DELETE ', builder(from_ast)
             return 'DELETE ', builder(from_ast), builder(where)
-    def subquery(builder, *sections):
+    def _subquery(builder, *sections):
         builder.indent += 1
         if not builder.inner_join_syntax:
             sections = move_conditions_from_inner_join_to_where(sections)
@@ -228,19 +260,21 @@ class SQLBuilder(object):
         prev_suppress_aliases = builder.suppress_aliases
         builder.suppress_aliases = False
         try:
-            result = builder.subquery(*sections)
+            result = builder._subquery(*sections)
             if builder.indent:
                 indent = builder.indent_spaces * builder.indent
                 return '(\n', result, indent + ')'
             return result
         finally:
             builder.suppress_aliases = prev_suppress_aliases
-    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+    def SELECT_FOR_UPDATE(builder, nowait, skip_locked, *sections):
         assert not builder.indent
         result = builder.SELECT(*sections)
-        return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
+        nowait = ' NOWAIT' if nowait else ''
+        skip_locked = ' SKIP LOCKED' if skip_locked else ''
+        return result, 'FOR UPDATE', nowait, skip_locked, '\n'
     def EXISTS(builder, *sections):
-        result = builder.subquery(*sections)
+        result = builder._subquery(*sections)
         indent = builder.indent_spaces * builder.indent
         return 'EXISTS (\n', indent, 'SELECT 1\n', result, indent, ')'
     def NOT_EXISTS(builder, *sections):
@@ -340,23 +374,36 @@ class SQLBuilder(object):
         return builder(expr), ' DESC'
     @indentable
     def LIMIT(builder, limit, offset=None):
-        if not offset: return 'LIMIT ', builder(limit), '\n'
-        else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
+        if limit is None:
+            limit = 'null'
+        else:
+            assert isinstance(limit, int_types)
+        assert offset is None or isinstance(offset, int)
+        if offset:
+            return 'LIMIT %s OFFSET %d\n' % (limit, offset)
+        else:
+            return 'LIMIT %s\n' % limit
     def COLUMN(builder, table_alias, col_name):
         if builder.suppress_aliases or not table_alias:
             return [ '%s' % builder.quote_name(col_name) ]
         return [ '%s.%s' % (builder.quote_name(table_alias), builder.quote_name(col_name)) ]
-    def PARAM(builder, paramkey, converter=None):
+    def PARAM(builder, paramkey, converter=None, optimistic=False):
+        return builder.make_param(builder.param_class, paramkey, converter, optimistic)
+    def make_param(builder, param_class, paramkey, *args):
         keys = builder.keys
         param = keys.get(paramkey)
         if param is None:
-            param = Param(builder.paramstyle, len(keys) + 1, paramkey, converter)
+            param = param_class(builder.paramstyle, paramkey, *args)
             keys[paramkey] = param
-        return [ param ]
+        return param
+    def make_composite_param(builder, paramkey, items, func):
+        return builder.make_param(builder.composite_param_class, paramkey, items, func)
+    def STAR(builder, table_alias):
+        return builder.quote_name(table_alias), '.*'
     def ROW(builder, *items):
         return '(', join(', ', imap(builder, items)), ')'
     def VALUE(builder, value):
-        return [ builder.make_value(builder.paramstyle, value) ]
+        return builder.value_class(builder.paramstyle, value)
     def AND(builder, *cond_list):
         cond_list = [ builder(condition) for condition in cond_list ]
         return join(' AND ', cond_list)
@@ -380,6 +427,15 @@ class SQLBuilder(object):
     DIV = make_binary_op(' / ', True)
     FLOORDIV = make_binary_op(' / ', True)
 
+    def MOD(builder, a, b):
+        symbol = ' %% ' if builder.paramstyle in ('format', 'pyformat') else ' % '
+        return '(', builder(a), symbol, builder(b), ')'
+    def FLOAT_EQ(builder, a, b):
+        a, b = builder(a), builder(b)
+        return 'abs(', a, ' - ', b, ') / coalesce(nullif(greatest(abs(', a, '), abs(', b, ')), 0), 1) <= 1e-14'
+    def FLOAT_NE(builder, a, b):
+        a, b = builder(a), builder(b)
+        return 'abs(', a, ' - ', b, ') / coalesce(nullif(greatest(abs(', a, '), abs(', b, ')), 0), 1) > 1e-14'
     def CONCAT(builder, *args):
         return '(',  join(' || ', imap(builder, args)), ')'
     def NEG(builder, expr):
@@ -412,24 +468,39 @@ class SQLBuilder(object):
             return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' NOT IN (', join(', ', expr_list), ')'
-    def COUNT(builder, kind, *expr_list):
-        if kind == 'ALL':
+    def COUNT(builder, distinct, *expr_list):
+        assert distinct in (None, True, False)
+        if not distinct:
             if not expr_list: return ['COUNT(*)']
-            return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
-        elif kind == 'DISTINCT':
-            if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
-            if len(expr_list) == 1: return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
             if builder.dialect == 'PostgreSQL':
-                return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
-            elif builder.dialect == 'MySQL':
-                return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
-            # Oracle and SQLite queries translated to completely different subquery syntax
-            else: throw(NotImplementedError)  # This line must not be executed
-        throw(AstError, 'Invalid COUNT kind (must be ALL or DISTINCT)')
-    def SUM(builder, expr, distinct=False):
+                return 'COUNT(', builder.ROW(*expr_list), ')'
+            else:
+                return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
+        if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
+        if len(expr_list) == 1:
+            return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
+
+        if builder.dialect == 'PostgreSQL':
+            return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
+        elif builder.dialect == 'MySQL':
+            return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
+        # Oracle and SQLite queries translated to completely different subquery syntax
+        else: throw(NotImplementedError)  # This line must not be executed
+    def SUM(builder, distinct, expr):
+        assert distinct in (None, True, False)
         return distinct and 'coalesce(SUM(DISTINCT ' or 'coalesce(SUM(', builder(expr), '), 0)'
-    def AVG(builder, expr, distinct=False):
+    def AVG(builder, distinct, expr):
+        assert distinct in (None, True, False)
         return distinct and 'AVG(DISTINCT ' or 'AVG(', builder(expr), ')'
+    def GROUP_CONCAT(builder, distinct, expr, sep=None):
+        assert distinct in (None, True, False)
+        result = distinct and 'GROUP_CONCAT(DISTINCT ' or 'GROUP_CONCAT(', builder(expr)
+        if sep is not None:
+            if builder.provider.dialect == 'MySQL':
+                result = result, ' SEPARATOR ', builder(sep)
+            else:
+                result = result, ', ', builder(sep)
+        return result, ')'
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
     LENGTH = make_unary_func('length')
@@ -437,20 +508,112 @@ class SQLBuilder(object):
     def COALESCE(builder, *args):
         if len(args) < 2: assert False  # pragma: no cover
         return 'coalesce(', join(', ', imap(builder, args)), ')'
-    def MIN(builder, *args):
+    def MIN(builder, distinct, *args):
+        assert not distinct, distinct
         if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MIN'
-        else: fname = 'least'
+        else: fname = builder.least_func_name
         return fname, '(',  join(', ', imap(builder, args)), ')'
-    def MAX(builder, *args):
+    def MAX(builder, distinct, *args):
+        assert not distinct, distinct
         if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MAX'
-        else: fname = 'greatest'
+        else: fname = builder.greatest_func_name
         return fname, '(',  join(', ', imap(builder, args)), ')'
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
         return 'substr(', builder(expr), ', ', builder(start), ', ', builder(len), ')'
+    def STRING_SLICE(builder, expr, start, stop):
+        if start is None:
+            start = [ 'VALUE', 0 ]
+
+        if start[0] == 'VALUE':
+            start_value = start[1]
+            if builder.dialect == 'PostgreSQL' and start_value < 0:
+                index_sql = [ 'LENGTH', expr ]
+                if start_value < -1:
+                    index_sql = [ 'SUB', index_sql, [ 'VALUE', -(start_value + 1) ] ]
+            else:
+                if start_value >= 0: start_value += 1
+                index_sql = [ 'VALUE', start_value ]
+        else:
+            inner_sql = start
+            then = [ 'ADD', inner_sql, [ 'VALUE', 1 ] ]
+            else_ = [ 'ADD', [ 'LENGTH', expr ], then ] if builder.dialect == 'PostgreSQL' else inner_sql
+            index_sql = [ 'IF', [ 'GE', inner_sql, [ 'VALUE', 0 ] ], then, else_ ]
+
+        if stop is None:
+            len_sql = None
+        elif stop[0] == 'VALUE':
+            stop_value = stop[1]
+            if start[0] == 'VALUE':
+                start_value = start[1]
+                if start_value >= 0 and stop_value >= 0:
+                    len_sql = [ 'VALUE', stop_value - start_value ]
+                elif start_value < 0 and stop_value < 0:
+                    len_sql = [ 'VALUE', stop_value - start_value ]
+                elif start_value >= 0 and stop_value < 0:
+                    len_sql = [ 'SUB', [ 'LENGTH', expr ], [ 'VALUE', start_value - stop_value ]]
+                    len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+                elif start_value < 0 and stop_value >= 0:
+                    len_sql = [ 'SUB', [ 'VALUE', stop_value + 1 ], index_sql ]
+                    len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+                else:
+                    assert False  # pragma: nocover1
+            else:
+                start_sql = [ 'COALESCE', start, [ 'VALUE', 0 ] ]
+                if stop_value >= 0:
+                    start_positive = [ 'SUB', stop, start_sql ]
+                    start_negative = [ 'SUB', [ 'VALUE', stop_value + 1 ], index_sql ]
+                else:
+                    start_positive = [ 'SUB', [ 'LENGTH', expr ], [ 'ADD', start_sql, [ 'VALUE', -stop_value ] ] ]
+                    start_negative = [ 'SUB', stop, start_sql]
+                len_sql = [ 'IF', [ 'GE', start_sql, [ 'VALUE', 0 ] ], start_positive, start_negative ]
+                len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+        else:
+            stop_sql = [ 'COALESCE', stop, [ 'VALUE', -1 ] ]
+            if start[0] == 'VALUE':
+                start_value = start[1]
+                start_sql = [ 'VALUE', start_value ]
+                if start_value >= 0:
+                    stop_positive = [ 'SUB', stop_sql, start_sql ]
+                    stop_negative = [ 'SUB', [ 'LENGTH', expr ], [ 'SUB', start_sql, stop_sql ] ]
+                else:
+                    stop_positive = [ 'SUB', [ 'ADD', stop_sql, [ 'VALUE', 1 ] ], index_sql ]
+                    stop_negative = [ 'SUB', stop_sql, start_sql]
+                len_sql = [ 'IF', [ 'GE', stop_sql, [ 'VALUE', 0 ] ], stop_positive, stop_negative ]
+                len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+            else:
+                start_sql = [ 'COALESCE', start, [ 'VALUE', 0 ] ]
+                both_positive = [ 'SUB', stop_sql, start_sql ]
+                both_negative = both_positive
+                start_positive = [ 'SUB', [ 'LENGTH', expr ], [ 'SUB', start_sql, stop_sql ] ]
+                stop_positive = [ 'SUB', [ 'ADD', stop_sql, [ 'VALUE', 1 ] ], index_sql ]
+                len_sql = [ 'CASE', None, [
+                    (
+                        [ 'AND', [ 'GE', start_sql, [ 'VALUE', 0 ] ], [ 'GE', stop_sql, [ 'VALUE', 0 ] ] ],
+                        both_positive
+                    ),
+                    (
+                        [ 'AND', [ 'LT', start_sql, [ 'VALUE', 0 ] ], [ 'LT', stop_sql, [ 'VALUE', 0 ] ] ],
+                        both_negative
+                    ),
+                    (
+                        [ 'AND', [ 'GE', start_sql, [ 'VALUE', 0 ] ], [ 'LT', stop_sql, [ 'VALUE', 0 ] ] ],
+                        start_positive
+                    ),
+                    (
+                        [ 'AND', [ 'LT', start_sql, [ 'VALUE', 0 ] ], [ 'GE', stop_sql, [ 'VALUE', 0 ] ] ],
+                        stop_positive
+                    ),
+                ]]
+                len_sql = [ 'MAX', False, len_sql, [ 'VALUE', 0 ] ]
+        sql = [ 'SUBSTR', expr, index_sql, len_sql ]
+        return builder(sql)
     def CASE(builder, expr, cases, default=None):
+        if expr is None and default is not None and default[0] == 'CASE' and default[1] is None:
+            cases2, default2 = default[2:]
+            return builder.CASE(None, tuple(cases) + tuple(cases2), default2)
         result = [ 'case' ]
         if expr is not None:
             result.append(' ')
@@ -461,6 +624,8 @@ class SQLBuilder(object):
             result.extend((' else ', builder(default)))
         result.append(' end')
         return result
+    def IF(builder, cond, then, else_):
+        return builder.CASE(None, [(cond, then)], else_)
     def TRIM(builder, expr, chars=None):
         if chars is None: return 'trim(', builder(expr), ')'
         return 'trim(', builder(expr), ', ', builder(chars), ')'
@@ -474,6 +639,10 @@ class SQLBuilder(object):
         return 'replace(', builder(str), ', ', builder(from_), ', ', builder(to), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS integer)'
+    def TO_STR(builder, expr):
+        return 'CAST(', builder(expr), ' AS text)'
+    def TO_REAL(builder, expr):
+        return 'CAST(', builder(expr), ' AS real)'
     def TODAY(builder):
         return 'CURRENT_DATE'
     def NOW(builder):
@@ -497,3 +666,64 @@ class SQLBuilder(object):
     def RAWSQL(builder, sql):
         if isinstance(sql, basestring): return sql
         return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
+    def build_json_path(builder, path):
+        empty_slice = slice(None, None, None)
+        has_params = False
+        has_wildcards = False
+        items = [ builder(element) for element in path ]
+        for item in items:
+            if isinstance(item, Param):
+                has_params = True
+            elif isinstance(item, Value):
+                value = item.value
+                if value is Ellipsis or value == empty_slice: has_wildcards = True
+                else: assert isinstance(value, (int, basestring)), value
+            else: assert False, item
+        if has_params:
+            paramkey = tuple(item.paramkey if isinstance(item, Param) else
+                             None if type(item.value) is slice else item.value
+                             for item in items)
+            path_sql = builder.make_composite_param(paramkey, items, builder.eval_json_path)
+        else:
+            result_value = builder.eval_json_path(item.value for item in items)
+            path_sql = builder.value_class(builder.paramstyle, result_value)
+        return path_sql, has_params, has_wildcards
+    @classmethod
+    def eval_json_path(cls, values):
+        result = ['$']
+        append = result.append
+        empty_slice = slice(None, None, None)
+        for value in values:
+            if isinstance(value, int): append('[%d]' % value)
+            elif isinstance(value, basestring):
+                append('.' + value if is_ident(value) else '."%s"' % value.replace('"', '\\"'))
+            elif value is Ellipsis: append('.*')
+            elif value == empty_slice: append('[*]')
+            else: assert False, value
+        return ''.join(result)
+    def JSON_QUERY(builder, expr, path):
+        throw(NotImplementedError)
+    def JSON_VALUE(builder, expr, path, type):
+        throw(NotImplementedError)
+    def JSON_NONZERO(builder, expr):
+        throw(NotImplementedError)
+    def JSON_CONCAT(builder, left, right):
+        throw(NotImplementedError)
+    def JSON_CONTAINS(builder, expr, path, key):
+        throw(NotImplementedError)
+    def JSON_ARRAY_LENGTH(builder, value):
+        throw(NotImplementedError)
+    def JSON_PARAM(builder, expr):
+        return builder(expr)
+    def ARRAY_INDEX(builder, col, index):
+        throw(NotImplementedError)
+    def ARRAY_CONTAINS(builder, key, not_in, col):
+        throw(NotImplementedError)
+    def ARRAY_SUBSET(builder, array1, not_in, array2):
+        throw(NotImplementedError)
+    def ARRAY_LENGTH(builder, array):
+        throw(NotImplementedError)
+    def ARRAY_SLICE(builder, array, start, stop):
+        throw(NotImplementedError)
+    def MAKE_ARRAY(builder, *items):
+        throw(NotImplementedError)

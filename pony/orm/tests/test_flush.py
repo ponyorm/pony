@@ -4,21 +4,25 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
+
+db = Database()
+
+
+class Person(db.Entity):
+    name = Required(unicode)
+
 
 class TestFlush(unittest.TestCase):
-    def setUp(self):
-        self.db = Database('sqlite', ':memory:')
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
 
-        class Person(self.db.Entity):
-            name = Required(unicode)
-
-        self.db.generate_mapping(create_tables=True)
-
-    def tearDown(self):
-        self.db = None
+    @classmethod
+    def tearDownClass(self):
+        teardown_database(db)
 
     def test1(self):
-        Person = self.db.Person
         with db_session:
             a = Person(name='A')
             b = Person(name='B')
@@ -29,10 +33,12 @@ class TestFlush(unittest.TestCase):
 
             b.flush()
             self.assertEqual(a.id, None)
-            self.assertEqual(b.id, 1)
+            self.assertIsNotNone(b.id)
+            b_id = b.id
             self.assertEqual(c.id, None)
 
             flush()
-            self.assertEqual(a.id, 2)
-            self.assertEqual(b.id, 1)
-            self.assertEqual(c.id, 3)
+            self.assertIsNotNone(a.id)
+            self.assertEqual(b.id, b_id)
+            self.assertIsNotNone(c.id)
+            self.assertEqual(len({a.id, b.id, c.id}), 3)

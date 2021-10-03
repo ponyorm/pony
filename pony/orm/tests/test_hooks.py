@@ -3,36 +3,46 @@ from __future__ import absolute_import, print_function, division
 import unittest
 
 from pony.orm.core import *
+from pony.orm.tests import setup_database, teardown_database, db_params
 
 logged_events = []
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Person(db.Entity):
     id = PrimaryKey(int)
     name = Required(unicode)
     age = Required(int)
+
     def before_insert(self):
         logged_events.append('BI_' + self.name)
         do_before_insert(self)
+
     def before_update(self):
         logged_events.append('BU_' + self.name)
         do_before_update(self)
+
     def before_delete(self):
         logged_events.append('BD_' + self.name)
         do_before_delete(self)
+
     def after_insert(self):
         logged_events.append('AI_' + self.name)
         do_after_insert(self)
+
     def after_update(self):
         logged_events.append('AU_' + self.name)
         do_after_update(self)
+
     def after_delete(self):
         logged_events.append('AD_' + self.name)
         do_after_delete(self)
 
+
 def do_nothing(person):
     pass
+
 
 def set_hooks_to_do_nothing():
     global do_before_insert, do_before_update, do_before_delete
@@ -40,11 +50,21 @@ def set_hooks_to_do_nothing():
     do_before_insert = do_before_update = do_before_delete = do_nothing
     do_after_insert = do_after_update = do_after_delete = do_nothing
 
+
+db.bind(**db_params)
+db.generate_mapping(check_tables=False)
+
 set_hooks_to_do_nothing()
 
-db.generate_mapping(create_tables=True)
 
 class TestHooks(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
 
     def setUp(self):
         set_hooks_to_do_nothing()
@@ -90,7 +110,15 @@ def flush_for(*objects):
     for obj in objects:
         obj.flush()
 
+
 class ObjectFlushTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
 
     def setUp(self):
         set_hooks_to_do_nothing()
