@@ -2,20 +2,18 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
-import json, re, sys, types, datetime, logging, itertools, warnings, inspect
+import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
 from decimal import Decimal
 from random import shuffle, randint, random
-from threading import Lock, RLock, currentThread as current_thread, _MainThread
+from threading import Lock, RLock, current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
 from hashlib import md5
 from inspect import isgeneratorfunction
 from functools import wraps
-
-from pony.thirdparty.compiler import ast, parse
 
 import pony
 from pony import options
@@ -3878,9 +3876,12 @@ class EntityMeta(type):
             ''.join(letter for letter in entity.__name__ if letter.isupper()).lower()
             or entity.__name__
             )
-        for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), ast.Name('.0'), [])
-        inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
-        entity._default_genexpr_ = inner_expr
+        comprehension = ast.comprehension(
+            target=ast.Name(iter_name, ctx=ast.Store()),
+            iter=ast.Name('.0', ctx=ast.Load()),
+            ifs=[]
+        )
+        entity._default_genexpr_ = ast.GeneratorExp(ast.Name(iter_name, ctx=ast.Load()), [comprehension])
 
         entity._access_rules_ = defaultdict(set)
     def _initialize_bits_(entity):
@@ -4390,7 +4391,7 @@ class EntityMeta(type):
             if not isinstance(lambda_ast, ast.Lambda):
                 throw(TypeError, 'Lambda function is expected. Got: %s' % func)
             names = get_lambda_args(lambda_ast)
-            cond_expr = lambda_ast.code
+            cond_expr = lambda_ast.body
             cells = None
         else: assert False  # pragma: no cover
 
@@ -4399,9 +4400,10 @@ class EntityMeta(type):
             'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
         name = names[0]
 
-        if_expr = ast.GenExprIf(cond_expr)
-        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
-        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+        for_expr = ast.comprehension(
+            target=ast.Name(name, ctx=ast.Store()), iter=ast.Name('.0', ctx=ast.Load()), ifs=[cond_expr])
+        inner_expr = ast.GeneratorExp(elt=ast.Name(name, ctx=ast.Load()), generators=[for_expr])
+
         locals = locals.copy() if locals is not None else {}
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals, cells)
@@ -5503,13 +5505,12 @@ def string2ast(s):
             except UnicodeDecodeError: throw(TypeError,
                 'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % s)
         else: s = s.encode('ascii', 'backslashreplace')
-    module_node = parse('(%s)' % s)
+    module_node = ast.parse('(%s)' % s)
     if not isinstance(module_node, ast.Module): throw(TypeError)
-    stmt_node = module_node.node
-    if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
-    discard_node = stmt_node.nodes[0]
-    if not isinstance(discard_node, ast.Discard): throw(TypeError)
-    result = string2ast_cache[s] = discard_node.expr
+    assert len(module_node.body) == 1
+    expr = module_node.body[0]
+    assert isinstance(expr, ast.Expr)
+    result = string2ast_cache[s] = expr.value
     # result = deepcopy(result)  # no need for now, but may be needed later
     return result
 
@@ -5557,12 +5558,13 @@ def make_query(args, frame_depth, left_join=False):
         code_key = id(gen.gi_frame.f_code)
     elif isinstance(gen, basestring):
         tree = string2ast(gen)
-        if not isinstance(tree, ast.GenExpr): throw(TypeError,
-            'Source code should represent generator. Got: %s' % gen)
+        if not isinstance(tree, ast.GeneratorExp):
+            throw(TypeError, 'Source code should represent generator. Got: %s' % gen)
         code_key = gen
         cells = None
-    else: assert False
-    return Query(code_key, tree.code, globals, locals, cells, left_join)
+    else:
+        assert False
+    return Query(code_key, tree, globals, locals, cells, left_join)
 
 @cut_traceback
 def select(*args):
@@ -5633,8 +5635,10 @@ def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     vartypes = HashableDict()
     for src, extractor in iteritems(extractors):
         varkey = filter_num, src, code_key
-        try: value = extractor(globals, locals)
-        except Exception as cause: raise ExprEvalError(src, cause)
+        try:
+            value = extractor(globals, locals)
+        except Exception as cause:
+            raise ExprEvalError(src, cause)
 
         if isinstance(value, types.GeneratorType):
             value = make_query((value,), frame_depth=None)
@@ -5675,12 +5679,12 @@ def unpickle_query(query_result):
 
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
-        assert isinstance(tree, ast.GenExprInner)
+        assert isinstance(tree, ast.GeneratorExp)
         tree, extractors = create_extractors(code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = 0
         vars, vartypes = extract_vars(code_key, filter_num, extractors, globals, locals, cells)
 
-        node = tree.quals[0].iter
+        node = tree.generators[0].iter
         varkey = filter_num, node.src, code_key
         origin = vars[varkey]
         if isinstance(origin, Query):
@@ -5965,9 +5969,9 @@ class Query(object):
     @cut_traceback
     def delete(query, bulk=None):
         if not bulk:
-            if not isinstance(query._translator.expr_type, EntityMeta): throw(TypeError,
-                'Delete query should be applied to a single entity. Got: %s'
-                % ast2src(query._translator.tree.expr))
+            if not isinstance(query._translator.expr_type, EntityMeta):
+                throw(TypeError, 'Delete query should be applied to a single entity. Got: %s'
+                                 % ast2src(query._translator.tree.elt))
             objects = query._actual_fetch()
             for obj in objects: obj._delete_()
             return len(objects)
@@ -6047,7 +6051,7 @@ class Query(object):
             func_ast = string2ast(func)
             if isinstance(func_ast, ast.Lambda):
                 argnames = get_lambda_args(func_ast)
-                func_ast = func_ast.code
+                func_ast = func_ast.body
             cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
@@ -6135,14 +6139,17 @@ class Query(object):
             return query._process_lambda(func, globals, locals, order_by=False, original_names=True)
         if not kwargs: return query
 
-        if len(query._translator.tree.quals) > 1: throw(TypeError,
+        if len(query._translator.tree.generators) > 1: throw(TypeError,
             'Keyword arguments are not allowed: query iterates over more than one entity')
         return query._apply_kwargs(kwargs, original_names=True)
     def _apply_kwargs(query, kwargs, original_names=False):
         translator = query._translator
         if original_names:
             tablerefs = translator.sqlquery.tablerefs
-            alias = translator.tree.quals[0].assign.name
+            target = translator.tree.generators[0].target
+            if not isinstance(target, ast.Name):
+                throw(NotImplementedError, target)
+            alias = target.id
             tableref = tablerefs[alias]
             entity = tableref.entity
         else:

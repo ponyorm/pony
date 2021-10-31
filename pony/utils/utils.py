@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function
 from pony.py23compat import PY2, imap, basestring, unicode, pickle, iteritems
 
-import io, re, os.path, sys, inspect, types, warnings
+import ast, io, re, os.path, sys, inspect, types, warnings
 
 from datetime import datetime
 from itertools import count as _count
@@ -15,7 +15,6 @@ from copy import deepcopy
 import pony
 from pony import options
 
-from pony.thirdparty.compiler import ast
 from pony.thirdparty.decorator import decorator as _decorator
 
 if pony.MODE.startswith('GAE-'): localbase = object
@@ -154,12 +153,10 @@ def get_lambda_args(func):
         else:
             names, argsname, kwname, defaults = inspect.getargspec(func)
     elif isinstance(func, ast.Lambda):
-        names = func.argnames
-        if func.kwargs: names, kwname = names[:-1], names[-1]
-        else: kwname = None
-        if func.varargs: names, argsname = names[:-1], names[-1]
-        else: argsname = None
-        defaults = func.defaults
+        argsname = func.args.vararg
+        kwname = func.args.kwarg
+        defaults = func.args.defaults + func.args.kw_defaults
+        names = [arg.arg for arg in func.args.args]
     else: assert False  # pragma: no cover
     if argsname: throw(TypeError, '*%s is not supported' % argsname)
     if kwname: throw(TypeError, '**%s is not supported' % kwname)

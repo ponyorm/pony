@@ -1,6 +1,5 @@
 import unittest
 
-from pony.thirdparty.compiler.transformer import parse
 from pony.orm.decompiling import Decompiler
 from pony.orm.asttranslation import ast2src
 
