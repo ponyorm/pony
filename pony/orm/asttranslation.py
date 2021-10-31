@@ -1,9 +1,8 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring, iteritems
+
+import ast
 
 from functools import update_wrapper
-
-from pony.thirdparty.compiler import ast
 
 from pony.utils import HashableDict, throw, copy_ast
 
@@ -172,14 +171,14 @@ class PythonTranslator(ASTTranslator):
         args = [ arg.src for arg in node.args ]
         if node.star_args: args.append('*'+node.star_args.src)
         if node.dstar_args: args.append('**'+node.dstar_args.src)
-        if len(args) == 1 and isinstance(node.args[0], ast.GenExpr):
+        if len(args) == 1 and isinstance(node.args[0], ast.GeneratorExp):
             return node.node.src + args[0]
         return '%s(%s)' % (node.node.src, ', '.join(args))
     def postSubscript(translator, node):
         node.priority = 2
         if len(node.subs) == 1:
             sub = node.subs[0]
-            if isinstance(sub, ast.Const) and type(sub.value) is tuple and len(sub.value) > 1:
+            if isinstance(sub, ast.Constant) and type(sub.value) is tuple and len(sub.value) > 1:
                 key = sub.src
                 assert key.startswith('(') and key.endswith(')')
                 key = key[1:-1]
@@ -243,7 +242,7 @@ class PythonTranslator(ASTTranslator):
             self.top_level_f_str = node
     def postJoinedStr(self, node):
         result = ''.join(
-            value.value if isinstance(value, ast.Const) else value.src
+            value.value if isinstance(value, ast.Constant) else value.src
             for value in node.values)
         if self.top_level_f_str is node:
             self.top_level_f_str = None
@@ -259,7 +258,7 @@ class PythonTranslator(ASTTranslator):
             return "f%r" % res
         return res
 
-nonexternalizable_types = (ast.Keyword, ast.Sliceobj, ast.List, ast.Tuple)
+nonexternalizable_types = (ast.keyword, ast.Slice, ast.List, ast.Tuple)
 
 class PreTranslator(ASTTranslator):
     def __init__(translator, tree, globals, locals,
@@ -276,7 +275,7 @@ class PreTranslator(ASTTranslator):
         translator.dispatch(tree)
         for node in externals.copy():
             if isinstance(node, nonexternalizable_types) \
-            or node.constant and not isinstance(node, ast.Const):
+            or node.constant and not isinstance(node, ast.Constant):
                 node.external = False
                 externals.remove(node)
                 externals.update(node for node in node.getChildNodes() if node.external and not node.constant)
@@ -329,7 +328,7 @@ class PreTranslator(ASTTranslator):
         func_node = node.node
         if not func_node.external: return
         attrs = []
-        while isinstance(func_node, ast.Getattr):
+        while isinstance(func_node, ast.Attribute):
             attrs.append(func_node.attrname)
             func_node = func_node.expr
         if not isinstance(func_node, ast.Name): return

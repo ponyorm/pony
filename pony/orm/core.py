@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
-import json, re, sys, types, datetime, logging, itertools, warnings, inspect
+import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -14,8 +14,6 @@ from collections import defaultdict
 from hashlib import md5
 from inspect import isgeneratorfunction
 from functools import wraps
-
-from pony.thirdparty.compiler import ast, parse
 
 import pony
 from pony import options
@@ -3878,9 +3876,11 @@ class EntityMeta(type):
             ''.join(letter for letter in entity.__name__ if letter.isupper()).lower()
             or entity.__name__
             )
-        for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), ast.Name('.0'), [])
-        inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
-        entity._default_genexpr_ = inner_expr
+        comprehension = ast.comprehension(
+            target=ast.Name(iter_name, ctx=ast.Store()),
+            iter=ast.Name('.0', ctx=ast.Load())
+        )
+        entity._default_genexpr_ = ast.GeneratorExp(ast.Name(iter_name), [comprehension])
 
         entity._access_rules_ = defaultdict(set)
     def _initialize_bits_(entity):
@@ -4399,9 +4399,9 @@ class EntityMeta(type):
             'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
         name = names[0]
 
-        if_expr = ast.GenExprIf(cond_expr)
-        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
+        for_expr = ast.GenExprFor(ast.Name(name, ctx=ast.Store()), ast.Name('.0'), [cond_expr])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+
         locals = locals.copy() if locals is not None else {}
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals, cells)
