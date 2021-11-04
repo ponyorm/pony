@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass, int_types
 
-import types, sys, re, itertools, inspect
+import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from random import random
@@ -9,12 +9,10 @@ from copy import deepcopy
 from functools import update_wrapper
 from uuid import UUID
 
-from pony.thirdparty.compiler import ast
-
 from pony import options, utils
 from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce
-from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors
-from pony.orm.decompiling import decompile, DecompileError
+from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors, get_child_nodes
+from pony.orm.decompiling import decompile, DecompileError, operator_mapping
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, raw_sql, RawSQLType, \
     normalize, normalize_type, coerce_types, are_comparable_types, \
@@ -103,7 +101,8 @@ class SQLTranslator(ASTTranslator):
         throw(NotImplementedError)  # pragma: no cover
 
     def dispatch(translator, node):
-        if hasattr(node, 'monad'): return  # monad already assigned somehow
+        if hasattr(node, 'monad'):
+            return  # monad already assigned somehow
         if not getattr(node, 'external', False) or getattr(node, 'constant', False):
             return ASTTranslator.dispatch(translator, node)  # default route
         translator.call(translator.__class__.dispatch_external, node)
@@ -143,8 +142,8 @@ class SQLTranslator(ASTTranslator):
             elif node.src == 'random':  # For PyPy
                 monad = FuncRandomMonad(t)
             else: throw(NotImplementedError)
-        elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
-            value = True if node.name == 'True' else False
+        elif isinstance(node, ast.Name) and node.id in ('True', 'False'):
+            value = True if node.id == 'True' else False
             monad = ConstMonad.new(value)
         elif tt is tuple:
             params = []
@@ -182,31 +181,35 @@ class SQLTranslator(ASTTranslator):
         monad.aggregated = monad.nogroup = False
 
     def call(translator, method, node):
-        try: monad = method(translator, node)
+        try:
+            monad = method(translator, node)
         except Exception:
             exc_class, exc, tb = sys.exc_info()
             try:
-                if not exc.args: exc.args = (ast2src(node),)
+                if not exc.args:
+                    exc.args = (ast2src(node),)
                 else:
                     msg = exc.args[0]
                     if isinstance(msg, basestring) and '{EXPR}' in msg:
                         msg = msg.replace('{EXPR}', ast2src(node))
                         exc.args = (msg,) + exc.args[1:]
                 reraise(exc_class, exc, tb)
-            finally: del exc, tb
+            finally:
+                del exc, tb
         else:
-            if monad is None: return
+            if monad is None:
+                return
             node.monad = monad
             monad.node = node
             if not hasattr(monad, 'aggregated'):
-                for child in node.getChildNodes():
+                for child in get_child_nodes(node):
                     m = getattr(child, 'monad', None)
                     if m and getattr(m, 'aggregated', False):
                         monad.aggregated = True
                         break
                 else: monad.aggregated = False
             if not hasattr(monad, 'nogroup'):
-                for child in node.getChildNodes():
+                for child in get_child_nodes(node):
                     m = getattr(child, 'monad', None)
                     if m and getattr(m, 'nogroup', False):
                         monad.nogroup = True
@@ -242,7 +245,7 @@ class SQLTranslator(ASTTranslator):
 
     def init(translator, tree, parent_translator, code_key=None, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
         this = translator
-        assert isinstance(tree, ast.GenExprInner), tree
+        assert isinstance(tree, ast.GeneratorExp), tree
         ASTTranslator.__init__(translator, tree)
         translator.can_be_cached = True
         translator.parent = parent_translator
@@ -283,22 +286,22 @@ class SQLTranslator(ASTTranslator):
         translator.hint_join = False
         translator.query_result_is_cacheable = True
         translator.aggregated_subquery_paths = set()
-        for i, qual in enumerate(tree.quals):
-            assign = qual.assign
-            if isinstance(assign, ast.AssTuple):
-                ass_names = tuple(assign.nodes)
-            elif isinstance(assign, ast.AssName):
-                ass_names = (assign,)
+        for i, generator in enumerate(tree.generators):
+            target = generator.target
+            if isinstance(target, ast.Tuple):
+                ass_names = tuple(target.elts)
+            elif isinstance(target, ast.Name):
+                ass_names = (target,)
             else:
-                throw(NotImplementedError, ast2src(assign))
+                throw(NotImplementedError, ast2src(target))
 
             for ass_name in ass_names:
-                if not isinstance(ass_name, ast.AssName):
+                if not isinstance(ass_name, ast.Name):
                     throw(NotImplementedError, ast2src(ass_name))
-                if ass_name.flags != 'OP_ASSIGN':
+                if not isinstance(ass_name.ctx, ast.Store):
                     throw(TypeError, ast2src(ass_name))
 
-            names = tuple(ass_name.name for ass_name in ass_names)
+            names = tuple(ass_name.id for ass_name in ass_names)
             for name in names:
                 if name in translator.namespace and name in translator.sqlquery.tablerefs:
                     throw(TranslationError, 'Duplicate name: %r' % name)
@@ -307,11 +310,11 @@ class SQLTranslator(ASTTranslator):
             name = names[0] if len(names) == 1 else None
 
             def check_name_is_single():
-                if len(names) > 1: throw(TypeError, 'Single variable name expected. Got: %s' % ast2src(assign))
+                if len(names) > 1: throw(TypeError, 'Single variable name expected. Got: %s' % ast2src(target))
 
             database = entity = None
 
-            node = qual.iter
+            node = generator.iter
             monad = getattr(node, 'monad', None)
 
             if monad:  # Lambda was encountered inside generator
@@ -333,11 +336,11 @@ class SQLTranslator(ASTTranslator):
                     check_name_is_single()
                     entity = iterable.item_type
                     if not isinstance(entity, EntityMeta):
-                        throw(TranslationError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                        throw(TranslationError, 'for %s in %s' % (name, ast2src(generator.iter)))
                     if i > 0:
                         if translator.left_join: throw(TranslationError,
                                                        'Collection expected inside left join query. '
-                                                       'Got: for %s in %s' % (name, ast2src(qual.iter)))
+                                                       'Got: for %s in %s' % (name, ast2src(generator.iter)))
                         translator.distinct = True
                     tableref = TableRef(translator.sqlquery, name, entity)
                     translator.sqlquery.tablerefs[name] = tableref
@@ -356,7 +359,7 @@ class SQLTranslator(ASTTranslator):
                         translator = e.translator
                         local.translators[-1] = translator
                 else: throw(TranslationError, 'Inside declarative query, iterator must be entity or query. '
-                                              'Got: for %s in %s' % (name, ast2src(qual.iter)))
+                                              'Got: for %s in %s' % (name, ast2src(generator.iter)))
 
             else:
                 translator.dispatch(node)
@@ -378,7 +381,7 @@ class SQLTranslator(ASTTranslator):
                     attr_names.reverse()
 
                     if not isinstance(monad, ObjectIterMonad):
-                        throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                        throw(NotImplementedError, 'for %s in %s' % (name, ast2src(generator.iter)))
                     name_path = monad.tableref.alias  # or name_path, it is the same
 
                     parent_tableref = monad.tableref
@@ -390,13 +393,13 @@ class SQLTranslator(ASTTranslator):
                         if attr is None: throw(AttributeError, attrname)
                         entity = attr.py_type
                         if not isinstance(entity, EntityMeta):
-                            throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                            throw(NotImplementedError, 'for %s in %s' % (name, ast2src(generator.iter)))
                         can_affect_distinct = None
                         if attr.is_collection:
-                            if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
+                            if not isinstance(attr, Set): throw(NotImplementedError, ast2src(generator.iter))
                             reverse = attr.reverse
                             if reverse.is_collection:
-                                if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(qual.iter))
+                                if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(generator.iter))
                                 translator.distinct = True
                             elif parent_tableref.alias != tree.quals[i-1].assign.name:
                                 translator.distinct = True
@@ -420,18 +423,19 @@ class SQLTranslator(ASTTranslator):
             elif translator.database is not database: throw(TranslationError,
                 'All entities in a query must belong to the same database')
 
-            for if_ in qual.ifs:
-                assert isinstance(if_, ast.GenExprIf)
+            for if_ in generator.ifs:
                 translator.dispatch(if_)
-                if isinstance(if_.monad, AndMonad): cond_monads = if_.monad.operands
-                else: cond_monads = [ if_.monad ]
+                if isinstance(if_.monad, AndMonad):
+                    cond_monads = if_.monad.operands
+                else:
+                    cond_monads = [ if_.monad ]
                 for m in cond_monads:
                     if not getattr(m, 'aggregated', False): translator.conditions.extend(m.getsql())
                     else: translator.having_conditions.extend(m.getsql())
 
-        translator.dispatch(tree.expr)
+        translator.dispatch(tree.elt)
         assert not translator.hint_join
-        monad = tree.expr.monad
+        monad = tree.elt.monad
         if isinstance(monad, ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
         translator.expr_monads = monad.items if isinstance(monad, ListMonad) else [ monad ]
@@ -957,15 +961,23 @@ class SQLTranslator(ASTTranslator):
         return monad
     def preCompare(translator, node):
         monads = []
-        ops = node.ops
-        left = node.expr
+        ops = zip(node.ops, node.comparators)
+        left = node.left
         translator.dispatch(left)
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not in' | 'is' | 'is not'
-        for op, right in node.ops:
+        for op_node, right in ops:
+            op = None
+            for op, cls in operator_mapping.items():
+                if isinstance(op_node, cls):
+                    break
+            else:
+                assert False, str(op_node)
             translator.dispatch(right)
-            if op.endswith('in'): monad = right.monad.contains(left.monad, op == 'not in')
-            else: monad = left.monad.cmp(op, right.monad)
+            if op.endswith('in'):
+                monad = right.monad.contains(left.monad, op == 'not in')
+            else:
+                monad = left.monad.cmp(op, right.monad)
             if not hasattr(monad, 'aggregated'):
                 monad.aggregated = getattr(left.monad, 'aggregated', False) or getattr(right.monad, 'aggregated', False)
             if not hasattr(monad, 'nogroup'):
@@ -974,9 +986,10 @@ class SQLTranslator(ASTTranslator):
                 'Too complex aggregation, expressions cannot be combined: {EXPR}')
             monads.append(monad)
             left = right
-        if len(monads) == 1: return monads[0]
+        if len(monads) == 1:
+            return monads[0]
         return AndMonad(monads)
-    def postConst(translator, node):
+    def postConstant(translator, node):
         value = node.value
         if type(value) is frozenset:
             value = tuple(sorted(value))
@@ -988,7 +1001,7 @@ class SQLTranslator(ASTTranslator):
     def postTuple(translator, node):
         return ListMonad([ item.monad for item in node.nodes ])
     def postName(translator, node):
-        monad = translator.resolve_name(node.name)
+        monad = translator.resolve_name(node.id)
         assert monad is not None
         return monad
     def resolve_name(translator, name):
@@ -1003,7 +1016,7 @@ class SQLTranslator(ASTTranslator):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
         return node.left.monad - node.right.monad
-    def postMul(translator, node):
+    def postMult(translator, node):
         return node.left.monad * node.right.monad
     def postDiv(translator, node):
         return node.left.monad / node.right.monad
@@ -1011,16 +1024,16 @@ class SQLTranslator(ASTTranslator):
         return node.left.monad // node.right.monad
     def postMod(translator, node):
         return node.left.monad % node.right.monad
-    def postPower(translator, node):
+    def postPow(translator, node):
         return node.left.monad ** node.right.monad
-    def postUnarySub(translator, node):
-        return -node.expr.monad
-    def postGetattr(translator, node):
-        return node.expr.monad.getattr(node.attrname)
+    def postUSub(translator, node):
+        return -node.operand.monad
+    def postAttribute(translator, node):
+        return node.value.monad.getattr(node.attr)
     def postAnd(translator, node):
-        return AndMonad([ subnode.monad for subnode in node.nodes ])
+        return AndMonad([ subnode.monad for subnode in node.values ])
     def postOr(translator, node):
-        return OrMonad([ subnode.monad for subnode in node.nodes ])
+        return OrMonad([ subnode.monad for subnode in node.values ])
     def postBitor(translator, node):
         left, right = (subnode.monad for subnode in node.nodes)
         return left | right
@@ -1031,24 +1044,27 @@ class SQLTranslator(ASTTranslator):
         left, right = (subnode.monad for subnode in node.nodes)
         return left ^ right
     def postNot(translator, node):
-        return node.expr.monad.negate()
-    def preCallFunc(translator, node):
-        if node.star_args is not None: throw(NotImplementedError, '*%s is not supported' % ast2src(node.star_args))
-        if node.dstar_args is not None: throw(NotImplementedError, '**%s is not supported' % ast2src(node.dstar_args))
+        return node.operand.monad.negate()
+    def preCall(translator, node):
+        if node.star_args is not None:
+            throw(NotImplementedError, '*%s is not supported' % ast2src(node.star_args))
+        if node.dstar_args is not None:
+            throw(NotImplementedError, '**%s is not supported' % ast2src(node.dstar_args))
         func_node = node.node
-        if isinstance(func_node, ast.CallFunc):
+        if isinstance(func_node, ast.Call):
             if isinstance(func_node.node, ast.Name) and func_node.node.name == 'getattr': return
-        if not isinstance(func_node, (ast.Name, ast.Getattr)): throw(NotImplementedError)
+        if not isinstance(func_node, (ast.Name, ast.Attribute)): throw(NotImplementedError)
         if len(node.args) > 1: return
         if not node.args: return
         arg = node.args[0]
-        if isinstance(arg, ast.GenExpr):
+        if isinstance(arg, ast.Expr):
             translator.dispatch(func_node)
             func_monad = func_node.monad
             translator.dispatch(arg)
             query_set_monad = arg.monad
             return func_monad(query_set_monad)
-        if not isinstance(arg, ast.Lambda): return
+        if not isinstance(arg, ast.Lambda):
+            return
         lambda_expr = arg
         translator.dispatch(func_node)
         method_monad = func_node.monad
@@ -1078,7 +1094,7 @@ class SQLTranslator(ASTTranslator):
         if method_name == 'exists':
             monad = monad.nonzero()
         return monad
-    def postCallFunc(translator, node):
+    def postCall(translator, node):
         args = []
         kwargs = {}
         for arg in node.args:
@@ -1088,7 +1104,7 @@ class SQLTranslator(ASTTranslator):
         func_monad = node.node.monad
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
-        pass  # this node will be processed by postCallFunc
+        pass  # this node will be processed by postCall
     def postSubscript(translator, node):
         assert node.flags == 'OP_APPLY'
         assert isinstance(node.subs, list)
@@ -2146,7 +2162,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
         alias, pk_columns = monad.tableref.make_join(pk_only=True)
         return [ [ 'COLUMN', alias, column ] for column in pk_columns ]
     def requires_distinct(monad, joined=False):
-        return monad.tableref.name_path != monad.translator.tree.quals[-1].assign.name
+        return monad.tableref.name_path != monad.translator.tree.generators[-1].target.id
 
 class AttrMonad(Monad):
     @staticmethod
@@ -3036,7 +3052,7 @@ class AttrSetMonad(SetMixin, Monad):
         if attr is None: throw(AttributeError)
         return AttrSetMonad(monad, attr)
     def call_select(monad):
-        # calling with lambda argument processed in preCallFunc
+        # calling with lambda argument processed in preCall
         return monad
     call_filter = call_select
     def call_exists(monad):

@@ -8,7 +8,7 @@ from itertools import chain, starmap, repeat
 from time import time
 from decimal import Decimal
 from random import shuffle, randint, random
-from threading import Lock, RLock, currentThread as current_thread, _MainThread
+from threading import Lock, RLock, current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
 from hashlib import md5
@@ -5567,12 +5567,13 @@ def make_query(args, frame_depth, left_join=False):
         code_key = id(gen.gi_frame.f_code)
     elif isinstance(gen, basestring):
         tree = string2ast(gen)
-        if not isinstance(tree, ast.GenExpr): throw(TypeError,
+        if not isinstance(tree, ast.Expr): throw(TypeError,
             'Source code should represent generator. Got: %s' % gen)
         code_key = gen
         cells = None
-    else: assert False
-    return Query(code_key, tree.code, globals, locals, cells, left_join)
+    else:
+        assert False
+    return Query(code_key, tree.value, globals, locals, cells, left_join)
 
 @cut_traceback
 def select(*args):
@@ -5643,8 +5644,10 @@ def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     vartypes = HashableDict()
     for src, extractor in iteritems(extractors):
         varkey = filter_num, src, code_key
-        try: value = extractor(globals, locals)
-        except Exception as cause: raise ExprEvalError(src, cause)
+        try:
+            value = extractor(globals, locals)
+        except Exception as cause:
+            raise ExprEvalError(src, cause)
 
         if isinstance(value, types.GeneratorType):
             value = make_query((value,), frame_depth=None)
@@ -5685,12 +5688,12 @@ def unpickle_query(query_result):
 
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
-        assert isinstance(tree, ast.GenExprInner)
+        assert isinstance(tree, ast.GeneratorExp)
         tree, extractors = create_extractors(code_key, tree, globals, locals, special_functions, const_functions)
         filter_num = 0
         vars, vartypes = extract_vars(code_key, filter_num, extractors, globals, locals, cells)
 
-        node = tree.quals[0].iter
+        node = tree.generators[0].iter
         varkey = filter_num, node.src, code_key
         origin = vars[varkey]
         if isinstance(origin, Query):
