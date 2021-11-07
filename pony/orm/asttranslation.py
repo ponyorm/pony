@@ -81,10 +81,6 @@ def get_child_nodes(node):
             yield child
 
 
-def is_load(node):
-    assert hasattr(node, 'ctx')
-    return isinstance(node.ctx, ast.Load)
-
 
 class PythonTranslator(ASTTranslator):
     def __init__(translator, tree):
@@ -328,18 +324,19 @@ class PreTranslator(ASTTranslator):
         translator.contexts.pop()
         return True
     def postName(translator, node):
-        if is_load(node):
-            name = node.id
+        name = node.id
+        if isinstance(node.ctx, ast.Store):
             if name.startswith('__'):
                 throw(TranslationError, 'Illegal name: %r' % name)
             translator.contexts[-1].add(name)
             return
-
-        name = node.id
-        for context in translator.contexts:
-            if name in context:
-                return
-        node.external = True
+        elif isinstance(node.ctx, ast.Load):
+            for context in translator.contexts:
+                if name in context:
+                    return
+            node.external = True
+        else:
+            assert False, type(node.ctx)
     def postStarred(translataor, node):
         node.external = True
     def postConstant(translator, node):
