@@ -210,7 +210,7 @@ class Decompiler(object):
                 decompiler.stack.append(x)
 
     def pop_items(decompiler, size):
-        if not size: return ()
+        if not size: return []
         result = decompiler.stack[-size:]
         decompiler.stack[-size:] = []
         return result
@@ -531,7 +531,7 @@ class Decompiler(object):
         lst = decompiler.stack.pop()
         if not isinstance(lst, ast.List):
             raise NotImplementedError(type(lst))
-        values = tuple(ast.Constant(v) for v in items.value)
+        values = [ast.Constant(v) for v in items.value]
         lst.elts.extend(values)
         return lst
 
@@ -572,7 +572,6 @@ class Decompiler(object):
 
     def MAKE_FUNCTION(decompiler, argc):
         defaults = []
-        flags = 0
         if sys.version_info >= (3, 6):
             qualname = decompiler.stack.pop()
             tos = decompiler.stack.pop()
@@ -599,11 +598,16 @@ class Decompiler(object):
         argnames, varargs, keywords = inspect.getargs(codeobject)
         if varargs:
             argnames.append(varargs)
-            flags |= inspect.CO_VARARGS
         if keywords:
             argnames.append(keywords)
-            flags |= inspect.CO_VARKEYWORDS
-        return ast.Lambda(argnames, defaults, flags, func_decompiler.ast)
+        args = ast.arguments(
+            posonlyargs=[],
+            args=[ast.arg(v) for v in argnames],
+            kwonlyargs=[],
+            kw_defaults=[],
+            defaults=defaults
+        )
+        return ast.Lambda(args, func_decompiler.ast)
 
     POP_JUMP_IF_FALSE = JUMP_IF_FALSE
     POP_JUMP_IF_TRUE = JUMP_IF_TRUE
