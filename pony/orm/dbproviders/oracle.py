@@ -14,6 +14,7 @@ import cx_Oracle
 from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
+from pony.orm.migrations import dbschema as vdbschema
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
@@ -96,13 +97,265 @@ class OraTrigger(DBObject):
         seq_name = quote_name(trigger.sequence.name)
         return schema.case(trigger_template) % (trigger_name, table_name, column_name, seq_name, column_name)
 
+
 class OraColumn(Column):
     auto_template = None
+
 
 class OraSchema(DBSchema):
     dialect = 'Oracle'
     table_class = OraTable
     column_class = OraColumn
+
+
+class OraVirtualColumn(vdbschema.Column):
+    auto_template = None
+
+    def get_alter_prefix(self):
+        return 'MODIFY %s' % self.provider.quote_name(self.name)
+
+    @vdbschema.sql_op
+    def get_add_sql(self, provided_name=None):
+        result = [self.table.get_alter_prefix()]
+        result.append('ADD')
+        if provided_name:
+            name = self.provider.normalize_name(provided_name)
+            result.append(self.provider.quote_name(name))
+            result.append(self.get_inline_sql(ignore_pk=True, without_name=True))
+        else:
+            result.append(self.get_inline_sql(ignore_pk=True))
+        return ' '.join(result)
+
+    @vdbschema.sql_op
+    def get_set_default_sql(self):
+        assert self.sql_default
+        result = [self.table.get_alter_prefix()]
+        result.append(self.get_alter_prefix())
+        result.append('DEFAULT')
+        builder = SQLBuilder(self.provider, ['VALUE', self.sql_default])
+        sql_default = builder.sql
+        result.append(sql_default)
+        return ' '.join(result)
+
+    @vdbschema.sql_op
+    def get_drop_default_sql(self):
+        result = [self.table.get_alter_prefix()]
+        result.append(self.get_alter_prefix())
+        result.append('DEFAULT NULL')
+        return ' '.join(result)
+
+    @vdbschema.sql_op
+    def get_change_type_sql(self, new_type, cast):
+        result = [self.table.get_alter_prefix()]
+        result.append(self.get_alter_prefix())
+        result.append('TYPE')
+        result.append(new_type)
+        return ' '.join(result)
+
+    @vdbschema.sql_op
+    def get_set_not_null_sql(self):
+        result = [
+            self.table.get_alter_prefix(),
+            self.get_alter_prefix(),
+            self.get_inline_sql(without_name=True)
+        ]
+        return ' '.join(result)
+
+class OraVirtualTable(vdbschema.Table):
+    def __init__(self, schema, name, is_m2m=False):
+        super(OraVirtualTable, self).__init__(schema, name, is_m2m)
+        self.pk_sequence = None
+        self.pk_trigger = None
+
+    @vdbschema.sql_op
+    def switch_constraints_mode(self, mode):
+        assert mode in ('ENABLE', 'DISABLE')
+        def switch_constraint(con):
+            result = [self.get_alter_prefix()]
+            result.append(mode)
+            result.append(self.provider.quote_name(con.name))
+            return ' '.join(result)
+        result = []
+        for con in self.constraints:
+            result.append(switch_constraint(con))
+        return result
+
+    def create_trigger_and_sequence(self):
+        result = []
+        if self.pk_sequence:
+            result.extend(self.pk_sequence.get_create_sql())
+        if self.pk_trigger:
+            result.extend(self.pk_trigger.get_create_sql())
+        return result
+
+
+class OraVirtualSequence(vdbschema.DBObject):
+    typename = 'Sequence'
+
+    def __init__(sequence, table, name=None):
+        sequence.table = table
+        table_name = table.name
+        if name is not None:
+            sequence.name = name
+        elif isinstance(table_name, basestring):
+            sequence.name = table_name + '_SEQ'
+        else:
+            sequence.name = tuple(table_name[:-1]) + (table_name[0] + '_SEQ',)
+        table.pk_sequence = sequence
+
+    def exists(sequence, provider, connection, case_sensitive=True):
+        if case_sensitive:
+            sql = 'SELECT sequence_name FROM all_sequences ' \
+                  'WHERE sequence_owner = :so and sequence_name = :sn'
+        else:
+            sql = 'SELECT sequence_name FROM all_sequences ' \
+                  'WHERE sequence_owner = :so and upper(sequence_name) = upper(:sn)'
+        owner_name, sequence_name = provider.split_table_name(sequence.name)
+        cursor = connection.cursor()
+        cursor.execute(sql, dict(so=owner_name, sn=sequence_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
+    @vdbschema.sql_op
+    def get_create_sql(sequence, using_obsolete_names=False):
+        schema = sequence.table.schema
+        seq_name = schema.provider.quote_name(sequence.name)
+        return 'CREATE SEQUENCE %s NOCACHE' % seq_name
+
+
+class OraVirtualTrigger(DBObject):
+    typename = 'Trigger'
+
+    def __init__(trigger, table, column, sequence):
+        trigger.table = table
+        trigger.column = column
+        trigger.sequence = sequence
+        table_name = table.name
+        if not isinstance(table_name, basestring): table_name = table_name[-1]
+        trigger.name = table_name + '_BI'  # Before Insert
+        table.pk_trigger = trigger
+
+    def exists(trigger, provider, connection, case_sensitive=True):
+        if case_sensitive:
+            sql = 'SELECT trigger_name FROM all_triggers ' \
+                  'WHERE table_name = :tbn AND table_owner = :o ' \
+                  'AND trigger_name = :trn AND owner = :o'
+        else:
+            sql = 'SELECT trigger_name FROM all_triggers ' \
+                  'WHERE table_name = :tbn AND table_owner = :o ' \
+                  'AND upper(trigger_name) = upper(:trn) AND owner = :o'
+        owner_name, table_name = provider.split_table_name(trigger.table.name)
+        cursor = connection.cursor()
+        cursor.execute(sql, dict(tbn=table_name, trn=trigger.name, o=owner_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
+    @vdbschema.sql_op
+    def get_create_sql(trigger, using_obsolete_names=False):
+        schema = trigger.table.schema
+        quote_name = schema.provider.quote_name
+        trigger_name = quote_name(trigger.name)
+        table_name = quote_name(trigger.table.name)
+        column_name = quote_name(trigger.column.name)
+        seq_name = quote_name(trigger.sequence.name)
+        return trigger_template % (trigger_name, table_name, column_name, seq_name, column_name)
+
+
+class OraVirtualUniqueConstraint(vdbschema.UniqueConstraint):
+    inline_syntax = False
+
+    def dbms_name(self, connection):
+        assert len(self.cols) == 1
+        sql = "select acc.constraint_name " \
+              "from all_cons_columns acc inner join all_constraints ac " \
+              "on (acc.constraint_name = ac.constraint_name) " \
+              "where ac.table_name = :table_name " \
+              "and ac.owner = :owner " \
+              "and acc.column_name = :col " \
+              "and ac.generated = 'GENERATED NAME' " \
+              "and ac.constraint_type = 'U'"
+        owner, table_name = self.provider.split_table_name(self.table.name)
+        cursor = connection.cursor()
+        col_name = self.cols[0].name
+        cursor.execute(sql, dict(table_name=table_name, owner=owner, col=col_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
+
+class OraVirtualSchema(vdbschema.Schema):
+    dialect = 'Oracle'
+    table_cls = OraVirtualTable
+    column_cls = OraVirtualColumn
+    unique_cls = OraVirtualUniqueConstraint
+
+    def create_entity_table(schema, entity):
+        table = vdbschema.Schema.create_entity_table(schema, entity)
+        if table.pk_trigger and table.pk_sequence:
+            return table
+        for col in table.columns.values():
+            if col.auto:
+                sequence_name = col.converter.attr.provided.kwargs.get('sequence_name')
+                sequence = OraVirtualSequence(table, sequence_name)
+                trigger = OraVirtualTrigger(table, col, sequence)
+                break
+        return table
+
+    def change_column_type(schema, column, new_sql_type, cast):
+        quote = schema.provider.quote_name
+        add_op = schema.ops.append
+        if column.sql_type == new_sql_type:
+            return
+
+        column.sql_type = new_sql_type
+        table = column.table
+        for op in table.switch_constraints_mode('DISABLE'):
+            add_op(op)  # disable constraints
+        tmp_name = schema.provider.normalize_name('_TMP_%s' % column.name)
+        for op in column.get_add_sql(provided_name=tmp_name):
+            add_op(op)  # create new column with target datatype
+        update_sql = "UPDATE %s SET %s = %s" % (
+            quote(table.name), quote(tmp_name),
+            schema.provider.cast_sql.format(colname=quote(column.name), sql_type=new_sql_type)
+        )
+        add_op(vdbschema.SQLOperation(table, update_sql))  # copy data from old column to new
+        for op in column.get_drop_sql():
+            add_op(op)
+        real_name = column.name
+        column.name = tmp_name
+        for op in column.get_rename_sql(real_name):
+            add_op(op)  # rename column to previous name
+        column.name = real_name
+        indexes = schema.find_subordinate_index(column)
+        for index in indexes:
+            for op in index.get_create_sql():
+                add_op(op)  # recreate indexes
+        for op in table.switch_constraints_mode('ENABLE'):
+            add_op(op)  # enable constraints
+
+    @staticmethod
+    def create_upgrade_table_sql():
+        return 'CREATE TABLE "PONY_VERSION"("VERSION" VARCHAR(80) NOT NULL)'
+
+    def get_pony_version_sql(schema):
+        return 'SELECT "VERSION" from "PONY_VERSION"'
+
+    def insert_pony_version_sql(schema, version):
+        return 'INSERT INTO "PONY_VERSION" VALUES (%r)' % version
+
+    def set_pony_version_sql(schema, version=None):
+        from pony import __version__
+        return 'UPDATE "PONY_VERSION" SET "VERSION" = %r' % (version or __version__)
+
+    def create_migration_table_sql(self):
+        return 'CREATE TABLE "MIGRATION"' \
+               '("NAME" VARCHAR(1000) PRIMARY KEY, "APPLIED" TIMESTAMP NOT NULL)'
+
+    def get_applied_sql(self):
+        return 'SELECT "NAME" FROM "MIGRATION"'
+
+    def get_migration_insert_sql(self):
+        query = 'INSERT INTO "MIGRATION"("NAME", "APPLIED") VALUES (:name, :applied)'
+        return query
 
 class OraNoneMonad(sqltranslation.NoneMonad):
     def __init__(monad, value=None):
@@ -385,6 +638,62 @@ class OraJsonConverter(dbapiprovider.JsonConverter):
     def sql_type(converter):
         return 'CLOB'
 
+
+purge_template = """
+BEGIN
+FOR cur_rec IN (SELECT object_name, object_type
+                FROM user_objects
+                WHERE object_type IN
+                            ('TABLE',
+                            'VIEW',
+                            'MATERIALIZED VIEW',
+                            'PACKAGE',
+                            'PROCEDURE',
+                            'FUNCTION',
+                            'SEQUENCE',
+                            'SYNONYM',
+                            'PACKAGE BODY'
+                            ))
+LOOP
+    BEGIN
+        IF cur_rec.object_type = 'TABLE'
+        THEN
+            EXECUTE IMMEDIATE 'DROP '
+                            || cur_rec.object_type
+                            || ' "'
+                            || cur_rec.object_name
+                            || '" CASCADE CONSTRAINTS';
+        ELSE
+            EXECUTE IMMEDIATE 'DROP '
+                            || cur_rec.object_type
+                            || ' "'
+                            || cur_rec.object_name
+                            || '"';
+        END IF;
+    EXCEPTION
+        WHEN OTHERS
+        THEN
+            DBMS_OUTPUT.put_line ('FAILED: DROP '
+                                || cur_rec.object_type
+                                || ' "'
+                                || cur_rec.object_name
+                                || '"'
+                                );
+    END;
+END LOOP;
+FOR cur_rec IN (SELECT * 
+                FROM all_synonyms 
+                WHERE table_owner IN (SELECT USER FROM dual))
+LOOP
+    BEGIN
+        EXECUTE IMMEDIATE 'DROP PUBLIC SYNONYM ' || cur_rec.synonym_name;
+    END;
+END LOOP;
+END;
+/
+"""
+
+
 class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
@@ -396,8 +705,11 @@ class OraProvider(DBAPIProvider):
 
     dbapi_module = cx_Oracle
     dbschema_cls = OraSchema
+    vdbschema_cls = OraVirtualSchema
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
+
+    cast_sql = 'CAST({colname} AS {sql_type})'
 
     name_before_table = 'owner'
 
@@ -434,8 +746,8 @@ class OraProvider(DBAPIProvider):
         return isinstance(exc, cx_Oracle.OperationalError) \
                and exc.args[0].code in reconnect_error_codes
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len].upper()
+    def normalize_case_name(provider, name):
+        return name.upper()
 
     def normalize_vars(provider, vars, vartypes):
         DBAPIProvider.normalize_vars(provider, vars, vartypes)
@@ -515,6 +827,19 @@ class OraProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
+    def column_exists(provider, connection, table_name, column_name, case_sensivite=True):
+        owner_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        if case_sensivite:
+            sql = 'SELECT column_name FROM all_tab_cols ' \
+                  'WHERE owner = :o AND table_name = :t and column_name = :c'
+        else:
+            sql = 'SELECT column_name FROM information_schema.columns '\
+                  'WHERE owner = :o AND upper(table_name) = upper(:t) and upper(column_name) = upper(:c)'
+        cursor.execute(sql, dict(o=owner_name, t=table_name, c=column_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
         if not isinstance(index_name, basestring): throw(NotImplementedError)
@@ -537,6 +862,34 @@ class OraProvider(DBAPIProvider):
                     'AND table_name = :tn AND upper(constraint_name) = upper(:cn) AND owner = :o'
         cursor = connection.cursor()
         cursor.execute(sql, dict(tn=table_name, cn=fk_name, o=owner_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
+    def unq_exists(provider, connection, table_name, unq_name, case_sensitive=True):
+        owner_name, table_name = provider.split_table_name(table_name)
+        if isinstance(unq_name, tuple):
+            unq_name = unq_name[1]
+        if case_sensitive:
+            sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'U' " \
+                  'AND table_name = :tn AND constraint_name = :cn AND owner = :o'
+        else: sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'U' " \
+                    'AND table_name = :tn AND upper(constraint_name) = upper(:cn) AND owner = :o'
+        cursor = connection.cursor()
+        cursor.execute(sql, dict(tn=table_name, cn=unq_name, o=owner_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
+
+    def chk_exists(provider, connection, table_name, chk_name, case_sensitive=True):
+        owner_name, table_name = provider.split_table_name(table_name)
+        if isinstance(chk_name, tuple):
+            unq_name = chk_name[1]
+        if case_sensitive:
+            sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'C' " \
+                  'AND table_name = :tn AND constraint_name = :cn AND owner = :o'
+        else: sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'C' " \
+                    'AND table_name = :tn AND upper(constraint_name) = upper(:cn) AND owner = :o'
+        cursor = connection.cursor()
+        cursor.execute(sql, dict(tn=table_name, cn=chk_name, o=owner_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
 

@@ -30,10 +30,10 @@ class TestSymmetricM2M(unittest.TestCase):
             db.insert(Person, id=3, name='C')
             db.insert(Person, id=4, name='D')
             db.insert(Person, id=5, name='E')
-            db.insert(Person.friends, person=1, person_2=2)
-            db.insert(Person.friends, person=2, person_2=1)
-            db.insert(Person.friends, person=1, person_2=3)
-            db.insert(Person.friends, person=3, person_2=1)
+            db.insert(Person.friends, person_id=1, person_id_2=2)
+            db.insert(Person.friends, person_id=2, person_id_2=1)
+            db.insert(Person.friends, person_id=1, person_id_2=3)
+            db.insert(Person.friends, person_id=3, person_id_2=1)
         db_session.__enter__()
     def tearDown(self):
         rollback()
@@ -53,7 +53,7 @@ class TestSymmetricM2M(unittest.TestCase):
         p4 = Person[4]
         p1.friends.add(p4)
         commit()
-        rows = db.select("* from person_friends order by person, person_2")
+        rows = db.select("* from person_friends order by person_id, person_id_2")
         self.assertEqual(rows, [(1,2), (1,3), (1,4), (2,1), (3,1), (4,1)])
     def test2a(self):
         p1 = Person[1]
@@ -75,11 +75,11 @@ class TestSymmetricM2M(unittest.TestCase):
         p2 = Person[2]
         p1.friends.remove(p2)
         commit()
-        rows = db.select("* from person_friends order by person, person_2")
+        rows = db.select("* from person_friends order by person_id, person_id_2")
         self.assertEqual(rows, [(1,3), (3,1)])
     def test3a(self):
         db.execute('delete from person_friends')
-        db.insert(Person.friends, person=1, person_2=2)
+        db.insert(Person.friends, person_id=1, person_id_2=2)
         p1 = Person[1]
         p2 = Person[2]
         p2_friends = set(p2.friends)
@@ -90,7 +90,7 @@ class TestSymmetricM2M(unittest.TestCase):
         else: self.fail()
     def test3b(self):
         db.execute('delete from person_friends')
-        db.insert(Person.friends, person=1, person_2=2)
+        db.insert(Person.friends, person_id=1, person_id_2=2)
         p1 = Person[1]
         p2 = Person[2]
         p1_friends = set(p1.friends)

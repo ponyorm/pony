@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
-from pony.orm.tests import teardown_database, setup_database
+from pony.orm.tests import teardown_database, setup_database, db_params
 
 db = Database()
 
@@ -60,7 +60,8 @@ class TestQuery(unittest.TestCase):
                                      "`a` raises NameError: name 'a' is not defined")
     def test4(self):
         select(a for s in Student)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'StrArray' in expression: s.name == x" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types '%s' and '%s' in expression: s.name == x"
+                      % (unicode.__name__, 'StrArray' if db_params['provider'] in ('sqlite', 'postgres') else 'list'))
     def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)

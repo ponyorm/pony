@@ -6,7 +6,7 @@ from datetime import date
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
-from pony.orm.tests import setup_database, teardown_database
+from pony.orm.tests import setup_database, teardown_database, skip_for
 
 db = Database()
 
@@ -386,6 +386,7 @@ class TestSQLTranslator(unittest.TestCase):
         select(g for g in Grade if g.teacher.id == 101).delete(bulk=True)
         q2 = select(g for g in Grade)[:]
         self.assertEqual([g.value for g in q2], ['C'])
+    @skip_for('mysql')  # InternalError: (1093, "You can't specify target table 'g' for update in FROM clause")
     def test_delete_4(self):
         select(g for g in Grade if exists(g2 for g2 in Grade if g2.value > g.value)).delete(bulk=True)
         q2 = select(g for g in Grade)[:]

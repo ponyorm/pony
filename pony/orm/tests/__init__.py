@@ -44,10 +44,19 @@ def teardown_database(db):
         db.drop_all_tables(with_all_data=True)
     db.disconnect()
 
+supported_providers = ['sqlite', 'postgres', 'cockroach', 'mysql', 'oracle']
+
+def check_providers(providers):
+    if not providers:
+        raise TypeError('For `@only_for` and `@skip_for` decorators provider list should not be empty')
+    for provider in providers:
+        if provider not in supported_providers:
+            raise TypeError('unknown provider name: %s' % provider)
 
 def only_for(providers):
     if not isinstance(providers, (list, tuple)):
         providers = [providers]
+    check_providers(providers)
     def decorator(x):
         if isinstance(x, type) and issubclass(x, unittest.TestCase):
             @classmethod
@@ -62,6 +71,33 @@ def only_for(providers):
             def new_test_func(self):
                 if db_params['provider'] not in providers:
                     raise unittest.SkipTest('%s test implemented only for %s provider%s' % (
+                        x.__name__, ', '.join(providers), '' if len(providers) < 2 else 's'
+                    ))
+                return x(self)
+            result = new_test_func
+        else:
+            raise TypeError
+        return result
+    return decorator
+
+def skip_for(providers):
+    if not isinstance(providers, (list, tuple)):
+        providers = [providers]
+    check_providers(providers)
+    def decorator(x):
+        if isinstance(x, type) and issubclass(x, unittest.TestCase):
+            @classmethod
+            def setUpClass(cls):
+                raise unittest.SkipTest('%s tests are skipped for %s provider%s' % (
+                    cls.__name__, ', '.join(providers), '' if len(providers) < 2 else 's'
+                ))
+            if db_params['provider'] in providers:
+                x.setUpClass = setUpClass
+            result = x
+        elif isinstance(x, types.FunctionType):
+            def new_test_func(self):
+                if db_params['provider'] in providers:
+                    raise unittest.SkipTest('%s test are skipped for %s provider%s' % (
                         x.__name__, ', '.join(providers), '' if len(providers) < 2 else 's'
                     ))
                 return x(self)

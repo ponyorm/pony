@@ -5,9 +5,10 @@ import unittest
 from pony.orm.core import *
 from pony.orm.core import local
 from pony.orm.tests.testutils import *
-from pony.orm.tests import setup_database, teardown_database
+from pony.orm.tests import setup_database, teardown_database, skip_for
 
 
+@skip_for('mysql')  # MySQL immediate transactions are not suitable to use with generators
 class TestGeneratorDbSession(unittest.TestCase):
     def setUp(self):
         db = Database()

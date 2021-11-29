@@ -268,7 +268,7 @@ def are_comparable_types(t1, t2, op='=='):
 class TrackedValue(object):
     def __init__(self, obj, attr):
         self.obj_ref = weakref.ref(obj)
-        self.attr = attr
+        self.attr = getattr(attr, 'real_attr', attr)
     @classmethod
     def make(cls, obj, attr, value):
         if isinstance(value, dict):
