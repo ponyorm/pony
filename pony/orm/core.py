@@ -4391,7 +4391,7 @@ class EntityMeta(type):
             if not isinstance(lambda_ast, ast.Lambda):
                 throw(TypeError, 'Lambda function is expected. Got: %s' % func)
             names = get_lambda_args(lambda_ast)
-            cond_expr = lambda_ast.code
+            cond_expr = lambda_ast.body
             cells = None
         else: assert False  # pragma: no cover
 
@@ -5515,13 +5515,12 @@ def string2ast(s):
             except UnicodeDecodeError: throw(TypeError,
                 'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % s)
         else: s = s.encode('ascii', 'backslashreplace')
-    module_node = parse('(%s)' % s)
+    module_node = ast.parse('(%s)' % s)
     if not isinstance(module_node, ast.Module): throw(TypeError)
-    stmt_node = module_node.node
-    if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
-    discard_node = stmt_node.nodes[0]
-    if not isinstance(discard_node, ast.Discard): throw(TypeError)
-    result = string2ast_cache[s] = discard_node.expr
+    assert len(module_node.body) == 1
+    expr = module_node.body[0]
+    assert isinstance(expr, ast.Expr)
+    result = string2ast_cache[s] = expr.value
     # result = deepcopy(result)  # no need for now, but may be needed later
     return result
 
@@ -5569,13 +5568,13 @@ def make_query(args, frame_depth, left_join=False):
         code_key = id(gen.gi_frame.f_code)
     elif isinstance(gen, basestring):
         tree = string2ast(gen)
-        if not isinstance(tree, ast.Expr): throw(TypeError,
-            'Source code should represent generator. Got: %s' % gen)
+        if not isinstance(tree, ast.GeneratorExp):
+            throw(TypeError, 'Source code should represent generator. Got: %s' % gen)
         code_key = gen
         cells = None
     else:
         assert False
-    return Query(code_key, tree.value, globals, locals, cells, left_join)
+    return Query(code_key, tree, globals, locals, cells, left_join)
 
 @cut_traceback
 def select(*args):
@@ -5980,9 +5979,9 @@ class Query(object):
     @cut_traceback
     def delete(query, bulk=None):
         if not bulk:
-            if not isinstance(query._translator.expr_type, EntityMeta): throw(TypeError,
-                'Delete query should be applied to a single entity. Got: %s'
-                % ast2src(query._translator.tree.expr))
+            if not isinstance(query._translator.expr_type, EntityMeta):
+                throw(TypeError, 'Delete query should be applied to a single entity. Got: %s'
+                                 % ast2src(query._translator.tree.elt))
             objects = query._actual_fetch()
             for obj in objects: obj._delete_()
             return len(objects)
@@ -6062,7 +6061,7 @@ class Query(object):
             func_ast = string2ast(func)
             if isinstance(func_ast, ast.Lambda):
                 argnames = get_lambda_args(func_ast)
-                func_ast = func_ast.code
+                func_ast = func_ast.body
             cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)

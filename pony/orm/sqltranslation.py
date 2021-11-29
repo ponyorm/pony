@@ -202,12 +202,15 @@ class SQLTranslator(ASTTranslator):
             node.monad = monad
             monad.node = node
             if not hasattr(monad, 'aggregated'):
-                for child in get_child_nodes(node):
-                    m = getattr(child, 'monad', None)
-                    if m and getattr(m, 'aggregated', False):
-                        monad.aggregated = True
-                        break
-                else: monad.aggregated = False
+                if isinstance(monad, QuerySetMonad):
+                    monad.aggregated = False
+                else:
+                    for child in get_child_nodes(node):
+                        m = getattr(child, 'monad', None)
+                        if m and getattr(m, 'aggregated', False):
+                            monad.aggregated = True
+                            break
+                    else: monad.aggregated = False
             if not hasattr(monad, 'nogroup'):
                 for child in get_child_nodes(node):
                     m = getattr(child, 'monad', None)
@@ -425,10 +428,9 @@ class SQLTranslator(ASTTranslator):
 
             for if_ in generator.ifs:
                 translator.dispatch(if_)
-                if isinstance(if_.monad, AndMonad):
-                    cond_monads = if_.monad.operands
-                else:
-                    cond_monads = [ if_.monad ]
+                if if_.monad.type is not bool:
+                    if_.monad = if_.monad.nonzero()
+                cond_monads = if_.monad.operands if isinstance(if_.monad, AndMonad) else [ if_.monad ]
                 for m in cond_monads:
                     if not getattr(m, 'aggregated', False): translator.conditions.extend(m.getsql())
                     else: translator.having_conditions.extend(m.getsql())
@@ -883,7 +885,7 @@ class SQLTranslator(ASTTranslator):
                 object_monad = translator.tree.quals[0].iter.monad
                 assert isinstance(object_monad.type, EntityMeta)
             else:
-                object_monad = translator.tree.expr.monad
+                object_monad = translator.tree.elt.monad
                 if not isinstance(object_monad.type, EntityMeta):
                     throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
 
@@ -955,10 +957,6 @@ class SQLTranslator(ASTTranslator):
         except UseAnotherTranslator:
             assert False
         return QuerySetMonad(subtranslator)
-    def postGenExprIf(translator, node):
-        monad = node.test.monad
-        if monad.type is not bool: monad = monad.nonzero()
-        return monad
     def postExpr(translator, node):
         return node.value.monad
     def preCompare(translator, node):
@@ -1019,10 +1017,18 @@ class SQLTranslator(ASTTranslator):
         return node.left.monad - node.right.monad
     def postMult(translator, node):
         return node.left.monad * node.right.monad
+    def postMatMult(translator, node):
+        throw(NotImplementedError)
     def postDiv(translator, node):
         return node.left.monad / node.right.monad
     def postFloorDiv(translator, node):
         return node.left.monad // node.right.monad
+    def postMod(translator, node):
+        return node.left.monad % node.right.monad
+    def postLShift(translator, node):
+        throw(NotImplementedError)
+    def postRShift(translator, node):
+        throw(NotImplementedError)
     def postMod(translator, node):
         return node.left.monad % node.right.monad
     def postPow(translator, node):
@@ -1032,23 +1038,21 @@ class SQLTranslator(ASTTranslator):
     def postAttribute(translator, node):
         return node.value.monad.getattr(node.attr)
     def postAnd(translator, node):
-        return AndMonad([ subnode.monad for subnode in node.values ])
+        return AndMonad([ expr.monad for expr in node.values ])
     def postOr(translator, node):
-        return OrMonad([ subnode.monad for subnode in node.values ])
-    def postBitor(translator, node):
-        left, right = (subnode.monad for subnode in node.nodes)
-        return left | right
-    def postBitand(translator, node):
-        left, right = (subnode.monad for subnode in node.nodes)
-        return left & right
-    def postBitxor(translator, node):
-        left, right = (subnode.monad for subnode in node.nodes)
-        return left ^ right
+        return OrMonad([ expr.monad for expr in node.values ])
+    def postBitOr(translator, node):
+        return node.left.monad | node.right.monad
+    def postBitAnd(translator, node):
+        return node.left.monad & node.right.monad
+    def postBitXor(translator, node):
+        return node.left.monad ^ node.right.monad
     def postNot(translator, node):
         return node.operand.monad.negate()
     def preCall(translator, node):
-        if any(isinstance(arg, ast.Starred) for arg in node.args):
-            throw(NotImplementedError, '*%s is not supported' % ast2src(node.star_args))
+        for arg in node.args:
+            if isinstance(arg, ast.Starred):
+                throw(NotImplementedError, '%s is not supported' % ast2src(arg))
         if any(kwarg.arg is None for kwarg in node.keywords):
             throw(NotImplementedError, '**%s is not supported' % ast2src(node.dstar_args))
         func_node = node.func
@@ -1103,13 +1107,16 @@ class SQLTranslator(ASTTranslator):
         args = []
         kwargs = {}
         for arg in node.args:
-            if isinstance(arg, ast.keyword):
-                kwargs[arg.arg] = arg.value.monad
-            else:
-                args.append(arg.monad)
+            if isinstance(arg, ast.Starred):
+                throw(NotImplementedError, arg.src)
+            args.append(arg.monad)
+        for kw in node.keywords:
+            if kw.arg is None:
+                throw(NotImplementedError, kw.src)
+            kwargs[kw.arg] = kw.value.monad
         func_monad = node.func.monad
         return func_monad(*args, **kwargs)
-    def postKeyword(translator, node):
+    def postkeyword(translator, node):
         pass  # this node will be processed by postCall
     def postSubscript(translator, node):
         assert isinstance(node.ctx, ast.Load)
@@ -1159,11 +1166,14 @@ class SQLTranslator(ASTTranslator):
         return StringExprMonad(unicode, sql, nullable=val_monad.nullable)
     def postJoinedStr(translator, node):
         nullable = False
-        for subnode in node.values:
-            assert isinstance(subnode.monad, StringMixin), (subnode.monad, subnode)
-            if subnode.monad.nullable:
+        sql = ['CONCAT']
+        for item in node.values:
+            monad = item.monad
+            if not isinstance(monad, StringMixin):
+                monad = monad.to_str()
+            if monad.nullable:
                 nullable = True
-        sql = [ 'CONCAT' ] + [ value.monad.getsql()[0] for value in node.values ]
+            sql.append(monad.getsql()[0])
         return StringExprMonad(unicode, sql, nullable=nullable)
     def postFormattedValue(translator, node):
         throw(NotImplementedError, 'You cannot set width and precision markers in query')
@@ -1457,7 +1467,8 @@ class Monad(with_metaclass(MonadMeta)):
         return monad
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
-    def contains(monad, item, not_in=False): throw(TypeError)
+    def contains(monad, item, not_in=False):
+        throw(TypeError)
     def nonzero(monad):
         return CmpMonad('is not', monad, NoneMonad())
     def negate(monad):
@@ -1549,9 +1560,9 @@ class Monad(with_metaclass(MonadMeta)):
     def __floordiv__(monad, monad2): throw(TypeError)
     def __pow__(monad, monad2): throw(TypeError)
     def __neg__(monad): throw(TypeError)
-    def __or__(monad): throw(TypeError)
-    def __and__(monad): throw(TypeError)
-    def __xor__(monad): throw(TypeError)
+    def __or__(monad, monad2): throw(TypeError)
+    def __and__(monad, monad2): throw(TypeError)
+    def __xor__(monad, monad2): throw(TypeError)
     def abs(monad): throw(TypeError)
     def cast_from_json(monad, type): assert False, monad
     def to_int(monad):
@@ -1729,6 +1740,9 @@ class NumericMixin(MonadMixin):
     __truediv__ = make_numeric_binop('/', 'DIV')
     __floordiv__ = make_numeric_binop('//', 'FLOORDIV')
     __mod__ = make_numeric_binop('%', 'MOD')
+    __and__ = make_numeric_binop('&', 'BITAND')
+    __or__ = make_numeric_binop('|', 'BITOR')
+    __xor__ = make_numeric_binop('^', 'BITXOR')
     def __pow__(monad, monad2):
         if not isinstance(monad2, NumericMixin):
             throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), '**'))
@@ -2147,7 +2161,8 @@ class ObjectMixin(MonadMixin):
                     if func is not None: return HybridMethodMonad(monad, attrname, func)
                 throw(NotImplementedError, '{EXPR} cannot be translated to SQL')
             throw(AttributeError, 'Entity %s does not have attribute %s: {EXPR}' % (entity.__name__, attrname))
-        if hasattr(monad, 'tableref'): monad.tableref.used_attrs.add(attr)
+        if hasattr(monad, 'tableref'):
+            monad.tableref.used_attrs.add(attr)
         if not attr.is_collection:
             return AttrMonad.new(monad, attr)
         else:

@@ -153,12 +153,10 @@ def get_lambda_args(func):
         else:
             names, argsname, kwname, defaults = inspect.getargspec(func)
     elif isinstance(func, ast.Lambda):
-        names = func.argnames
-        if func.kwargs: names, kwname = names[:-1], names[-1]
-        else: kwname = None
-        if func.varargs: names, argsname = names[:-1], names[-1]
-        else: argsname = None
-        defaults = func.defaults
+        argsname = func.args.vararg
+        kwname = func.args.kwarg
+        defaults = func.args.defaults + func.args.kw_defaults
+        names = [arg.arg for arg in func.args.args]
     else: assert False  # pragma: no cover
     if argsname: throw(TypeError, '*%s is not supported' % argsname)
     if kwname: throw(TypeError, '**%s is not supported' % kwname)

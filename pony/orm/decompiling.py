@@ -36,7 +36,7 @@ def decompile(x):
     result = ast_cache.get(key)
     if result is None:
         decompiler = Decompiler(codeobject)
-        result = ast.Expr(decompiler.ast), decompiler.external_names
+        result = decompiler.ast, decompiler.external_names
         ast_cache[key] = result
     return result + (cells,)
 
@@ -394,11 +394,19 @@ class Decompiler(object):
     def FORMAT_VALUE(decompiler, flags):
         if flags in (0, 1, 2, 3):
             value = decompiler.stack.pop()
-            return ast.Str(value, flags)
+            if flags == 0:
+                return value
+            elif flag == 1:
+                conversion = ord('s')  # str conversion
+            elif flag == 2:
+                conversion = ord('r')  # repr conversion
+            elif flag == 3:
+                conversion = ord('a')  # ascii conversion
+            return ast.FormattedValue(value, conversion=conversion)
         elif flags == 4:
             fmt_spec = decompiler.stack.pop()
             value = decompiler.stack.pop()
-            return ast.FormattedValue(value, fmt_spec)
+            return ast.FormattedValue(value, format_spec=fmt_spec)
 
     def GEN_START(decompiler, kind):
         assert kind == 0  # only support sync

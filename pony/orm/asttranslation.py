@@ -81,7 +81,6 @@ def get_child_nodes(node):
             yield child
 
 
-
 class PythonTranslator(ASTTranslator):
     def __init__(translator, tree):
         ASTTranslator.__init__(translator, tree)
@@ -95,13 +94,11 @@ class PythonTranslator(ASTTranslator):
     def default_post(translator, node):
         throw(NotImplementedError, node)
     def postGeneratorExp(translator, node):
-        return '(%s)' % node.elt.src
-    def postGenExprInner(translator, node):
-        return node.expr.src + ' ' + ' '.join(qual.src for qual in node.quals)
+        return '(' + node.elt.src + ' ' + ' '.join(gen.src for gen in node.generators) + ')'
     def postcomprehension(translator, node):
         src = 'for %s in %s' % (node.target.src, node.iter.src)
         if node.ifs:
-            ifs = ' '.join(if_.src for if_ in node.ifs)
+            ifs = ' '.join('if ' + if_.src for if_ in node.ifs)
             src += ' ' + ifs
         return src
     def postGenExprIf(translator, node):
@@ -124,13 +121,13 @@ class PythonTranslator(ASTTranslator):
         return 'lambda %s: %s' % (args, node.code.src)
     @priority(14)
     def postOr(translator, node):
-        return ' or '.join(expr.src for expr in node.nodes)
+        return ' or '.join(expr.src for expr in node.values)
     @priority(13)
     def postAnd(translator, node):
-        return ' and '.join(expr.src for expr in node.nodes)
+        return ' and '.join(expr.src for expr in node.values)
     @priority(12)
     def postNot(translator, node):
-        return 'not ' + node.expr.src
+        return 'not ' + node.operand.src
     @priority(11)
     def postCompare(translator, node):
         result = [ node.left.src ]
@@ -158,38 +155,41 @@ class PythonTranslator(ASTTranslator):
     def postNotIn(translator, node):
         return 'not in'
     @priority(10)
-    def postBitor(translator, node):
-        return ' | '.join(expr.src for expr in node.nodes)
+    def postBitOr(translator, node):
+        return ' | '.join((node.left.src, node.right.src))
     @priority(9)
-    def postBitxor(translator, node):
-        return ' ^ '.join(expr.src for expr in node.nodes)
+    def postBitXor(translator, node):
+        return ' ^ '.join((node.left.src, node.right.src))
     @priority(8)
-    def postBitand(translator, node):
-        return ' & '.join(expr.src for expr in node.nodes)
+    def postBitAnd(translator, node):
+        return ' & '.join((node.left.src, node.right.src))
     @priority(7)
-    def postLeftShift(translator, node):
-        return binop_src(' << ', node)
+    def postLShift(translator, node):
+        return ' << '.join((node.left.src, node.right.src))
     @priority(7)
-    def postRightShift(translator, node):
-        return binop_src(' >> ', node)
+    def postRShift(translator, node):
+        return ' >> '.join((node.left.src, node.right.src))
     @priority(6)
     def postAdd(translator, node):
-        return binop_src(' + ', node)
+        return ' + '.join((node.left.src, node.right.src))
     @priority(6)
     def postSub(translator, node):
-        return binop_src(' - ', node)
+        return ' - '.join((node.left.src, node.right.src))
     @priority(5)
-    def postMul(translator, node):
-        return binop_src(' * ', node)
+    def postMult(translator, node):
+        return ' * '.join((node.left.src, node.right.src))
+    @priority(5)
+    def postMatMult(translator, node):
+        throw(NotImplementedError)
     @priority(5)
     def postDiv(translator, node):
-        return binop_src(' / ', node)
+        return ' / '.join((node.left.src, node.right.src))
     @priority(5)
     def postFloorDiv(translator, node):
-        return binop_src(' // ', node)
+        return ' // '.join((node.left.src, node.right.src))
     @priority(5)
     def postMod(translator, node):
-        return binop_src(' % ', node)
+        return ' % '.join((node.left.src, node.right.src))
     @priority(4)
     def postUSub(translator, node):
         return '-' + node.operand.src
@@ -200,33 +200,31 @@ class PythonTranslator(ASTTranslator):
     def postInvert(translator, node):
         return '~' + node.expr.src
     @priority(3)
-    def postPower(translator, node):
+    def postPow(translator, node):
         return binop_src(' ** ', node)
     def postAttribute(translator, node):
         node.priority = 2
         return '.'.join((node.value.src, node.attr))
     def postCall(translator, node):
         node.priority = 2
-        args = [ arg.src for arg in node.args ]
-        for arg in node.args:
-            if isinstance(arg, ast.Starred):
-                args.append(arg.src)
-        for kwarg in node.keywords:
-            if kwarg.arg is None:
-                args.append(kwarg.src)
+        args = [ arg.src for arg in node.args ]  + [ kw.src for kw in node.keywords ]
         if len(args) == 1 and isinstance(node.args[0], ast.GeneratorExp):
-            return node.node.src + args[0]
+            return node.func.src + args[0]
         return '%s(%s)' % (node.func.src, ', '.join(args))
     def postkeyword(translator, node):
-        return '**' + node.value.src
+        if node.arg is None:
+            return '**' + node.value.src
+        return '%s=%s' % (node.arg, node.value.src)
     def postStarred(translator, node):
         return '*' + node.value.src
     def postSubscript(translator, node):
         node.priority = 2
-        if not isinstance(node.slice, ast.Tuple):
-            key = node.slice.src
-        else:
+        if isinstance(node.slice, ast.Tuple):
             key = ', '.join([elt.src for elt in node.slice.elts])
+        elif isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, tuple):
+            key = repr(node.slice.value)[1:-1]
+        else:
+            key = node.slice.src
         return '%s[%s]' % (node.value.src, key)
     def postSlice1(translator, node):
         node.priority = 2
@@ -255,7 +253,7 @@ class PythonTranslator(ASTTranslator):
         return '...'
     def postList(translator, node):
         node.priority = 1
-        return '[%s]' % ', '.join(item.src for item in node.nodes)
+        return '[%s]' % ', '.join(item.src for item in node.elts)
     def postTuple(translator, node):
         node.priority = 1
         if len(node.elts) == 1:
@@ -267,7 +265,7 @@ class PythonTranslator(ASTTranslator):
         else: return '(%s)' % ', '.join(item.src for item in node.nodes)
     def postDict(translator, node):
         node.priority = 1
-        return '{%s}' % ', '.join('%s:%s' % (key.src, value.src) for key, value in node.items)
+        return '{%s}' % ', '.join('%s:%s' % (key.src, value.src) for key, value in zip(node.keys, node.values))
     def postSet(translator, node):
         node.priority = 1
         return '{%s}' % ', '.join(item.src for item in node.nodes)
@@ -277,10 +275,6 @@ class PythonTranslator(ASTTranslator):
     def postName(translator, node):
         node.priority = 1
         return node.id
-    def postStarred(translator, node):
-        return '*' + node.value.id
-    def postkeyword(translator, node):
-        return '='.join((node.id, node.expr.src))
     def preStr(self, node):
         if self.top_level_f_str is None:
             self.top_level_f_str = node
@@ -294,7 +288,7 @@ class PythonTranslator(ASTTranslator):
             self.top_level_f_str = node
     def postJoinedStr(self, node):
         result = ''.join(
-            value.value if isinstance(value, ast.Constant) else value.src
+            value.value if isinstance(value, ast.Constant) else '{%s}' % value.src
             for value in node.values)
         if self.top_level_f_str is node:
             self.top_level_f_str = None
@@ -311,7 +305,7 @@ class PythonTranslator(ASTTranslator):
         return res
 
 
-nonexternalizable_types = (ast.keyword, ast.Slice, ast.List, ast.Tuple)
+nonexternalizable_types = (ast.keyword, ast.Starred, ast.Slice, ast.List, ast.Tuple)
 
 
 class PreTranslator(ASTTranslator):
@@ -349,7 +343,6 @@ class PreTranslator(ASTTranslator):
         for i, qual in enumerate(node.generators):
             dispatch(qual.iter)
             dispatch(qual.target)
-            dispatch(qual.target)
             for if_ in qual.ifs:
                 dispatch(if_)
         dispatch(node.elt)
@@ -376,7 +369,10 @@ class PreTranslator(ASTTranslator):
             node.external = True
         else:
             assert False, type(node.ctx)
-    def postStarred(translataor, node):
+    def postSlice(translator, node):
+        if node.lower is None and node.upper is None and node.step is None:
+            node.external = node.constant = True
+    def postStarred(translator, node):
         node.external = True
     def postConstant(translator, node):
         node.external = node.constant = True
@@ -384,8 +380,8 @@ class PreTranslator(ASTTranslator):
         node.external = True
     def postList(translator, node):
         node.external = True
-    def postKeyword(translator, node):
-        node.constant = node.expr.constant
+    def postkeyword(translator, node):
+        node.constant = node.value.constant
     def postCall(translator, node):
         func_node = node.func
         if not func_node.external:
@@ -421,6 +417,14 @@ class PreTranslator(ASTTranslator):
             if any(not kwarg.constant for kwarg in node.keywords if kwarg.arg is None):
                 return
             node.constant = True
+    def postCompare(translator, node):
+        for op in node.ops:
+            op.external = op.constant = True
+    def post_binop(translator, node):
+        pass
+
+    postBitOr = postBitXor = postBitAnd = postLShift = postRShift \
+        = postAdd = postSub = postMult = postMatMult = postDiv = postFloorDiv = postMod = post_binop
 
 extractors_cache = {}
 
