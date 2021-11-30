@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY37, PYPY, PY310
+from pony.py23compat import PY37, PYPY, PY38, PY39, PY310
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -89,6 +89,50 @@ def clean_assign(node):
     if isinstance(node, ast.Assign):
         return node.targets
     return node
+
+
+def make_const(value):
+    if is_const(value):
+        return value
+    if PY39:
+        return ast.Constant(value)
+    elif PY38:
+        return ast.Constant(value, None)
+    elif isinstance(value, (int, float)):
+        return ast.Num(value)
+    elif isinstance(value, str):
+        return ast.Str(value)
+    elif isinstance(value, bytes):
+        return ast.Bytes(value)
+    elif isinstance(value, tuple):
+        return ast.Tuple([make_const(elt) for elt in value], ast.Load())
+    elif value in (True, False, None):
+        return ast.NameConstant(value)
+    elif isinstance(value, types.CodeType):
+        return ast.Constant(value)
+    elif value is Ellipsis:
+        return ast.Constant(value)
+    assert False, value
+
+
+def is_const(value):
+    if isinstance(value, ast.Constant):
+        return True
+    if PY38:
+        return False
+    if isinstance(value, (ast.Num, ast.Str, ast.Bytes)):
+        return True
+    if isinstance(value, ast.Tuple):
+        return all(is_const(elt) for elt in value.elts)
+    return False
+
+
+def unwrap_str(key):
+    if PY38:
+        assert isinstance(key, str)
+        return key
+    assert isinstance(key, ast.Str)
+    return key.s
 
 
 class Decompiler(object):
@@ -264,17 +308,27 @@ class Decompiler(object):
                 node2.lower = None
             if isinstance(node2.upper, ast.Constant) and node2.upper.value is None:
                 node2.upper = None
+        elif not PY38:
+            if isinstance(node2, ast.Tuple) and any(isinstance(item, ast.Slice) for item in node2.elts):
+                node2 = ast.ExtSlice(node2.elts)
+            else:
+                node2 = ast.Index(node2)
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
     def BUILD_CONST_KEY_MAP(decompiler, length):
         keys = decompiler.stack.pop()
-        assert isinstance(keys, ast.Constant)
-        keys = [ ast.Constant(key) for key in keys.value ]
+        if PY38:
+            assert isinstance(keys, ast.Constant), keys
+            keys = [ make_const(key) for key in keys.value ]
+        else:
+            assert isinstance(keys, ast.Tuple) and is_const(keys), keys
+            keys = [ make_const(key) for key in keys.elts ]
+
         values = decompiler.pop_items(length)
         return ast.Dict(keys=keys, values=values)
 
     def BUILD_LIST(decompiler, size):
-        return ast.List(decompiler.pop_items(size), ctx=ast.Load())
+        return ast.List(decompiler.pop_items(size), ast.Load())
 
     def BUILD_MAP(decompiler, length):
         if sys.version_info < (3, 5):
@@ -290,10 +344,14 @@ class Decompiler(object):
         return ast.Set(decompiler.pop_items(size))
 
     def BUILD_SLICE(decompiler, size):
-        return ast.Slice(*decompiler.pop_items(size), ctx=ast.Load())
+        items = decompiler.pop_items(size)
+        if not PY38:
+            items = [None if isinstance(item, ast.NameConstant) and item.value is None else item for item in items]
+        items += [None] * (3 - len(items))
+        return ast.Slice(*items, ctx=ast.Load())
 
     def BUILD_TUPLE(decompiler, size):
-        return ast.Tuple(decompiler.pop_items(size), ctx=ast.Load())
+        return ast.Tuple(decompiler.pop_items(size), ast.Load())
 
     def BUILD_STRING(decompiler, count):
         values = list(reversed([decompiler.stack.pop() for _ in range(count)]))
@@ -306,7 +364,7 @@ class Decompiler(object):
         for i in range(kwarg):
             arg = pop()
             key = pop().value
-            keywords.append(ast.keyword(key, arg))
+            keywords.append(ast.keyword(unwrap_str(key), arg))
         keywords.reverse()
         args = []
         for i in range(posarg):
@@ -328,7 +386,7 @@ class Decompiler(object):
             assert qual.iter.id == '.0'
             qual.iter = args[0]
             return genexpr
-        return ast.Call(tos, args=args, keywords=keywords)
+        return ast.Call(tos, args, keywords)
 
     def CALL_FUNCTION_VAR(decompiler, argc):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
@@ -337,12 +395,17 @@ class Decompiler(object):
         if sys.version_info < (3, 6):
             return decompiler.CALL_FUNCTION(argc, star2=decompiler.stack.pop())
         keys = decompiler.stack.pop()
-        assert isinstance(keys, ast.Constant)
-        keys = keys.value
+        assert is_const(keys), keys
+        if PY38:
+            assert isinstance(keys, ast.Constant)
+            keys = keys.value
+        else:
+            assert isinstance(keys, ast.Tuple)
+            keys = keys.elts
         values = decompiler.pop_items(argc)
         assert len(keys) <= len(values)
         args = values[:-len(keys)]
-        keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys):])]
+        keywords = [ast.keyword(unwrap_str(k), v) for k, v in zip(keys, values[-len(keys):])]
         return decompiler._call_function(args, keywords)
 
     def CALL_FUNCTION_VAR_KW(decompiler, argc):
@@ -396,24 +459,24 @@ class Decompiler(object):
         target = None
         iter = decompiler.stack.pop()
         ifs = []
-        return ast.comprehension(target, iter, ifs, is_async=0)
+        return ast.comprehension(target, iter, ifs, 0)
 
     def FORMAT_VALUE(decompiler, flags):
         if flags in (0, 1, 2, 3):
             value = decompiler.stack.pop()
             if flags == 0:
                 return value
-            elif flag == 1:
+            elif flags == 1:
                 conversion = ord('s')  # str conversion
-            elif flag == 2:
+            elif flags == 2:
                 conversion = ord('r')  # repr conversion
-            elif flag == 3:
+            elif flags == 3:
                 conversion = ord('a')  # ascii conversion
-            return ast.FormattedValue(value, conversion=conversion)
+            return ast.FormattedValue(value=value, conversion=conversion)
         elif flags == 4:
             fmt_spec = decompiler.stack.pop()
             value = decompiler.stack.pop()
-            return ast.FormattedValue(value, format_spec=fmt_spec)
+            return ast.FormattedValue(value=value, format_spec=fmt_spec)
 
     def GEN_START(decompiler, kind):
         assert kind == 0  # only support sync
@@ -544,31 +607,31 @@ class Decompiler(object):
         lst = decompiler.stack.pop()
         if not isinstance(lst, ast.List):
             raise NotImplementedError(type(lst))
-        values = [ast.Constant(v) for v in items.value]
+        values = [make_const(v) for v in items.value]
         lst.elts.extend(values)
         return lst
 
     def LOAD_ATTR(decompiler, attr_name):
-        return ast.Attribute(decompiler.stack.pop(), attr_name, ctx=ast.Load())
+        return ast.Attribute(decompiler.stack.pop(), attr_name, ast.Load())
 
     def LOAD_CLOSURE(decompiler, freevar):
         decompiler.names.add(freevar)
-        return ast.Name(freevar, ctx=ast.Load())
+        return ast.Name(freevar, ast.Load())
 
     def LOAD_CONST(decompiler, const_value):
-        return ast.Constant(const_value)
+        return make_const(const_value)
 
     def LOAD_DEREF(decompiler, freevar):
         decompiler.names.add(freevar)
-        return ast.Name(freevar, ctx=ast.Load())
+        return ast.Name(freevar, ast.Load())
 
     def LOAD_FAST(decompiler, varname):
         decompiler.names.add(varname)
-        return ast.Name(varname, ctx=ast.Load())
+        return ast.Name(varname, ast.Load())
 
     def LOAD_GLOBAL(decompiler, varname):
         decompiler.names.add(varname)
-        return ast.Name(varname, ctx=ast.Load())
+        return ast.Name(varname, ast.Load())
 
     def LOAD_METHOD(decompiler, methname):
         return decompiler.LOAD_ATTR(methname)
@@ -577,7 +640,7 @@ class Decompiler(object):
 
     def LOAD_NAME(decompiler, varname):
         decompiler.names.add(varname)
-        return ast.Name(varname, ctx=ast.Load())
+        return ast.Name(varname, ast.Load())
 
     def MAKE_CLOSURE(decompiler, argc):
         decompiler.stack[-3:-2] = []  # ignore freevars
@@ -615,10 +678,11 @@ class Decompiler(object):
             argnames.append(keywords)
         args = ast.arguments(
             posonlyargs=[],
-            args=[ast.arg(v) for v in argnames],
+            args=[ast.arg(arg=v) for v in argnames],
             kwonlyargs=[],
             kw_defaults=[],
-            defaults=defaults
+            defaults=defaults,
+            kwarg=None
         )
         return ast.Lambda(args, func_decompiler.ast)
 
@@ -652,18 +716,18 @@ class Decompiler(object):
         pass
 
     def STORE_ATTR(decompiler, attrname):
-        decompiler.store(ast.Assign(ast.Attribute(decompiler.stack.pop(), attrname, ctx=ast.Store())))
+        decompiler.store(ast.Attribute(decompiler.stack.pop(), attrname, ast.Store()))
 
     def STORE_DEREF(decompiler, freevar):
         decompiler.assnames.add(freevar)
-        decompiler.store(ast.Assign(ast.Name(freevar, ctx=ast.Store())))
+        decompiler.store(ast.Name(freevar, ast.Store()))
 
     def STORE_FAST(decompiler, varname):
         if varname.startswith('_['):
             throw(InvalidQuery('Use generator expression (... for ... in ...) '
                                'instead of list comprehension [... for ... in ...] inside query'))
         decompiler.assnames.add(varname)
-        decompiler.store(ast.Assign(ast.Name(varname, ctx=ast.Store())))
+        decompiler.store(ast.Name(varname, ast.Store()))
 
     def STORE_MAP(decompiler):
         tos = decompiler.stack.pop()
@@ -698,7 +762,7 @@ class Decompiler(object):
         return ast.Invert(decompiler.stack.pop())
 
     def UNPACK_SEQUENCE(decompiler, count):
-        ass_tuple = ast.Assign(targets=ast.Tuple([], ctx=ast.Store()))
+        ass_tuple = ast.Assign(targets=ast.Tuple([], ast.Store()))
         ass_tuple.count = count
         return ass_tuple
 
@@ -801,12 +865,14 @@ test_lines = """
 ##    (i for i in T if (a and b or c and d if x and y or p and q else r and n or m and k))
 ##    (a and b or c and d if x and y or p and q else r and n or m and k for i in T if (A and B or C and D if X and Y or P and Q else R and N or M and K))
 
-def test():
+def test(test_line=None):
     import sys
     if sys.version[:3] > '2.4': outmost_iterable_name = '.0'
     else: outmost_iterable_name = '[outmost-iterable]'
     import dis
     for i, line in enumerate(test_lines.split('\n')):
+        if test_line is not None and i != test_line:
+            continue
         if not line or line.isspace():
             continue
         line = line.strip()
@@ -815,10 +881,10 @@ def test():
         code = compile(line, '<?>', 'eval').co_consts[0]
         ast1 = ast.parse(line).body[0]
         ast1.value.generators[0].iter.id = outmost_iterable_name
-        ast1 = ast.dump(ast1, indent=2)
+        ast1 = ast.dump(ast1)
         try:
             ast2 = ast.Expr(Decompiler(code).ast)
-            ast2 = ast.dump(ast2, indent=2)
+            ast2 = ast.dump(ast2)
         except Exception as e:
             print()
             print(i, line)

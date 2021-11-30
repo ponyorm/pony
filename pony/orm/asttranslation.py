@@ -219,18 +219,18 @@ class PythonTranslator(ASTTranslator):
         return '*' + node.value.src
     def postSubscript(translator, node):
         node.priority = 2
-        if isinstance(node.slice, ast.Tuple):
-            key = ', '.join([elt.src for elt in node.slice.elts])
-        elif isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, tuple):
-            key = repr(node.slice.value)[1:-1]
+        x = node.slice
+        if isinstance(x, ast.Index):
+            x = x.value
+        if isinstance(x, ast.Tuple):
+            key = ', '.join([elt.src for elt in x.elts])
+        elif isinstance(x, ast.Constant) and isinstance(x.value, tuple):
+            key = repr(x.value)[1:-1]
         else:
-            key = node.slice.src
+            key = x.src
         return '%s[%s]' % (node.value.src, key)
-    def postSlice1(translator, node):
-        node.priority = 2
-        lower = node.lower.src if node.lower is not None else ''
-        upper = node.upper.src if node.upper is not None else ''
-        return '%s[%s:%s]' % (node.expr.src, lower, upper)
+    def postIndex(translator, node):  # Python <= 3.7
+        return node.value.src
     def postSlice(translator, node):
         result = []
         if node.lower:
@@ -249,8 +249,17 @@ class PythonTranslator(ASTTranslator):
             s = str(value)
             if float(s) == value: return s
         return repr(value)
-    def postEllipsis(translator, node):
-        return '...'
+    def postNameConstant(translator, node):  # Python <= 3.7
+        return repr(node.value)
+    def postNum(translator, node):  # Python <= 3.7
+        node.priority = 1
+        return repr(node.n)
+    def postStr(translator, node):  # Python <= 3.7
+        node.priority = 1
+        return repr(node.s)
+    def postBytes(translator, node):  # Python <= 3.7
+        node.priority = 1
+        return repr(node.s)
     def postList(translator, node):
         node.priority = 1
         return '[%s]' % ', '.join(item.src for item in node.elts)
@@ -275,10 +284,10 @@ class PythonTranslator(ASTTranslator):
     def postName(translator, node):
         node.priority = 1
         return node.id
-    def preStr(self, node):
+    def preStr_(self, node):
         if self.top_level_f_str is None:
             self.top_level_f_str = node
-    def postStr(self, node):
+    def postStr_(self, node):
         if self.top_level_f_str is node:
             self.top_level_f_str = None
             return "f%r" % ('{%s}' % node.value.src)
@@ -376,11 +385,19 @@ class PreTranslator(ASTTranslator):
         node.external = True
     def postConstant(translator, node):
         node.external = node.constant = True
+    def postNum(translator, node):  # Python <= 3.7
+        node.external = node.constant = True
+    def postStr(translator, node):  # Python <= 3.7
+        node.external = node.constant = True
+    def postBytes(translator, node):  # Python <= 3.7
+        node.external = node.constant = True
     def postDict(translator, node):
         node.external = True
     def postList(translator, node):
         node.external = True
     def postkeyword(translator, node):
+        node.constant = node.value.constant
+    def postIndex(translator, node):  # Python <= 3.7
         node.constant = node.value.constant
     def postCall(translator, node):
         func_node = node.func
