@@ -1095,10 +1095,10 @@ class SQLTranslator(ASTTranslator):
         if lambda_expr.args.posonlyargs: throw(TypeError)
         iter_name = lambda_expr.args.args[0].arg
         cond_expr = lambda_expr.body
-        name_ast = ast.Name(entity.__name__, ctx=ast.Load())
+        name_ast = ast.Name(entity.__name__, ast.Load())
         name_ast.monad = entity_monad
-        for_expr = ast.comprehension(ast.Name(iter_name, ctx=ast.Store()), name_ast, [ cond_expr ])
-        inner_expr = ast.GeneratorExp(ast.Name(iter_name), [ for_expr ])
+        for_expr = ast.comprehension(ast.Name(iter_name, ast.Store()), name_ast, [ cond_expr ], False)
+        inner_expr = ast.GeneratorExp(ast.Name(iter_name, ast.Load()), [ for_expr ])
         translator_cls = translator.__class__
         try:
             subtranslator = translator_cls(inner_expr, translator)

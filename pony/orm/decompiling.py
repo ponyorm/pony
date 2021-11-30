@@ -267,7 +267,7 @@ class Decompiler(object):
         return ast.Dict(keys=keys, values=values)
 
     def BUILD_LIST(decompiler, size):
-        return ast.List(decompiler.pop_items(size), ctx=ast.Load())
+        return ast.List(decompiler.pop_items(size), ast.Load())
 
     def BUILD_MAP(decompiler, length):
         if sys.version_info < (3, 5):
@@ -288,7 +288,7 @@ class Decompiler(object):
         return ast.Slice(*items, ctx=ast.Load())
 
     def BUILD_TUPLE(decompiler, size):
-        return ast.Tuple(decompiler.pop_items(size), ctx=ast.Load())
+        return ast.Tuple(decompiler.pop_items(size), ast.Load())
 
     def BUILD_STRING(decompiler, count):
         values = list(reversed([decompiler.stack.pop() for _ in range(count)]))
@@ -323,7 +323,7 @@ class Decompiler(object):
             assert qual.iter.id == '.0'
             qual.iter = args[0]
             return genexpr
-        return ast.Call(tos, args=args, keywords=keywords)
+        return ast.Call(tos, args, keywords)
 
     def CALL_FUNCTION_VAR(decompiler, argc):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
@@ -391,24 +391,24 @@ class Decompiler(object):
         target = None
         iter = decompiler.stack.pop()
         ifs = []
-        return ast.comprehension(target, iter, ifs, is_async=0)
+        return ast.comprehension(target, iter, ifs, 0)
 
     def FORMAT_VALUE(decompiler, flags):
         if flags in (0, 1, 2, 3):
             value = decompiler.stack.pop()
             if flags == 0:
                 return value
-            elif flag == 1:
+            elif flags == 1:
                 conversion = ord('s')  # str conversion
-            elif flag == 2:
+            elif flags == 2:
                 conversion = ord('r')  # repr conversion
-            elif flag == 3:
+            elif flags == 3:
                 conversion = ord('a')  # ascii conversion
-            return ast.FormattedValue(value, conversion=conversion)
+            return ast.FormattedValue(value=value, conversion=conversion)
         elif flags == 4:
             fmt_spec = decompiler.stack.pop()
             value = decompiler.stack.pop()
-            return ast.FormattedValue(value, format_spec=fmt_spec)
+            return ast.FormattedValue(value=value, format_spec=fmt_spec)
 
     def GEN_START(decompiler, kind):
         assert kind == 0  # only support sync
@@ -546,26 +546,26 @@ class Decompiler(object):
         return lst
 
     def LOAD_ATTR(decompiler, attr_name):
-        return ast.Attribute(decompiler.stack.pop(), attr_name, ctx=ast.Load())
+        return ast.Attribute(decompiler.stack.pop(), attr_name, ast.Load())
 
     def LOAD_CLOSURE(decompiler, freevar):
         decompiler.names.add(freevar)
-        return ast.Name(freevar, ctx=ast.Load())
+        return ast.Name(freevar, ast.Load())
 
     def LOAD_CONST(decompiler, const_value):
         return ast.Constant(const_value)
 
     def LOAD_DEREF(decompiler, freevar):
         decompiler.names.add(freevar)
-        return ast.Name(freevar, ctx=ast.Load())
+        return ast.Name(freevar, ast.Load())
 
     def LOAD_FAST(decompiler, varname):
         decompiler.names.add(varname)
-        return ast.Name(varname, ctx=ast.Load())
+        return ast.Name(varname, ast.Load())
 
     def LOAD_GLOBAL(decompiler, varname):
         decompiler.names.add(varname)
-        return ast.Name(varname, ctx=ast.Load())
+        return ast.Name(varname, ast.Load())
 
     def LOAD_METHOD(decompiler, methname):
         return decompiler.LOAD_ATTR(methname)
@@ -574,7 +574,7 @@ class Decompiler(object):
 
     def LOAD_NAME(decompiler, varname):
         decompiler.names.add(varname)
-        return ast.Name(varname, ctx=ast.Load())
+        return ast.Name(varname, ast.Load())
 
     def MAKE_CLOSURE(decompiler, argc):
         decompiler.stack[-3:-2] = []  # ignore freevars
@@ -612,7 +612,7 @@ class Decompiler(object):
             argnames.append(keywords)
         args = ast.arguments(
             posonlyargs=[],
-            args=[ast.arg(v) for v in argnames],
+            args=[ast.arg(arg=v) for v in argnames],
             kwonlyargs=[],
             kw_defaults=[],
             defaults=defaults,
@@ -650,18 +650,18 @@ class Decompiler(object):
         pass
 
     def STORE_ATTR(decompiler, attrname):
-        decompiler.store(ast.Assign(ast.Attribute(decompiler.stack.pop(), attrname, ctx=ast.Store())))
+        decompiler.store(ast.Attribute(decompiler.stack.pop(), attrname, ast.Store()))
 
     def STORE_DEREF(decompiler, freevar):
         decompiler.assnames.add(freevar)
-        decompiler.store(ast.Assign(ast.Name(freevar, ctx=ast.Store())))
+        decompiler.store(ast.Name(freevar, ast.Store()))
 
     def STORE_FAST(decompiler, varname):
         if varname.startswith('_['):
             throw(InvalidQuery('Use generator expression (... for ... in ...) '
                                'instead of list comprehension [... for ... in ...] inside query'))
         decompiler.assnames.add(varname)
-        decompiler.store(ast.Assign(ast.Name(varname, ctx=ast.Store())))
+        decompiler.store(ast.Name(varname, ast.Store()))
 
     def STORE_MAP(decompiler):
         tos = decompiler.stack.pop()
@@ -696,7 +696,7 @@ class Decompiler(object):
         return ast.Invert(decompiler.stack.pop())
 
     def UNPACK_SEQUENCE(decompiler, count):
-        ass_tuple = ast.Assign(targets=ast.Tuple([], ctx=ast.Store()))
+        ass_tuple = ast.Assign(targets=ast.Tuple([], ast.Store()))
         ass_tuple.count = count
         return ass_tuple
 
