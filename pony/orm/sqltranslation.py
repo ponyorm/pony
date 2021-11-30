@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass, int_types
+from pony.py23compat import PY2, PY310, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -1623,7 +1623,11 @@ typeerror_re_2 = re.compile(r'\(\) takes from (\d+) to (\d+) positional argument
 def reraise_improved_typeerror(exc, func_name, orig_func_name):
     if not exc.args: throw(exc)
     msg = exc.args[0]
-    if not msg.startswith(func_name): throw(exc)
+    if PY310:
+        dot_index = msg.find('.') + 1
+        msg = msg[dot_index:]
+    if not msg.startswith(func_name):
+        throw(exc)
     msg = msg[len(func_name):]
 
     match = typeerror_re_1.match(msg)
@@ -1664,8 +1668,10 @@ class MethodMonad(Monad):
         raise_forgot_parentheses(monad)
     def __call__(monad, *args, **kwargs):
         method = getattr(monad.parent, 'call_' + monad.attrname)
-        try: return method(*args, **kwargs)
-        except TypeError as exc: reraise_improved_typeerror(exc, method.__name__, monad.attrname)
+        try:
+            return method(*args, **kwargs)
+        except TypeError as exc:
+            reraise_improved_typeerror(exc, method.__name__, monad.attrname)
 
     def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
     def nonzero(monad): raise_forgot_parentheses(monad)
@@ -2662,7 +2668,8 @@ class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
             assert isinstance(arg, Monad)
         for value in kwargs.values():
             assert isinstance(value, Monad)
-        try: return monad.call(*args, **kwargs)
+        try:
+            return monad.call(*args, **kwargs)
         except TypeError as exc:
             reraise_improved_typeerror(exc, 'call', monad.type.__name__)
 
