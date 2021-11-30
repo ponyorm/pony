@@ -229,8 +229,7 @@ class PythonTranslator(ASTTranslator):
         else:
             key = x.src
         return '%s[%s]' % (node.value.src, key)
-    def postIndex(translator, node):
-        # Python 3.8 and lower
+    def postIndex(translator, node):  # Python <= 3.7
         return node.value.src
     def postSlice(translator, node):
         result = []
@@ -250,15 +249,15 @@ class PythonTranslator(ASTTranslator):
             s = str(value)
             if float(s) == value: return s
         return repr(value)
-    def postNameConstant(translator, node):
+    def postNameConstant(translator, node):  # Python <= 3.7
         return repr(node.value)
-    def postNum(translator, node):
+    def postNum(translator, node):  # Python <= 3.7
         node.priority = 1
         return repr(node.n)
-    def postStr(translator, node):
+    def postStr(translator, node):  # Python <= 3.7
         node.priority = 1
         return repr(node.s)
-    def postBytes(translator, node):
+    def postBytes(translator, node):  # Python <= 3.7
         node.priority = 1
         return repr(node.s)
     def postList(translator, node):
@@ -386,11 +385,11 @@ class PreTranslator(ASTTranslator):
         node.external = True
     def postConstant(translator, node):
         node.external = node.constant = True
-    def postNum(translator, node):
+    def postNum(translator, node):  # Python <= 3.7
         node.external = node.constant = True
-    def postStr(translator, node):
+    def postStr(translator, node):  # Python <= 3.7
         node.external = node.constant = True
-    def postBytes(translator, node):
+    def postBytes(translator, node):  # Python <= 3.7
         node.external = node.constant = True
     def postDict(translator, node):
         node.external = True
@@ -398,7 +397,7 @@ class PreTranslator(ASTTranslator):
         node.external = True
     def postkeyword(translator, node):
         node.constant = node.value.constant
-    def postIndex(translator, node):
+    def postIndex(translator, node):  # Python <= 3.7
         node.constant = node.value.constant
     def postCall(translator, node):
         func_node = node.func

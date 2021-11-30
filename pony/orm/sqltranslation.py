@@ -993,13 +993,13 @@ class SQLTranslator(ASTTranslator):
         if type(value) is frozenset:
             value = tuple(sorted(value))
         return ConstMonad.new(value)
-    def postNameConstant(translator, node):
+    def postNameConstant(translator, node):  # Python <= 3.7
         return ConstMonad.new(node.value)
-    def postNum(translator, node):
+    def postNum(translator, node):  # Python <= 3.7
         return ConstMonad.new(node.n)
-    def postStr(translator, node):
+    def postStr(translator, node):  # Python <= 3.7
         return ConstMonad.new(node.s)
-    def postBytes(translator, node):
+    def postBytes(translator, node):  # Python <= 3.7
         return ConstMonad.new(node.s)
     def postList(translator, node):
         return ListMonad([ item.monad for item in node.elts ])
