@@ -247,6 +247,9 @@ class PythonTranslator(ASTTranslator):
             s = str(value)
             if float(s) == value: return s
         return repr(value)
+    def postNum(translator, node):
+        node.priority = 1
+        return repr(node.n)
     def postEllipsis(translator, node):
         return '...'
     def postList(translator, node):
@@ -373,6 +376,8 @@ class PreTranslator(ASTTranslator):
     def postStarred(translator, node):
         node.external = True
     def postConstant(translator, node):
+        node.external = node.constant = True
+    def postNum(translator, node):
         node.external = node.constant = True
     def postDict(translator, node):
         node.external = True

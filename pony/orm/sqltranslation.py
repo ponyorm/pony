@@ -993,6 +993,11 @@ class SQLTranslator(ASTTranslator):
         if type(value) is frozenset:
             value = tuple(sorted(value))
         return ConstMonad.new(value)
+    def postNum(translator, node):
+        value = node.n
+        if type(value) is frozenset:
+            value = tuple(sorted(value))
+        return ConstMonad.new(value)
     def postEllipsis(translator, node):
         return ConstMonad.new(Ellipsis)
     def postList(translator, node):
