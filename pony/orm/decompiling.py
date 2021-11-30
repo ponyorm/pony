@@ -283,7 +283,9 @@ class Decompiler(object):
         return ast.Set(decompiler.pop_items(size))
 
     def BUILD_SLICE(decompiler, size):
-        return ast.Slice(*decompiler.pop_items(size), ctx=ast.Load())
+        items = decompiler.pop_items(size)
+        items += [None] * (3 - len(items))
+        return ast.Slice(*items, ctx=ast.Load())
 
     def BUILD_TUPLE(decompiler, size):
         return ast.Tuple(decompiler.pop_items(size), ctx=ast.Load())
@@ -613,7 +615,8 @@ class Decompiler(object):
             args=[ast.arg(v) for v in argnames],
             kwonlyargs=[],
             kw_defaults=[],
-            defaults=defaults
+            defaults=defaults,
+            kwarg=None
         )
         return ast.Lambda(args, func_decompiler.ast)
 

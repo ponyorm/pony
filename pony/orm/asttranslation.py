@@ -226,11 +226,9 @@ class PythonTranslator(ASTTranslator):
         else:
             key = node.slice.src
         return '%s[%s]' % (node.value.src, key)
-    def postSlice1(translator, node):
-        node.priority = 2
-        lower = node.lower.src if node.lower is not None else ''
-        upper = node.upper.src if node.upper is not None else ''
-        return '%s[%s:%s]' % (node.expr.src, lower, upper)
+    def postIndex(translator, node):
+        # Python 3.8 and lower
+        return node.value.src
     def postSlice(translator, node):
         result = []
         if node.lower:
