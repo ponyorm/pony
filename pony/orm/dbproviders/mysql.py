@@ -5,6 +5,7 @@ import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
+from enum import Enum
 
 NoneType = type(None)
 
@@ -210,6 +211,7 @@ class MySQLProvider(DBAPIProvider):
     fk_types = { 'SERIAL' : 'BIGINT UNSIGNED' }
 
     converter_classes = [
+        (Enum, dbapiprovider.EnumConverter),
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
         (basestring, MySQLStrConverter),

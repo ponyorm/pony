@@ -8,6 +8,7 @@ import re
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from uuid import UUID
+from enum import Enum
 
 import cx_Oracle
 
@@ -402,6 +403,7 @@ class OraProvider(DBAPIProvider):
     name_before_table = 'owner'
 
     converter_classes = [
+        (Enum, dbapiprovider.EnumConverter),
         (NoneType, dbapiprovider.NoneConverter),
         (bool, OraBoolConverter),
         (basestring, OraStrConverter),

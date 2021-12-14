@@ -5,11 +5,16 @@ import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
+from enum import Enum
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedArray, Json, QueryType, Array
+from pony.orm.ormtypes import (
+    LongStr, LongUnicode, RawSQLType, TrackedValue, TrackedArray, Json, QueryType, Array,
+    normalize_enum_type,
+)
+
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -419,6 +424,345 @@ class Converter(object):
         if sql_type.isupper(): return fk_types.get(sql_type, sql_type)
         sql_type = sql_type.upper()
         return fk_types.get(sql_type, sql_type).lower()
+
+
+class EnumConverter(Converter):
+    def __init__(self, provider, py_type, attr=None):
+        self.provider = provider
+        # first let it convert it to the underlying class: IntEnum -> int
+        self.real_type = normalize_enum_type(py_type)
+        # now get the correct converter for that
+        self.converter_class = self._get_real_converter(py_type, attr)
+        # and make an instance of that
+        self.converter = self.converter_class(provider=provider, py_type=self.real_type, attr=attr)
+        super(EnumConverter, self).__init__(provider=provider, py_type=py_type, attr=attr)
+    # end if
+
+    def _get_real_converter(self, py_type, attr=None):
+        """
+        Gets a converter for the underlying type.
+        :return: Type[Converter]
+        """
+        assert issubclass(py_type, Enum)  # the EnumProvider class should only be used for enums.
+        if len(py_type) == 0:
+            throw(TypeError, "Enum %r has no values defined (attribute %s)." % (py_type, attr))
+        # now search for a provider of that type
+        for type_tuple, converter_cls in self.provider.converter_classes:
+            if not isinstance(type_tuple, tuple):
+                # workaround as there's fun stuff like `int_types = (int,)`,
+                # so we just make everything which isn't a tuple a tuple to easily work with that.
+                type_tuple = (type_tuple,)
+            # end if
+            for t in type_tuple:
+                if issubclass(t, Enum):
+                    # we don't want to call ourself in an endless recursion.
+                    continue
+                # end if
+                if issubclass(self.real_type, t):
+                    return converter_cls
+                # end if
+            # end for
+        # end for
+
+        # didn't find a fitting converter
+        throw(TypeError, 'No database converter found for enum base type %s (of enum type %s)' % (self.real_type, py_type))
+    # end def
+
+    def init(self, kwargs):
+        # let's find some cool automatic values, if those aren't given
+        if issubclass(self.converter_class, IntConverter):
+            kwargs = self._prepare_int_kwargs(py_enum_type=self.py_type, kwargs=kwargs, uint64_support=self.provider.uint64_support, attr=self.attr)
+        elif issubclass(self.converter_class, StrConverter):
+            kwargs = self._prepare_str_kwargs(py_enum_type=self.py_type, kwargs=kwargs, attr=self.attr)
+        # end if
+        self.converter.init(kwargs=kwargs)
+    # end def
+
+    @staticmethod
+    def _prepare_int_kwargs(py_enum_type, kwargs, uint64_support, attr=None):
+        """
+        Sane defaults for integer based enums.
+        For an int enum it calculates the minimum and maximum of the enum's numeric values.
+        Based on that it checks or sets the unsigned state, min/max values and the integer size.
+
+        :param py_enum_type: class of the enum, as given as first parameter to `Required(...)`, `Optional(...)`, etc.
+        :type  py_enum_type: type | Type[Enum]
+
+        :param kwargs: The additional arguments to the function
+        :type  kwargs: dict
+
+        :param uint64_support: Whether or not the database provider can represent the biggest 64bit (8bytes) number in an unsigned way, doubling the positive range.
+        :type  uint64_support: bool
+
+        :param attr: Name of the field for error output
+        :type  attr: Required | Optional | Attribute
+        """
+        min_val = kwargs.pop('min', None)
+        max_val = kwargs.pop('max', None)
+        unsigned = kwargs.pop('unsigned', None)
+        size = kwargs.pop('size', None)
+
+        # get min and max values of the enum
+        enum_min = enum_max = None
+        for enum_value in py_enum_type:
+            value = int(enum_value.value)
+            if enum_min is None or enum_min > value:
+                enum_min = value
+            # end if
+            if enum_max is None or value > enum_max:
+                enum_max = value
+            # end if
+        # end for
+        if enum_min is None or enum_max is None:
+            throw(TypeError, "Enum %r has no values defined (attribute %s)." % (py_enum_type, attr))
+        # end if
+
+        # check that the given min/max (if any) fits all enum values
+        if min_val is None:
+            min_val = enum_min
+        elif enum_min < min_val:
+            throw(
+                TypeError,
+                "Enum option {enum!r} with numeric value {calculated!r} would not fit within the given min={given_value!r} limit (attribute {attribute!s}).".format(
+                    enum=py_enum_type(enum_min), calculated=enum_min, given_value=min_val, attribute=attr,
+                )
+            )
+        # end if
+        if max_val is None:
+            max_val = enum_max
+        elif max_val < enum_max:
+            throw(
+                TypeError,
+                "Enum option {enum!r} with numeric value {calculated!r} would not fit within the given max={given_value!r} limit (attribute {attribute!s}).".format(
+                    enum=py_enum_type(enum_max), calculated=enum_max, given_value=max_val, attribute=attr,
+                )
+            )
+        # end if
+
+        # check that the given unsigned (if any) fits all enum values
+        unsigned_is_automatic = False
+        if unsigned is None:
+            unsigned = not min_val < 0
+            unsigned_is_automatic = True
+        elif unsigned and enum_min < 0:
+            throw(
+                TypeError,
+                "Enum option {enum!r} with negative numeric value {calculated!r} cannot fit an unsigned number (attribute {attribute!s}).".format(
+                    enum=py_enum_type(enum_min), calculated=enum_min, given_value=max_val, attribute=attr,
+                )
+            )
+        elif unsigned and min_val < 0:
+            throw(
+                TypeError,
+                "Unsigned field can't have a negative min={given_value!r} value (attribute {attribute!s}).".format(
+                    given_value=min_val, attribute=attr,
+                )
+            )
+        # end if
+
+        # check that the given size (if any) fits all enum values
+        # first calculate required size
+        fitting_size = size_min = size_max = failing_value = 0
+        if unsigned:
+            sizes = (8, 16, 24, 32)
+            if uint64_support:
+                sizes = sizes + (64,)
+            # end if
+            for fitting_size in sizes:
+                size_max = 2 ** fitting_size
+                if max_val <= size_max:
+                    # size is the first size which does fit us
+                    break
+                # end if
+                failing_value = max_val
+            else:
+                # no break, nothing did fit
+                if not uint64_support and unsigned_is_automatic:
+                    assert fitting_size == 32
+                    size_max = 2 ** (64 - 1) - 1
+                # end if
+                if max_val <= size_max:
+                    unsigned = False
+                elif max_val == enum_max:
+                    # we did fail, but because of a enum max, not a user set max
+                    throw(
+                        TypeError,
+                        (
+                            "Enum option {enum!r} with the numeric value {given_value!r} "
+                            "does not fit the biggest {signed} integer 64 bit type "
+                            "with it's maximum value of {calculated!r} (attribute {attribute!s})."
+                        ).format(
+                            enum=py_enum_type(max_val), given_value=max_val,  calculated=size_max, attribute=attr,
+                            signed="unsigned" if unsigned else "signed",
+                        )
+                    )
+                else:
+                    throw(
+                        TypeError,
+                        (
+                            "The set maximum value max={given_value!r} does not fit the biggest unsigned integer 64 bit type "
+                            "with it's maximum value of {calculated!r} (attribute {attribute!s})."
+                        ).format(
+                            enum=py_enum_type(size_max), calculated=size_max, given_value=max_val, attribute=attr,
+                        )
+                    )
+                # end if
+            # end for
+        # end if
+        if not unsigned:
+            # is signed
+            for fitting_size in (8, 16, 24, 32, 64):
+                size_max = (2 ** (fitting_size - 1))
+                size_min = - size_max
+                size_max -= 1
+                if max_val > size_max:
+                    failing_value = max_val
+                elif min_val < size_min:
+                    failing_value = min_val
+                else:
+                    # size is the first size which does fit us
+                    break
+                # end if
+            else:
+                # no break, nothing did fit
+                throw(
+                    TypeError,
+                    (
+                        "Enum option {enum!r} with numeric value {calculated!r} cannot fit the biggest signed "
+                        "integer 64 bit type with it's maximum value of {size_max!r} (attribute {attribute!s})."
+                    ).format(
+                        enum=py_enum_type(failing_value), calculated=failing_value,
+                        given_value=max_val, size_max=size_max, attribute=attr,
+                    )
+                )
+            # end for
+        # end if
+
+        if size is None:
+            size = fitting_size
+        elif size < fitting_size:
+            throw(
+                TypeError,
+                (
+                    "Enum option {enum!r} with numeric value {calculated!r} cannot fit the {singned_type!s} "
+                    "size {given_value!r} with range [{given_min!r} - {given_max!r}]. "
+                    "Needs to be at least of size {fitting_size} (attribute {attribute!s})."
+                ).format(
+                    enum=py_enum_type(failing_value), calculated=failing_value, attribute=attr,
+                    singned_type="unsigned" if unsigned else "signed", fitting_size=fitting_size,
+                    given_value=size,  given_min=size_min, given_max=size_max,
+                )
+            )
+        # end if
+
+        kwargs['min'] = min_val
+        kwargs['max'] = max_val
+        kwargs['unsigned'] = unsigned
+        kwargs['size'] = size
+        return kwargs
+    # end def
+
+    @staticmethod
+    def _prepare_str_kwargs(py_enum_type, kwargs, attr=None):
+        """
+        Sane defaults for string based enums.
+        For an str enum it calculates the maximum length the enum's string values, and sets autostrip to False..
+        """
+        max_len = kwargs.pop('max_len', None)
+        autostrip = kwargs.pop('autostrip', None)
+
+        # get min and max values of the enum
+        enum_len = longest_text = None
+        for enum_value in py_enum_type:
+            value = enum_value.value
+            assert isinstance(value, str)
+            value_len = len(value)
+            if enum_len is None or enum_len < value_len:
+                enum_len = value_len
+                longest_text = value
+            # end if
+        # end for
+        if enum_len is None:
+            throw(TypeError, "Enum %r has no values defined (attribute %s)." % (py_enum_type, attr))
+        # end if
+
+        # check that the given max length (if any) fits all enum values
+        if max_len is None:
+            max_len = enum_len
+        elif enum_len > max_len:
+            throw(
+                TypeError,
+                (
+                    "Enum option {enum!r} with string value {calculated!r} having a length of {enum_len!r} would not "
+                    "fit within the given max_len={given_value!r} limit (attribute {attribute!s})."
+                ).format(
+                    enum=py_enum_type(longest_text), calculated=longest_text, attribute=attr,
+                    calculated_len=enum_len, given_value=max_len,
+                )
+            )
+        # end if
+
+        # check that the given max length (if any) fits all enum values
+        if autostrip is None:
+            autostrip = False
+        elif autostrip:
+            throw(
+                TypeError, "Autostrip is not allowed for string enums (attribute {attribute!s}).".format(attribute=attr)
+            )
+        # end if
+
+        kwargs['max_len'] = max_len
+        kwargs['autostrip'] = autostrip
+        return kwargs
+    # end def
+
+    def validate(self, val, obj=None):
+        assert isinstance(val, self.py_type)
+        val = self.converter.validate(val=val, obj=obj)
+        if not isinstance(val, Enum):
+            raise TypeError('validator removed Enum class.')
+        # end if
+        return val
+    # end def
+
+    def py2sql(self, val):
+        return self.converter.py2sql(val=val)
+    # end def
+
+    def sql2py(self, val):
+        return self.converter.sql2py(val=val)
+    # end def
+
+    def val2dbval(self, val, obj=None):
+        """ passes on the value to the right converter """
+        return self.converter.val2dbval(val=val, obj=obj)
+    # end def
+
+    def dbval2val(self, dbval, obj=None):
+        """ passes on the value to the right converter """
+        py_val = self.converter.dbval2val(dbval=dbval, obj=obj)
+        if py_val is None:
+            return None
+        # end if
+
+        # make a enum value out of the base type (int => IntEnum)
+        # py_type is the actual Enum class, so we can call the "constructor" to get the actual enum from that base type.
+        return self.py_type(py_val)  # SomeEnum(123) => SomeEnum.SOMETHING
+    # end def
+
+    def dbvals_equal(self, x, y):
+        self.converter.dbvals_equal(x=x, y=y)
+    # end def
+
+    def get_sql_type(self, attr=None):
+        return self.converter.get_sql_type(attr=attr)
+    # end def
+
+    def get_fk_type(self, sql_type):
+        return self.converter.get_fk_type(sql_type=sql_type)
+    # end def
+# end class
+
 
 class NoneConverter(Converter):  # used for raw_sql() parameters only
     def __init__(converter, provider, py_type, attr=None):
