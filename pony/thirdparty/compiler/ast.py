@@ -8,14 +8,15 @@ from pony.py23compat import items_list
 from .consts import CO_VARARGS, CO_VARKEYWORDS
 
 def flatten(seq):
+    def helper(push, _seq):
+        for el in _seq:
+            if type(el) in (tuple, list):
+                helper(push, el)
+            else:
+                push(el)
+
     l = []
-    for elt in seq:
-        t = type(elt)
-        if t is tuple or t is list:
-            for elt2 in flatten(elt):
-                l.append(elt2)
-        else:
-            l.append(elt)
+    helper(l.append, seq)
     return l
 
 def flatten_nodes(seq):
