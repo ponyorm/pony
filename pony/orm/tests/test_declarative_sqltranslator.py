@@ -72,7 +72,7 @@ class TestSQLTranslator(unittest.TestCase):
             d2 = Department(number=43)
             g1 = Group(id=1, dept=d1)
             g2 = Group(id=2, dept=d2)
-            s1 = Student(id=1, name='S1', group=g1, scholarship=0)
+            s1 = Student(id=1, name='S1', group=g1, scholarship=0, picture=b'image')
             s2 = Student(id=2, name='S2', group=g1, scholarship=100)
             s3 = Student(id=3, name='S3', group=g2, scholarship=500)
             c1 = Course(name='Math', semester=1, dept=d1)
@@ -453,6 +453,9 @@ class TestSQLTranslator(unittest.TestCase):
     def test_query_result_remove(self):
         result = select(s for s in Student)[:]
         result.remove(None)
+    def test_if_expression(self):
+        result = select(s.id if s.picture else -s.id for s in Student)[:]
+        self.assertEqual([1, -2, -3], result)
 
 
 if __name__ == "__main__":

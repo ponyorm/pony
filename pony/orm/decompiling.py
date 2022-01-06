@@ -3,7 +3,7 @@ from pony.py23compat import PY37, PYPY, PY310
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
-from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
+from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree, hasjabs
 from collections import defaultdict
 
 #from pony.thirdparty.compiler import ast, parse
@@ -124,6 +124,7 @@ class Decompiler(object):
         while decompiler.pos < decompiler.end:
             i = decompiler.pos
             op = code.co_code[i]
+            opname = opnames[op].replace('+', '_')
             if PY36:
                 extended_arg = 0
                 oparg = code.co_code[i+1]
@@ -145,15 +146,23 @@ class Decompiler(object):
                         oparg = co_code[i] + co_code[i + 1] * 256 + oparg * 65536
                         i += 2
             if op >= HAVE_ARGUMENT:
-                if op in hasconst: arg = [code.co_consts[oparg]]
-                elif op in hasname: arg = [code.co_names[oparg]]
-                elif op in hasjrel: arg = [i + oparg]
-                elif op in haslocal: arg = [code.co_varnames[oparg]]
-                elif op in hascompare: arg = [cmp_op[oparg]]
-                elif op in hasfree: arg = [free[oparg]]
-                else: arg = [oparg]
+                if op in hasconst:
+                    arg = [code.co_consts[oparg]]
+                elif op in hasname:
+                    arg = [code.co_names[oparg]]
+                elif op in hasjrel:
+                    arg = [i + oparg * (2 if PY310 else 1)]
+                elif op in haslocal:
+                    arg = [code.co_varnames[oparg]]
+                elif op in hascompare:
+                    arg = [cmp_op[oparg]]
+                elif op in hasfree:
+                    arg = [free[oparg]]
+                elif op in hasjabs:
+                    arg = [oparg * (2 if PY310 else 1)]
+                else:
+                    arg = [oparg]
             else: arg = []
-            opname = opnames[op].replace('+', '_')
             if opname == 'FOR_ITER':
                 decompiler.for_iter_pos = decompiler.pos
             if opname == 'JUMP_ABSOLUTE' and arg[0] == decompiler.for_iter_pos:
@@ -162,8 +171,6 @@ class Decompiler(object):
             if before_yield:
                 if 'JUMP' in opname:
                     endpos = arg[0]
-                    if PY310:
-                        endpos *= 2
                     if endpos < decompiler.pos:
                         decompiler.conditions_end = i
                     decompiler.jump_map[endpos].append(decompiler.pos)
@@ -446,8 +453,6 @@ class Decompiler(object):
         return clause
 
     def conditional_jump_new(decompiler, endpos, if_true):
-        if PY310:
-            endpos *= 2
         expr = decompiler.stack.pop()
         if decompiler.pos >= decompiler.conditions_end:
             clausetype = ast.Or if if_true else ast.And
@@ -498,7 +503,7 @@ class Decompiler(object):
                 else:
                     top2.values.append(top)
             elif isinstance(top2, ast.IfExp):  # Python 2.5
-                top2.else_ = top
+                top2.orelse = top
                 if hasattr(top, 'endpos'):
                     top2.endpos = top.endpos
                     if decompiler.targets.get(top.endpos) is top:

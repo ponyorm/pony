@@ -1151,13 +1151,17 @@ class SQLTranslator(ASTTranslator):
     def postSlice(translator, node):
         return None
     def postIfExp(translator, node):
-        test_monad, then_monad, else_monad = node.test.monad, node.then.monad, node.else_.monad
-        if test_monad.type is not bool: test_monad = test_monad.nonzero()
+        test_monad, then_monad, else_monad = node.test.monad, node.body.monad, node.orelse.monad
+        if test_monad.type is not bool:
+            test_monad = test_monad.nonzero()
         result_type = coerce_types(then_monad.type, else_monad.type)
         test_sql, then_sql, else_sql = test_monad.getsql()[0], then_monad.getsql(), else_monad.getsql()
-        if len(then_sql) == 1: then_sql, else_sql = then_sql[0], else_sql[0]
-        elif not translator.row_value_syntax: throw(NotImplementedError)
-        else: then_sql, else_sql = [ 'ROW' ] + then_sql, [ 'ROW' ] + else_sql
+        if len(then_sql) == 1:
+            then_sql, else_sql = then_sql[0], else_sql[0]
+        elif not translator.row_value_syntax:
+            throw(NotImplementedError)
+        else:
+            then_sql, else_sql = [ 'ROW' ] + then_sql, [ 'ROW' ] + else_sql
         expr = [ 'CASE', None, [ [ test_sql, then_sql ] ], else_sql ]
         result = ExprMonad.new(result_type, expr,
                                nullable=test_monad.nullable or then_monad.nullable or else_monad.nullable)

@@ -106,7 +106,7 @@ class PythonTranslator(ASTTranslator):
     def postExpr(translator, node):
         return node.value.src
     def postIfExp(translator, node):
-        return '%s if %s else %s' % (node.then.src, node.test.src, node.else_.src)
+        return '%s if %s else %s' % (node.body.src, node.test.src, node.orelse.src)
     def postLambda(translator, node):
         argnames = list(node.argnames)
         kwargs_name = argnames.pop() if node.kwargs else None
