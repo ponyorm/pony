@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY37, PYPY, PY310
+from pony.py23compat import PY37, PYPY, PY38, PY39, PY310
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -89,6 +89,50 @@ def clean_assign(node):
     if isinstance(node, ast.Assign):
         return node.targets
     return node
+
+
+def make_const(value):
+    if is_const(value):
+        return value
+    if PY39:
+        return ast.Constant(value)
+    elif PY38:
+        return ast.Constant(value, None)
+    elif isinstance(value, (int, float)):
+        return ast.Num(value)
+    elif isinstance(value, str):
+        return ast.Str(value)
+    elif isinstance(value, bytes):
+        return ast.Bytes(value)
+    elif isinstance(value, tuple):
+        return ast.Tuple([make_const(elt) for elt in value], ast.Load())
+    elif value in (True, False, None):
+        return ast.NameConstant(value)
+    elif isinstance(value, types.CodeType):
+        return ast.Constant(value)
+    elif value is Ellipsis:
+        return ast.Constant(value)
+    assert False, value
+
+
+def is_const(value):
+    if isinstance(value, ast.Constant):
+        return True
+    if PY38:
+        return False
+    if isinstance(value, (ast.Num, ast.Str, ast.Bytes)):
+        return True
+    if isinstance(value, ast.Tuple):
+        return all(is_const(elt) for elt in value.elts)
+    return False
+
+
+def unwrap_str(key):
+    if PY38:
+        assert isinstance(key, str)
+        return key
+    assert isinstance(key, ast.Str)
+    return key.s
 
 
 class Decompiler(object):
@@ -264,12 +308,22 @@ class Decompiler(object):
                 node2.lower = None
             if isinstance(node2.upper, ast.Constant) and node2.upper.value is None:
                 node2.upper = None
+        elif not PY38:
+            if isinstance(node2, ast.Tuple) and any(isinstance(item, ast.Slice) for item in node2.elts):
+                node2 = ast.ExtSlice(node2.elts)
+            else:
+                node2 = ast.Index(node2)
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
     def BUILD_CONST_KEY_MAP(decompiler, length):
         keys = decompiler.stack.pop()
-        assert isinstance(keys, ast.Constant)
-        keys = [ ast.Constant(key) for key in keys.value ]
+        if PY38:
+            assert isinstance(keys, ast.Constant), keys
+            keys = [ make_const(key) for key in keys.value ]
+        else:
+            assert isinstance(keys, ast.Tuple) and is_const(keys), keys
+            keys = [ make_const(key) for key in keys.elts ]
+
         values = decompiler.pop_items(length)
         return ast.Dict(keys=keys, values=values)
 
@@ -291,6 +345,8 @@ class Decompiler(object):
 
     def BUILD_SLICE(decompiler, size):
         items = decompiler.pop_items(size)
+        if not PY38:
+            items = [None if isinstance(item, ast.NameConstant) and item.value is None else item for item in items]
         items += [None] * (3 - len(items))
         return ast.Slice(*items, ctx=ast.Load())
 
@@ -308,7 +364,7 @@ class Decompiler(object):
         for i in range(kwarg):
             arg = pop()
             key = pop().value
-            keywords.append(ast.keyword(key, arg))
+            keywords.append(ast.keyword(unwrap_str(key), arg))
         keywords.reverse()
         args = []
         for i in range(posarg):
@@ -339,12 +395,17 @@ class Decompiler(object):
         if sys.version_info < (3, 6):
             return decompiler.CALL_FUNCTION(argc, star2=decompiler.stack.pop())
         keys = decompiler.stack.pop()
-        assert isinstance(keys, ast.Constant)
-        keys = keys.value
+        assert is_const(keys), keys
+        if PY38:
+            assert isinstance(keys, ast.Constant)
+            keys = keys.value
+        else:
+            assert isinstance(keys, ast.Tuple)
+            keys = keys.elts
         values = decompiler.pop_items(argc)
         assert len(keys) <= len(values)
         args = values[:-len(keys)]
-        keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys):])]
+        keywords = [ast.keyword(unwrap_str(k), v) for k, v in zip(keys, values[-len(keys):])]
         return decompiler._call_function(args, keywords)
 
     def CALL_FUNCTION_VAR_KW(decompiler, argc):
@@ -546,7 +607,7 @@ class Decompiler(object):
         lst = decompiler.stack.pop()
         if not isinstance(lst, ast.List):
             raise NotImplementedError(type(lst))
-        values = [ast.Constant(v) for v in items.value]
+        values = [make_const(v) for v in items.value]
         lst.elts.extend(values)
         return lst
 
@@ -558,7 +619,7 @@ class Decompiler(object):
         return ast.Name(freevar, ast.Load())
 
     def LOAD_CONST(decompiler, const_value):
-        return ast.Constant(const_value)
+        return make_const(const_value)
 
     def LOAD_DEREF(decompiler, freevar):
         decompiler.names.add(freevar)
@@ -804,12 +865,14 @@ test_lines = """
 ##    (i for i in T if (a and b or c and d if x and y or p and q else r and n or m and k))
 ##    (a and b or c and d if x and y or p and q else r and n or m and k for i in T if (A and B or C and D if X and Y or P and Q else R and N or M and K))
 
-def test():
+def test(test_line=None):
     import sys
     if sys.version[:3] > '2.4': outmost_iterable_name = '.0'
     else: outmost_iterable_name = '[outmost-iterable]'
     import dis
     for i, line in enumerate(test_lines.split('\n')):
+        if test_line is not None and i != test_line:
+            continue
         if not line or line.isspace():
             continue
         line = line.strip()
@@ -818,10 +881,10 @@ def test():
         code = compile(line, '<?>', 'eval').co_consts[0]
         ast1 = ast.parse(line).body[0]
         ast1.value.generators[0].iter.id = outmost_iterable_name
-        ast1 = ast.dump(ast1, indent=2)
+        ast1 = ast.dump(ast1)
         try:
             ast2 = ast.Expr(Decompiler(code).ast)
-            ast2 = ast.dump(ast2, indent=2)
+            ast2 = ast.dump(ast2)
         except Exception as e:
             print()
             print(i, line)

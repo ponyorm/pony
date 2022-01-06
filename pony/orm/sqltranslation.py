@@ -993,13 +993,14 @@ class SQLTranslator(ASTTranslator):
         if type(value) is frozenset:
             value = tuple(sorted(value))
         return ConstMonad.new(value)
+    def postNameConstant(translator, node):
+        return ConstMonad.new(node.value)
     def postNum(translator, node):
-        value = node.n
-        if type(value) is frozenset:
-            value = tuple(sorted(value))
-        return ConstMonad.new(value)
-    def postEllipsis(translator, node):
-        return ConstMonad.new(Ellipsis)
+        return ConstMonad.new(node.n)
+    def postStr(translator, node):
+        return ConstMonad.new(node.s)
+    def postBytes(translator, node):
+        return ConstMonad.new(node.s)
     def postList(translator, node):
         return ListMonad([ item.monad for item in node.elts ])
     def postTuple(translator, node):
@@ -1034,8 +1035,6 @@ class SQLTranslator(ASTTranslator):
         throw(NotImplementedError)
     def postRShift(translator, node):
         throw(NotImplementedError)
-    def postMod(translator, node):
-        return node.left.monad % node.right.monad
     def postPow(translator, node):
         return node.left.monad ** node.right.monad
     def postUSub(translator, node):
@@ -1150,6 +1149,8 @@ class SQLTranslator(ASTTranslator):
         return node.value.monad[sub.monad]
     def postSlice(translator, node):
         return None
+    def postIndex(translator, node):
+        return node.value.monad
     def postIfExp(translator, node):
         test_monad, then_monad, else_monad = node.test.monad, node.body.monad, node.orelse.monad
         if test_monad.type is not bool:
@@ -1167,7 +1168,7 @@ class SQLTranslator(ASTTranslator):
                                nullable=test_monad.nullable or then_monad.nullable or else_monad.nullable)
         result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
         return result
-    def postStr(translator, node):
+    def postStr_(translator, node):
         val_monad = node.value.monad
         if isinstance(val_monad, StringMixin):
             return val_monad
