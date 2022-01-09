@@ -5094,9 +5094,12 @@ class Entity(with_metaclass(EntityMeta)):
             get_val = obj._vals_.get
             objects_to_save = cache.objects_to_save
             if avdict:
+                if any(attr not in obj._vals_ and attr.reverse and obj._bits_[attr] for attr in avdict):
+                    obj._load_()
+
                 for attr in avdict:
-                    if attr not in obj._vals_ and attr.reverse and not attr.reverse.is_collection:
-                        attr.load(obj)  # loading of one-to-one relations
+                    if attr not in obj._vals_ and attr.reverse:
+                        attr.load(obj)  # load one-to-one and lazy relations
 
                 if wbits is not None:
                     new_wbits = wbits
@@ -5115,8 +5118,8 @@ class Entity(with_metaclass(EntityMeta)):
                         obj._vals_.update(avdict)
                         return
 
-                for attr, value in items_list(avdict):
-                    if value == get_val(attr):
+                for attr, new_val in items_list(avdict):
+                    if new_val == get_val(attr, NOT_LOADED):
                         avdict.pop(attr)
 
             undo_funcs = []
@@ -5148,7 +5151,7 @@ class Entity(with_metaclass(EntityMeta)):
                         cache.update_composite_index(obj, attrs, prev_vals, new_vals, undo)
                 for attr, new_val in iteritems(avdict):
                     if not attr.reverse: continue
-                    old_val = get_val(attr)
+                    old_val = get_val(attr, NOT_LOADED)
                     attr.update_reverse(obj, old_val, new_val, undo_funcs)
                 for attr, new_val in iteritems(collection_avdict):
                     attr.__set__(obj, new_val, undo_funcs)

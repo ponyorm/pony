@@ -16,14 +16,21 @@ class Group(db.Entity):
     students = Set('Student')
 
 class Student(db.Entity):
+    id = PrimaryKey(int)
     name = Required(unicode)
     age = Optional(int)
+    passport = Optional("Passport")
     scholarship = Required(Decimal, default=0)
     picture = Optional(buffer, lazy=True)
     email = Required(unicode, unique=True)
     phone = Optional(unicode, unique=True)
     courses = Set('Course')
     group = Optional('Group')
+
+class Passport(db.Entity):
+    id = PrimaryKey(int)
+    number = Required(str, unique=True)
+    person = Required(Student)
 
 class Course(db.Entity):
     id = PrimaryKey(int)
@@ -43,6 +50,7 @@ class TestCRUD(unittest.TestCase):
             s1 = Student(id=1, name='S1', age=19, email='s1@example.com', group=g1)
             s2 = Student(id=2, name='S2', age=21, email='s2@example.com', group=g1)
             s3 = Student(id=3, name='S3', email='s3@example.com', group=g2)
+            p1 = Passport(id=1, number='111', person=1)
             c1 = Course(id=1, name='Math', semester=1)
             c2 = Course(id=2, name='Math', semester=2)
             c3 = Course(id=3, name='Physics', semester=1)
@@ -113,6 +121,23 @@ class TestCRUD(unittest.TestCase):
     def test_set4(self):
         s1 = Student[1]
         s1.set(name='New name', email='new_email@example.com')
+
+    def test_set5(self):
+        g2 = Group[1]
+        s2 = Student._get_by_raw_pkval_((1,))
+        s2.set(age=20, group=None)
+        db.flush()
+
+    @sql_debugging
+    def test_set6(self):
+        s2 = Student._get_by_raw_pkval_((1,))
+        s2.set(age=20, group=None, picture=None)
+        db.flush()
+
+    def test_set7(self):
+        s2 = Student._get_by_raw_pkval_((2,))
+        s2.set(age=22, passport=None)
+        db.flush()
 
     def test_validate_1(self):
         s4 = Student(id=3, name='S4', email='s4@example.com', group=1)
