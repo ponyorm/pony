@@ -86,6 +86,12 @@ class Car(db.Entity):
     price = Required(int)
     color = Required(str)
 
+    def owner_likes_color(self):
+        return self.owner is not None and self.owner.favorite_color == self.color
+
+    def person_likes_color(self, user):
+        return user is not None and user.favorite_color == self.color
+
 
 def simple_func(person):
     return person.full_name
@@ -302,6 +308,24 @@ class TestHybridsAndProperties(unittest.TestCase):
         q1 = select(p for p in Person if p.id < 4)
         q2 = select(p.id for p in q1 if p.property_with_incorrect_attr_reference)
 
+    @db_session
+    def test_33(self):
+        q1 = select(c.id for c in Car if c.owner_likes_color())
+        self.assertEqual(set(q1), {2})
+
+    @db_session
+    def test_34(self):
+        p = None
+        q1 = select(c.id for c in Car if c.person_likes_color(None))
+        self.assertEqual(set(q1), set())
+
+    @db_session
+    @raises_exception(NotImplementedError, 'user.favorite_color for external expressions inside hybrid methods '
+                                           'is not supported (inside Car.person_likes_color)')
+    def test_35(self):
+        p = Person[1]
+        q1 = select(c.id for c in Car if c.person_likes_color(p))
+        self.assertEqual(set(q1), {2, 5, 6})
 
 
 if __name__ == '__main__':

@@ -2164,6 +2164,8 @@ class ObjectMixin(MonadMixin):
     def nonzero(monad):
         return CmpMonad('is not', monad, NoneMonad())
     def getattr(monad, attrname):
+        if isinstance(monad, ParamMonad):
+            throw(NotImplementedError, '{EXPR} for external expressions inside hybrid methods is not supported')
         entity = monad.type
         attr = entity._adict_.get(attrname) or entity._subclass_adict_.get(attrname)
         if attr is None:
@@ -2229,7 +2231,7 @@ class AttrMonad(Monad):
         attr = monad.attr
         entity = attr.entity
         pk_only = attr.pk_offset is not None
-        alias, parent_columns = monad.parent.tableref.make_join(pk_only)
+        alias, parent_columns = parent.tableref.make_join(pk_only)
         if pk_only:
             if entity._pk_is_composite_:
                 offset = attr.pk_columns_offset
@@ -2452,6 +2454,55 @@ class NoneMonad(ConstMonad):
     def __init__(monad, value=None):
         assert value is None
         ConstMonad.__init__(monad, value)
+    def cmp(monad, op, monad2):
+        return CmpMonad(op, monad, monad2)
+    def contains(monad, item, not_in=False):
+        return NoneMonad()
+    def nonzero(monad):
+        return NoneMonad()
+    def negate(monad):
+        return NoneMonad()
+    def getattr(monad, attrname):
+        return NoneMonad()
+    def len(monad):
+        return NoneMonad()
+    def count(monad, distinct=None):
+        return NumericExprMonad(int, [ ['VALUE', 0] ], nullable=False)
+    def aggregate(monad, func_name, distinct=None, sep=None):
+        return NoneMonad()
+    def __call__(monad, *args, **kwargs):
+        return NoneMonad()
+    def __getitem__(monad, key):
+        return NoneMonad()
+    def __add__(monad, monad2):
+        return NoneMonad()
+    def __sub__(monad, monad2):
+        return NoneMonad()
+    def __mul__(monad, monad2):
+        return NoneMonad()
+    def __truediv__(monad, monad2):
+        return NoneMonad()
+    def __floordiv__(monad, monad2):
+        return NoneMonad()
+    def __pow__(monad, monad2):
+        return NoneMonad()
+    def __neg__(monad):
+        return NoneMonad()
+    def __or__(monad, monad2):
+        return NoneMonad()
+    def __and__(monad, monad2):
+        return NoneMonad()
+    def __xor__(monad, monad2):
+        return NoneMonad()
+    def abs(monad):
+        return NoneMonad()
+    def to_int(monad):
+        return NoneMonad()
+    def to_str(monad):
+        return NoneMonad()
+    def to_real(monad):
+        return NoneMonad()
+
 
 class EllipsisMonad(ConstMonad):
     pass
@@ -2506,7 +2557,6 @@ class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         if op == '<>': op = '!='
         if left.type is NoneType:
-            assert right.type is not NoneType
             left, right = right, left
         if right.type is NoneType:
             if op == '==': op = 'is'
@@ -2530,6 +2580,8 @@ class CmpMonad(BoolMonad):
         return CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, sqlquery=None):
         op = monad.op
+        if monad.left.type is NoneType and monad.right.type is NoneType:  # in hybrid methods
+            return [['EQ' if op == 'is' else 'NE', ['VALUE', 1], ['VALUE', 1]]]
         left_sql = monad.left.getsql()
         if op == 'is':
             return [ sqland([ [ 'IS_NULL', item ] for item in left_sql ]) ]
