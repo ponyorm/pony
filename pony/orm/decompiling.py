@@ -354,8 +354,14 @@ class Decompiler(object):
         return ast.Tuple(decompiler.pop_items(size), ast.Load())
 
     def BUILD_STRING(decompiler, count):
-        values = list(reversed([decompiler.stack.pop() for _ in range(count)]))
-        return ast.JoinedStr(values)
+        items = list(reversed([decompiler.stack.pop() for _ in range(count)]))
+        for i, item in enumerate(items):
+            if isinstance(item, ast.Constant):
+                if not isinstance(item.value, str):
+                    throw(NotImplementedError, item)
+            elif not isinstance(item, ast.FormattedValue):
+                items[i] = ast.FormattedValue(item, -1)
+        return ast.JoinedStr(items)
 
     def CALL_FUNCTION(decompiler, argc, star=None, star2=None):
         pop = decompiler.stack.pop
@@ -462,6 +468,8 @@ class Decompiler(object):
         return ast.comprehension(target, iter, ifs, 0)
 
     def FORMAT_VALUE(decompiler, flags):
+        conversion = -1
+        format_spec = None
         if flags in (0, 1, 2, 3):
             value = decompiler.stack.pop()
             if flags == 0:
@@ -472,11 +480,10 @@ class Decompiler(object):
                 conversion = ord('r')  # repr conversion
             elif flags == 3:
                 conversion = ord('a')  # ascii conversion
-            return ast.FormattedValue(value=value, conversion=conversion)
         elif flags == 4:
-            fmt_spec = decompiler.stack.pop()
+            format_spec = decompiler.stack.pop()
             value = decompiler.stack.pop()
-            return ast.FormattedValue(value=value, format_spec=fmt_spec)
+        return ast.FormattedValue(value=value, conversion=conversion, format_spec=format_spec)
 
     def GEN_START(decompiler, kind):
         assert kind == 0  # only support sync
