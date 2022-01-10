@@ -6152,14 +6152,17 @@ class Query(object):
             return query._process_lambda(func, globals, locals, order_by=False, original_names=True)
         if not kwargs: return query
 
-        if len(query._translator.tree.quals) > 1: throw(TypeError,
+        if len(query._translator.tree.generators) > 1: throw(TypeError,
             'Keyword arguments are not allowed: query iterates over more than one entity')
         return query._apply_kwargs(kwargs, original_names=True)
     def _apply_kwargs(query, kwargs, original_names=False):
         translator = query._translator
         if original_names:
             tablerefs = translator.sqlquery.tablerefs
-            alias = translator.tree.quals[0].assign.name
+            target = translator.tree.generators[0].target
+            if not isinstance(target, ast.Name):
+                throw(NotImplementedError, target)
+            alias = target.id
             tableref = tablerefs[alias]
             entity = tableref.entity
         else:

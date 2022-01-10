@@ -882,7 +882,7 @@ class SQLTranslator(ASTTranslator):
         translator = translator.deepcopy()
         with translator:
             if original_names:
-                object_monad = translator.tree.quals[0].iter.monad
+                object_monad = translator.tree.generators[0].iter.monad
                 assert isinstance(object_monad.type, EntityMeta)
             else:
                 object_monad = translator.tree.elt.monad
