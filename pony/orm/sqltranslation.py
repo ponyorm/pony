@@ -921,8 +921,10 @@ class SQLTranslator(ASTTranslator):
         try:
             with translator:
                 translator.dispatch(func_ast)
-                if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
-                else: nodes = (func_ast,)
+                if isinstance(func_ast, ast.Tuple):
+                    nodes = func_ast.elts
+                else:
+                    nodes = (func_ast,)
                 if order_by:
                     translator.inside_order_by = True
                     new_order = []
