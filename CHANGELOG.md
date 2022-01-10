@@ -1,3 +1,20 @@
+# PonyORM release 0.7.15-RC1 (2022-01-10)
+
+## Features
+
+* Add Python 3.10 support, drop support of Python < 3.7
+
+## Bugfixes
+
+* Do not perform optimistic checks when deleting an object (it is OK if it was already deleted by concurrent transaction)
+* Validation of int fields should take into account field size and check that the value is fit into the range
+* More tests for hybrid methods added
+* Fix incorrect assertion check `assert t is translator.`
+* Fix aggregated query `sum(x.field for x in previous_query)`
+* #594: Use a clearly synthetic filename when compiling dynamic code to not confuse coverage.py
+* Use DecompileError exception instead of AssertionError when a function cannot be decompiled
+
+
 # PonyORM release 0.7.14 (2020-11-23)
 
 ## Features
