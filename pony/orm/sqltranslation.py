@@ -1170,12 +1170,6 @@ class SQLTranslator(ASTTranslator):
                                nullable=test_monad.nullable or then_monad.nullable or else_monad.nullable)
         result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
         return result
-    def postStr_(translator, node):
-        val_monad = node.value.monad
-        if isinstance(val_monad, StringMixin):
-            return val_monad
-        sql = ['TO_STR', val_monad.getsql()[0] ]
-        return StringExprMonad(unicode, sql, nullable=val_monad.nullable)
     def postJoinedStr(translator, node):
         nullable = False
         sql = ['CONCAT']
@@ -1188,7 +1182,11 @@ class SQLTranslator(ASTTranslator):
             sql.append(monad.getsql()[0])
         return StringExprMonad(unicode, sql, nullable=nullable)
     def postFormattedValue(translator, node):
-        throw(NotImplementedError, 'You cannot set width and precision markers in query')
+        if node.format_spec is not None:
+            throw(NotImplementedError, 'You cannot set width and precision for f-string expression in query')
+        if node.conversion not in (-1, ord('s')):
+            throw(NotImplementedError, 'You cannot specify conversion type for f-string expression in query')
+        return node.value.monad
 
 def combine_limit_and_offset(limit, offset, limit2, offset2):
     assert limit is None or limit >= 0

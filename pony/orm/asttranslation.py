@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import PY38
 
 import ast
 
@@ -284,34 +285,25 @@ class PythonTranslator(ASTTranslator):
     def postName(translator, node):
         node.priority = 1
         return node.id
-    def preStr_(self, node):
-        if self.top_level_f_str is None:
-            self.top_level_f_str = node
-    def postStr_(self, node):
-        if self.top_level_f_str is node:
-            self.top_level_f_str = None
-            return "f%r" % ('{%s}' % node.value.src)
-        return '{%s}' % node.value.src
-    def preJoinedStr(self, node):
-        if self.top_level_f_str is None:
-            self.top_level_f_str = node
     def postJoinedStr(self, node):
-        result = ''.join(
-            value.value if isinstance(value, ast.Constant) else '{%s}' % value.src
-            for value in node.values)
-        if self.top_level_f_str is node:
-            self.top_level_f_str = None
-            return "f%r" % result
-        return result
-    def preFormattedValue(self, node):
-        if self.top_level_f_str is None:
-            self.top_level_f_str = node
+        result = []
+        for item in node.values:
+            if isinstance(item, ast.Constant):
+                assert isinstance(item.value, str)
+                result.append(item.value)
+            elif not PY38 and isinstance(item, ast.Str):  # Python 3.7
+                result.append(item.s)
+            elif isinstance(item, ast.FormattedValue):
+                if item.conversion == -1:
+                    src = '{%s}' % item.value.src
+                else:
+                    src = '{%s!%s}' % (item.value.src, chr(item.conversion))
+                result.append(src)
+            else:
+                assert False
+        return "f%r" % ''.join(result)
     def postFormattedValue(self, node):
-        res = '{%s:%s}' % (node.value.src, node.fmt_spec.src)
-        if self.top_level_f_str is node:
-            self.top_level_f_str = None
-            return "f%r" % res
-        return res
+        return node.value.src
 
 
 nonexternalizable_types = (ast.keyword, ast.Starred, ast.Slice, ast.List, ast.Tuple)
