@@ -208,9 +208,9 @@ class PythonTranslator(ASTTranslator):
         return '.'.join((node.value.src, node.attr))
     def postCall(translator, node):
         node.priority = 2
-        args = [ arg.src for arg in node.args ]  + [ kw.src for kw in node.keywords ]
-        if len(args) == 1 and isinstance(node.args[0], ast.GeneratorExp):
-            return node.func.src + args[0]
+        if len(node.args) == 1 and isinstance(node.args[0], ast.GeneratorExp):
+            return node.func.src + node.args[0].src
+        args = [ arg.src for arg in node.args ] + [ kw.src for kw in node.keywords ]
         return '%s(%s)' % (node.func.src, ', '.join(args))
     def postkeyword(translator, node):
         if node.arg is None:
