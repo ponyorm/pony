@@ -137,14 +137,13 @@ class SQLTranslator(ASTTranslator):
             obj, func = t.obj, t.func
             if isinstance(obj, EntityMeta):
                 entity_monad = EntityMonad(obj)
-                if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
+                if obj.__class__.__dict__.get(func.__name__) is not func:
+                    throw(NotImplementedError)
                 monad = MethodMonad(entity_monad, func.__name__)
             elif node.src == 'random':  # For PyPy
                 monad = FuncRandomMonad(t)
-            else: throw(NotImplementedError)
-        elif isinstance(node, ast.Name) and node.id in ('True', 'False'):
-            value = True if node.id == 'True' else False
-            monad = ConstMonad.new(value)
+            else:
+                throw(NotImplementedError)
         elif tt is tuple:
             params = []
             is_array = False
