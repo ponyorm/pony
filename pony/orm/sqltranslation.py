@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY310, items_list, basestring, unicode, buffer, with_metaclass, int_types
+from pony.py23compat import PY310, basestring, unicode, buffer, with_metaclass, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -2525,7 +2525,7 @@ class BoolMonad(Monad):
         return monad
 
 sql_negation = { 'IN' : 'NOT_IN', 'EXISTS' : 'NOT_EXISTS', 'LIKE' : 'NOT_LIKE', 'BETWEEN' : 'NOT_BETWEEN', 'IS_NULL' : 'IS_NOT_NULL' }
-sql_negation.update((value, key) for key, value in items_list(sql_negation))
+sql_negation.update((value, key) for key, value in list(sql_negation.items()))
 
 class BoolExprMonad(BoolMonad):
     def __init__(monad, sql, nullable=True):
@@ -2548,7 +2548,7 @@ class BoolExprMonad(BoolMonad):
 cmp_ops = { '>=' : 'GE', '>' : 'GT', '<=' : 'LE', '<' : 'LT' }
 
 cmp_negate = { '<' : '>=', '<=' : '>', '==' : '!=', 'is' : 'is not' }
-cmp_negate.update((b, a) for a, b in items_list(cmp_negate))
+cmp_negate.update((b, a) for a, b in list(cmp_negate.items()))
 
 class CmpMonad(BoolMonad):
     EQ = 'EQ'

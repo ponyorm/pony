@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import items_list, values_list, cmp, \
+from pony.py23compat import values_list, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
@@ -3746,7 +3746,7 @@ class EntityMeta(type):
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
-        for name, attr in items_list(entity.__dict__):
+        for name, attr in list(entity.__dict__.items()):
             if name in base_attrs_dict: throw(ERDiagramError, "Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): throw(ERDiagramError,
@@ -4911,7 +4911,7 @@ class Entity(with_metaclass(EntityMeta)):
         get_dbval = obj._dbvals_.get
         rbits = obj._rbits_
         wbits = obj._wbits_
-        for attr, new_dbval in items_list(avdict):
+        for attr, new_dbval in list(avdict.items()):
             assert attr.pk_offset is None
             assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr, NOT_LOADED)
@@ -4930,7 +4930,7 @@ class Entity(with_metaclass(EntityMeta)):
             new_vals = {attr: attr.converters[0].dbval2val(dbval, obj) if not attr.reverse else dbval
                               for attr, dbval in avdict.items()}
 
-        for attr, new_val in items_list(new_vals):
+        for attr, new_val in list(new_vals.items()):
             new_dbval = new_dbvals[attr]
             old_dbval = get_dbval(attr, NOT_LOADED)
             bit = obj._bits_except_volatile_[attr]
@@ -5106,7 +5106,7 @@ class Entity(with_metaclass(EntityMeta)):
                         obj._vals_.update(avdict)
                         return
 
-                for attr, new_val in items_list(avdict):
+                for attr, new_val in list(avdict.items()):
                     if new_val == get_val(attr, NOT_LOADED):
                         avdict.pop(attr)
 
