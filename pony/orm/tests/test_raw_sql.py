@@ -1,5 +1,4 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PYPY2
 
 import unittest
 from datetime import date
@@ -169,9 +168,7 @@ class TestRawSQL(unittest.TestCase):
         select(p for p in Person if raw_sql(p.name))[:]
 
     @db_session
-    @raises_exception(ExprEvalError,
-                      "`raw_sql('p.dob < $x')` raises NameError: global name 'x' is not defined" if PYPY2 else
-                      "`raw_sql('p.dob < $x')` raises NameError: name 'x' is not defined")
+    @raises_exception(ExprEvalError, "`raw_sql('p.dob < $x')` raises NameError: name 'x' is not defined")
     def test_20(self):
         # testing for situation where parameter variable is missing
         select(p for p in Person if raw_sql('p.dob < $x'))[:]

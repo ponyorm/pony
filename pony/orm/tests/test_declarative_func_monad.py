@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, PYPY, PYPY2
+from pony.py23compat import PYPY
 
 import sys, unittest
 from datetime import date, datetime
@@ -71,16 +71,12 @@ class TestFuncMonad(unittest.TestCase):
         self.assertEqual(result, {Student[4], Student[5], Student[3]})
     def test_minmax5(self):
         x = chr(128)
-        try: result = set(select(s for s in Student if min(s.name, x) == "CC" ))
-        except TypeError as e:
-            self.assertTrue(PY2 and e.args[0] == "The bytestring '\\x80' contains non-ascii symbols. Try to pass unicode string instead")
-        else: self.assertFalse(PY2)
+        result = set(select(s for s in Student if min(s.name, x) == "CC" ))
+        self.assertEqual(result, {Student[3]})
     def test_minmax6(self):
         x = chr(128)
-        try: result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
-        except TypeError as e:
-            self.assertTrue(PY2 and e.args[0] == "The bytestring '\\x80' contains non-ascii symbols. Try to pass unicode string instead")
-        else: self.assertFalse(PY2)
+        result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
+        self.assertEqual(result, {Student[3], Student[4], Student[5]})
     def test_minmax7(self):
         result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
@@ -117,11 +113,7 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if s.dob < date.today()))
         self.assertEqual(result, {Student[1], Student[2], Student[3], Student[4], Student[5]})
     @raises_exception(ExprEvalError, "`1 < datetime.now()` raises TypeError: " + (
-        "can't compare 'datetime' to 'int'" if PYPY2 else
-        "'<' not supported between instances of 'int' and 'datetime'" if PYPY and sys.version_info >= (3, 6) else
-        "unorderable types: int < datetime" if PYPY else
-        "can't compare datetime.datetime to int" if PY2 else
-        "unorderable types: int() < datetime.datetime()" if sys.version_info < (3, 6) else
+        "'<' not supported between instances of 'int' and 'datetime'" if PYPY else
         "'<' not supported between instances of 'int' and 'datetime.datetime'"))
     def test_datetime_now2(self):
         select(s for s in Student if 1 < datetime.now())

@@ -1,10 +1,10 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, items_list, izip, basestring, unicode, buffer, int_types, iteritems
+from pony.py23compat import items_list, izip, basestring, unicode, buffer, int_types, iteritems
 
 import sys, types, weakref
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
-from functools import wraps, WRAPPER_ASSIGNMENTS
+from functools import wraps
 from uuid import UUID
 
 from pony.utils import throw, parse_expr, deref_proxy
@@ -14,11 +14,7 @@ NoneType = type(None)
 class LongStr(str):
     lazy = True
 
-if PY2:
-    class LongUnicode(unicode):
-        lazy = True
-else:
-    LongUnicode = LongStr
+LongUnicode = LongStr
 
 class SetType(object):
     __slots__ = 'item_type'
@@ -53,12 +49,8 @@ class MethodType(object):
     def __deepcopy__(self, memo):
         return self  # MethodType instances are "immutable"
     def __init__(self, method):
-        if PY2:
-            self.obj = method.im_self
-            self.func = method.im_func
-        else:
-            self.obj = method.__self__
-            self.func = method.__func__
+        self.obj = method.__self__
+        self.func = method.__func__
     def __eq__(self, other):
         return type(other) is MethodType and self.obj == other.obj and self.func == other.func
     def __ne__(self, other):
@@ -167,14 +159,7 @@ def normalize(value):
         entity = value.entity
         return SetType(entity), entity
 
-    if PY2 and isinstance(value, str):
-        try:
-            value.decode('ascii')
-        except UnicodeDecodeError:
-            throw(TypeError, 'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % value)
-        else:
-            return unicode, value
-    elif isinstance(value, unicode):
+    if isinstance(value, unicode):
         return unicode, value
 
     if t in function_types:
@@ -285,7 +270,7 @@ class TrackedValue(object):
         assert False, 'Abstract method'  # pragma: no cover
 
 def tracked_method(func):
-    @wraps(func, assigned=('__name__', '__doc__') if PY2 else WRAPPER_ASSIGNMENTS)
+    @wraps(func)
     def new_func(self, *args, **kwargs):
         obj = self.obj_ref()
         attr = self.attr
@@ -332,16 +317,11 @@ class TrackedList(TrackedValue, list):
     insert = tracked_method(list.insert)
     reverse = tracked_method(list.reverse)
     sort = tracked_method(list.sort)
-    if PY2:
-        __setslice__ = tracked_method(list.__setslice__)
-    else:
-        clear = tracked_method(list.clear)
+    clear = tracked_method(list.clear)
     def get_untracked(self):
         return [val.get_untracked() if isinstance(val, TrackedValue) else val for val in self]
 
 def validate_item(item_type, item):
-    if PY2 and isinstance(item, str):
-        item = item.decode('ascii')
     if not isinstance(item, item_type):
         if item_type is not unicode and hasattr(item, '__index__'):
             return item.__index__()
@@ -408,7 +388,7 @@ numeric_types = {bool, int, float, Decimal}
 comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID, IntArray, StrArray, FloatArray}
 primitive_types = comparable_types | {buffer}
 function_types = {type, types.FunctionType, types.BuiltinFunctionType}
-type_normalization_dict = { long : int } if PY2 else {}
+type_normalization_dict = {}
 
 array_types = {
     int: IntArray,

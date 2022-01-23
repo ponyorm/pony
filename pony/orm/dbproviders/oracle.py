@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, iteritems, basestring, unicode, buffer, int_types
+from pony.py23compat import iteritems, basestring, unicode, buffer, int_types
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
@@ -286,11 +286,10 @@ json_item_re = re.compile('[\w\s]*')
 
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
-    if not PY2:
-        def py2sql(converter, val):
-            # Fixes cx_Oracle 5.1.3 Python 3 bug:
-            # "DatabaseError: OCI-22062: invalid input string [True]"
-            return int(val)
+    def py2sql(converter, val):
+        # Fixes cx_Oracle 5.1.3 Python 3 bug:
+        # "DatabaseError: OCI-22062: invalid input string [True]"
+        return int(val)
     def sql2py(converter, val):
         return bool(val)  # TODO: True/False, T/F, Y/N, Yes/No, etc.
     def sql_type(converter):
@@ -303,7 +302,6 @@ class OraStrConverter(dbapiprovider.StrConverter):
     def sql2py(converter, val):
         if isinstance(val, cx_Oracle.LOB):
             val = val.read()
-            if PY2: val = val.decode('utf8')
         return val
     def sql_type(converter):
         # TODO: Add support for NVARCHAR2 and NCLOB datatypes

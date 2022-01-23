@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import PY2, imap, basestring, unicode, pickle, iteritems
+from pony.py23compat import imap, basestring, unicode, pickle, iteritems
 
 import ast, io, re, os.path, sys, inspect, types, warnings
 
@@ -85,14 +85,9 @@ if pony.MODE != 'INTERACTIVE':
     def cut_traceback(func):
         return func
 
-if PY2:
-    exec('''def reraise(exc_type, exc, tb):
-    try: raise exc_type, exc, tb
-    finally: del tb''')
-else:
-    def reraise(exc_type, exc, tb):
-        try: raise exc.with_traceback(tb)
-        finally: del exc, tb
+def reraise(exc_type, exc, tb):
+    try: raise exc.with_traceback(tb)
+    finally: del exc, tb
 
 def throw(exc_type, *args, **kwargs):
     if isinstance(exc_type, Exception):
@@ -123,7 +118,7 @@ lambda_args_cache = {}
 
 def get_lambda_args(func):
     if type(func) is types.FunctionType:
-        codeobject = func.func_code if PY2 else func.__code__
+        codeobject = func.__code__
         cache_key = get_codeobject_id(codeobject)
     elif isinstance(func, ast.Lambda):
         cache_key = func

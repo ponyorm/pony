@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PYPY, PYPY2
+from pony.py23compat import PYPY
 
 import sys, unittest
 from datetime import date
@@ -188,7 +188,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test39(self):
         select(s for s in Student if s.name.strip(1, 2, 3))
     @raises_exception(ExprEvalError,
-                      "`len(1, 2) == 3` raises TypeError: len() takes exactly 1 argument (2 given)" if PYPY2 else
                       "`len(1, 2) == 3` raises TypeError: len() takes 1 positional argument but 2 were given" if PYPY else
                       "`len(1, 2) == 3` raises TypeError: len() takes exactly one argument (2 given)")
     def test40(self):

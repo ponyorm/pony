@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, PY310, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass, int_types
+from pony.py23compat import PY310, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -2174,7 +2174,7 @@ class ObjectMixin(MonadMixin):
                     new_monad = HybridMethodMonad(monad, attrname, attr.fget)
                     return new_monad()
                 if callable(attr):
-                    func = getattr(attr, '__func__') if PY2 else attr
+                    func = attr
                     if func is not None: return HybridMethodMonad(monad, attrname, func)
                 throw(NotImplementedError, '{EXPR} cannot be translated to SQL')
             throw(AttributeError, 'Entity %s does not have attribute %s: {EXPR}' % (entity.__name__, attrname))
@@ -2657,8 +2657,6 @@ class HybridFuncMonad(Monad):
         name_mapping = inspect.getcallargs(monad.func, *(monad.params + args), **kwargs)
 
         func = monad.func
-        if PY2 and isinstance(func, types.UnboundMethodType):
-            func = func.im_func
         func_id = id(func)
         try:
             func_ast, external_names, cells = decompile(func)
@@ -2776,15 +2774,10 @@ class FuncBufferMonad(FuncMonad):
         if errors is not None:
             if not isinstance(errors, StringConstMonad): throw(TypeError)
             errors = errors.value
-        if PY2:
-            if encoding and errors: source = source.encode(encoding, errors)
-            elif encoding: source = source.encode(encoding)
-            return ConstMonad.new(buffer(source))
-        else:
-            if encoding and errors: value = buffer(source, encoding, errors)
-            elif encoding: value = buffer(source, encoding)
-            else: value = buffer(source)
-            return ConstMonad.new(value)
+        if encoding and errors: value = buffer(source, encoding, errors)
+        elif encoding: value = buffer(source, encoding)
+        else: value = buffer(source)
+        return ConstMonad.new(value)
 
 class FuncBoolMonad(FuncMonad):
     func = bool

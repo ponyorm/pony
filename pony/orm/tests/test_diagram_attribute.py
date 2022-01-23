@@ -1,5 +1,4 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2
 from datetime import date
 import unittest
 
@@ -551,9 +550,9 @@ class TestAttribute(unittest.TestCase):
             try:
                 obj = Entity1(a='1234567890' * 1000)
             except ValueError as e:
-                error_message = "Check for attribute Entity1.a failed. Value: " + (
-                    "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345..." if PY2
-                    else "'123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456...")
+                error_message = "Check for attribute Entity1.a failed. Value: " \
+                                "'12345678901234567890123456789012345678901234567890" \
+                                "1234567890123456789012345678901234567890123456..."
                 self.assertEqual(str(e), error_message)
             else:
                 self.assert_(False)

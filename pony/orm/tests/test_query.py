@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PYPY2, pickle
+from pony.py23compat import pickle
 
 import unittest
 from datetime import date
@@ -56,8 +56,7 @@ class TestQuery(unittest.TestCase):
         g = Group[1]
         students = select(s for s in g.students)
         self.assertEqual(set(g.students), set(students))
-    @raises_exception(ExprEvalError, "`a` raises NameError: global name 'a' is not defined" if PYPY2 else
-                                     "`a` raises NameError: name 'a' is not defined")
+    @raises_exception(ExprEvalError, "`a` raises NameError: name 'a' is not defined")
     def test4(self):
         select(a for s in Student)
     @raises_exception(TypeError, "Incomparable types '%s' and 'StrArray' in expression: s.name == x" % unicode.__name__)

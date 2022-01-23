@@ -1,5 +1,3 @@
-from pony.py23compat import PY2
-
 import unittest
 from pony.orm.tests.testutils import *
 from pony.orm.tests import db_params, setup_database, teardown_database
@@ -62,7 +60,7 @@ class Test(unittest.TestCase):
         foo = select(f for f in Foo if 1.1 in f.array2)[:]
         self.assertEqual([Foo[1]], foo)
 
-    err_msg = "Cannot store 'int' item in array of " + ("'unicode'" if PY2 else "'str'")
+    err_msg = "Cannot store 'int' item in array of 'str'"
 
     @raises_exception(TypeError, err_msg)
     @db_session

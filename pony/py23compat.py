@@ -1,60 +1,33 @@
 import sys, platform
 
-PY2 = sys.version_info[0] == 2
 PYPY = platform.python_implementation() == 'PyPy'
-PYPY2 = PYPY and PY2
 PY37 = sys.version_info[:2] >= (3, 7)
 PY38 = sys.version_info[:2] >= (3, 8)
 PY39 = sys.version_info[:2] >= (3, 9)
 PY310 = sys.version_info[:2] >= (3, 10)
 
-if PY2:
-    from future_builtins import zip as izip, map as imap
-    import __builtin__ as builtins
-    import cPickle as pickle
-    from cStringIO import StringIO
-    xrange = xrange
-    basestring = basestring
-    unicode = unicode
-    buffer = buffer
-    int_types = (int, long)
-    cmp = cmp
+import builtins, pickle
+from io import StringIO
+izip, imap, xrange = zip, map, range
+basestring = str
+unicode = str
+buffer = bytes
+int_types = (int,)
 
-    def iteritems(dict):
-        return dict.iteritems()
+def cmp(a, b):
+    return (a > b) - (a < b)
 
-    def itervalues(dict):
-        return dict.itervalues()
+def iteritems(dict):
+    return iter(dict.items())
 
-    def items_list(dict):
-        return dict.items()
+def itervalues(dict):
+    return iter(dict.values())
 
-    def values_list(dict):
-        return dict.values()
+def items_list(dict):
+    return list(dict.items())
 
-else:
-    import builtins, pickle
-    from io import StringIO
-    izip, imap, xrange = zip, map, range
-    basestring = str
-    unicode = str
-    buffer = bytes
-    int_types = (int,)
-
-    def cmp(a, b):
-        return (a > b) - (a < b)
-
-    def iteritems(dict):
-        return iter(dict.items())
-
-    def itervalues(dict):
-        return iter(dict.values())
-
-    def items_list(dict):
-        return list(dict.items())
-
-    def values_list(dict):
-        return list(dict.values())
+def values_list(dict):
+    return list(dict.values())
 
 # Armin's recipe from http://lucumr.pocoo.org/2013/5/21/porting-to-python-3-redux/
 def with_metaclass(meta, *bases):

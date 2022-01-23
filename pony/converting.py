@@ -1,7 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import PY2, iteritems, imap, izip, xrange, unicode, basestring
+from pony.py23compat import iteritems, imap, izip, xrange, unicode, basestring
 
 import re
 from datetime import datetime, date, time, timedelta
@@ -238,9 +238,6 @@ converters = {
     time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
     datetime: (str2datetime, unicode, 'Must be correct date & time'),
     }
-
-if PY2:
-    converters[long] = (long, unicode, 'Incorrect number')
 
 def str2py(value, type):
     if type is None or not isinstance(value, unicode): return value

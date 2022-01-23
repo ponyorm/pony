@@ -1,10 +1,7 @@
 
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PYPY2, pickle
 
 import unittest
-from datetime import date
-from decimal import Decimal
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *

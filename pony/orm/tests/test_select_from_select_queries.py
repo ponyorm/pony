@@ -2,7 +2,6 @@ import unittest
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
-from pony.py23compat import PYPY2
 from pony.orm.tests import setup_database, teardown_database
 
 db = Database()
@@ -98,8 +97,7 @@ class TestSelectFromSelect(unittest.TestCase):
         self.assertEqual(db.last_sql.count('SELECT'), 1)
 
     @db_session
-    @raises_exception(ExprEvalError, "`s.scholarship > 0` raises NameError: name 's' is not defined" if not PYPY2
-        else "`s.scholarship > 0` raises NameError: global name 's' is not defined")
+    @raises_exception(ExprEvalError, "`s.scholarship > 0` raises NameError: name 's' is not defined")
     def test_7(self):  # test access to original query var name from the new query
         q = select(s.first_name for s in Student if s.scholarship < 500)
         q2 = select(x for x in q if s.scholarship > 0)

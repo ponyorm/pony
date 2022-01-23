@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, imap, basestring, buffer, int_types
+from pony.py23compat import imap, basestring, buffer, int_types
 
 import json
 from decimal import Decimal
@@ -56,7 +56,7 @@ class MySQLValue(Value):
                 return "INTERVAL '%s' HOUR_MICROSECOND" % timedelta2str(value)
             return "INTERVAL '%s' HOUR_SECOND" % timedelta2str(value)
         return Value.__unicode__(self)
-    if not PY2: __str__ = __unicode__
+    __str__ = __unicode__
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
@@ -249,12 +249,6 @@ class MySQLProvider(DBAPIProvider):
             conv = mysql_converters.conversions.copy()
             if mysql_module_name == 'MySQLdb':
                 conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-            else:
-                if PY2:
-                    def encode_buffer(val, encoders=None):
-                        return string_literal(str(val), encoders)
-
-                    conv[buffer] = encode_buffer
 
             def encode_timedelta(val, encoders=None):
                 return string_literal(timedelta2str(val), encoders)

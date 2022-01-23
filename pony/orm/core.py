@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
+from pony.py23compat import izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
@@ -89,19 +89,8 @@ sql_logger = logging.getLogger('pony.orm.sql')
 
 orm_log_level = logging.INFO
 
-def has_handlers(logger):
-    if not PY2:
-        return logger.hasHandlers()
-    while logger:
-        if logger.handlers:
-            return True
-        elif not logger.propagate:
-            return False
-        logger = logger.parent
-    return False
-
 def log_orm(msg):
-    if has_handlers(orm_logger):
+    if orm_logger.hasHandlers():
         orm_logger.log(orm_log_level, msg)
     else:
         print(msg)
@@ -109,7 +98,7 @@ def log_orm(msg):
 def log_sql(sql, arguments=None):
     if type(arguments) is list:
         sql = 'EXECUTEMANY (%d)\n%s' % (len(arguments), sql)
-    if has_handlers(sql_logger):
+    if sql_logger.hasHandlers():
         if local.show_values and arguments:
             sql = '%s\n%s' % (sql, format_arguments(arguments))
         sql_logger.log(orm_log_level, sql)
@@ -958,7 +947,6 @@ class Database(object):
             cache.in_transaction = True
         database._update_local_stat(sql, t)
         if not returning_id: return cursor
-        if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
@@ -3679,7 +3667,7 @@ class EntityIter(object):
     def next(self):
         throw(TypeError, 'Use select(...) function or %s.select(...) method for iteration'
                          % self.entity.__name__)
-    if not PY2: __next__ = next
+    __next__ = next
 
 entity_id_counter = itertools.count(1)
 new_instance_id_counter = itertools.count(1)
@@ -4383,7 +4371,7 @@ class EntityMeta(type):
 
         if type(func) is types.FunctionType:
             names = get_lambda_args(func)
-            code_key = id(func.func_code if PY2 else func.__code__)
+            code_key = id(func.__code__)
             cond_expr, external_names, cells = decompile(func)
         elif isinstance(func, basestring):
             code_key = func
@@ -5502,12 +5490,6 @@ class Entity(with_metaclass(EntityMeta)):
 def string2ast(s):
     result = string2ast_cache.get(s)
     if result is not None: return result
-    if PY2:
-        if isinstance(s, str):
-            try: s.encode('ascii')
-            except UnicodeDecodeError: throw(TypeError,
-                'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % s)
-        else: s = s.encode('ascii', 'backslashreplace')
     module_node = ast.parse('(%s)' % s)
     if not isinstance(module_node, ast.Module): throw(TypeError)
     assert len(module_node.body) == 1
@@ -5773,7 +5755,7 @@ class Query(object):
         if translator is not None:
             if translator.func_extractors_map:
                 for func, func_extractors in iteritems(translator.func_extractors_map):
-                    func_id = id(func.func_code if PY2 else func.__code__)
+                    func_id = id(func.__code__)
                     func_filter_num = translator.filter_num, 'func', func_id
                     func_vars, func_vartypes = extract_vars(
                         func_id, func_filter_num, func_extractors, func.__globals__, {}, func.__closure__)  # todo closures
@@ -6058,7 +6040,7 @@ class Query(object):
             cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
-            func_id = id(func.func_code if PY2 else func.__code__)
+            func_id = id(func.__code__)
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
             'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)

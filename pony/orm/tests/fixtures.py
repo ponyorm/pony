@@ -2,7 +2,6 @@ import sys
 import os
 import logging
 
-from pony.py23compat import PY2
 from ponytest import with_cli_args, pony_fixtures, provider_validators, provider, Fixture, \
         ValidationError
 
@@ -12,19 +11,13 @@ from contextlib import contextmanager, closing
 
 from pony.utils import cached_property, class_property
 
-if not PY2:
-    from contextlib import contextmanager, ContextDecorator
-else:
-    from contextlib2 import contextmanager, ContextDecorator
+from contextlib import contextmanager, ContextDecorator
 
 import unittest
 
 from pony.orm import db_session, Database, rollback, delete
 
-if not PY2:
-    from io import StringIO
-else:
-    from StringIO import StringIO
+from io import StringIO
 
 from multiprocessing import Process
 

@@ -33,7 +33,6 @@ for the documentation.
 """
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import PY2
 
 __version__ = '3.4.0'
 
@@ -131,10 +130,7 @@ class FunctionMaker(object):
         func.__name__ = self.name
         func.__doc__ = getattr(self, 'doc', None)
         func.__dict__ = getattr(self, 'dict', {})
-        if PY2:
-            func.func_defaults = getattr(self, 'defaults', ())
-        else:
-            func.__defaults__ = getattr(self, 'defaults', ())
+        func.__defaults__ = getattr(self, 'defaults', ())
         func.__kwdefaults__ = getattr(self, 'kwonlydefaults', None)
         func.__annotations__ = getattr(self, 'annotations', None)
         callermodule = sys._getframe(3).f_globals.get('__name__', '?')
@@ -158,12 +154,8 @@ class FunctionMaker(object):
             src += '\n' # this is needed in old versions of Python
         try:
             # print(src)
-            if PY2:
-                code = compile(src, '<auto generated wrapper of %s() function>' % self.name, 'single')
-                exec('exec code in evaldict')
-            else:
-                code = compile(src, '<string>', 'single')
-                exec(code, evaldict)
+            code = compile(src, '<string>', 'single')
+            exec(code, evaldict)
         except:
             print('Error in generated code:', file=sys.stderr)
             print(src, file=sys.stderr)
@@ -202,10 +194,7 @@ def decorator(caller, func=None):
     decorator(caller, func) decorates a function using a caller.
     """
     if func is not None: # returns a decorated function
-        if PY2:
-            evaldict = func.func_globals.copy()
-        else:
-            evaldict = func.__globals__.copy()
+        evaldict = func.__globals__.copy()
         evaldict['_call_'] = caller
         evaldict['_func_'] = func
         return FunctionMaker.create(
@@ -226,16 +215,10 @@ def decorator(caller, func=None):
             fun = getfullargspec(callerfunc).args[0] # first arg
         else: # assume caller is an object with a __call__ method
             name = caller.__class__.__name__.lower()
-            if PY2:
-                callerfunc = caller.__call__.im_func
-            else:
-                callerfunc = caller.__call__.__func__
+            callerfunc = caller.__call__.__func__
             doc = caller.__call__.__doc__
             fun = getfullargspec(callerfunc).args[1] # second arg
-        if PY2:
-            evaldict = callerfunc.func_globals.copy()
-        else:
-            evaldict = callerfunc.__globals__.copy()
+        evaldict = callerfunc.__globals__.copy()
         evaldict['_call_'] = caller
         evaldict['decorator'] = decorator
         return FunctionMaker.create(

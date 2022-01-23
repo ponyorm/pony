@@ -1,5 +1,4 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2
 
 import unittest
 from datetime import date
@@ -322,10 +321,9 @@ class TestSQLTranslator(unittest.TestCase):
         s1 = Student[1]
         result = set(select(g for g in Group if s1.name not in g.students.name))
         self.assertEqual(result, {Group[2]})
+    @raises_exception(TypeError, 'string argument without an encoding')
     def test_buffer_monad1(self):
-        try: select(s for s in Student if s.picture == buffer('abc'))
-        except TypeError as e: self.assertTrue(not PY2 and str(e) == 'string argument without an encoding')
-        else: self.assertTrue(PY2)
+        select(s for s in Student if s.picture == buffer('abc'))
     def test_buffer_monad2(self):
         select(s for s in Student if s.picture == buffer('abc', 'ascii'))
     def test_database_monad(self):

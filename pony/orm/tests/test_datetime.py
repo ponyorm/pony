@@ -1,5 +1,4 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2
 
 import unittest
 from datetime import date, datetime, timedelta
@@ -123,15 +122,14 @@ class TestDate(unittest.TestCase):
         result = select(e.id for e in Entity1 if e.dt + timedelta(days=500) > date(2013, 1, 1))
         self.assertEqual(set(result), {3})
 
-    @raises_exception(TypeError, "Unsupported operand types 'date' and '%s' "
-                                 "for operation '-' in expression: e.d - s" % ('unicode' if PY2 else 'str'))
+    @raises_exception(TypeError, "Unsupported operand types 'date' and 'str' for operation '-' in expression: e.d - s")
     def test_date_sub_error(self):
         s = 'hello'
         result = select(e.id for e in Entity1 if e.d - s > timedelta(days=500))
         self.assertEqual(set(result), {1})
 
-    @raises_exception(TypeError, "Unsupported operand types 'datetime' and '%s' "
-                                 "for operation '-' in expression: e.dt - s" % ('unicode' if PY2 else 'str'))
+    @raises_exception(TypeError,
+                      "Unsupported operand types 'datetime' and 'str' for operation '-' in expression: e.dt - s")
     def test_datetime_sub_error(self):
         s = 'hello'
         result = select(e.id for e in Entity1 if e.dt - s > timedelta(days=500))

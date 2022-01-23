@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, basestring, unicode, buffer, int_types, iteritems
+from pony.py23compat import basestring, unicode, buffer, int_types, iteritems
 
 import os, re, json
 from decimal import Decimal, InvalidOperation
@@ -459,8 +459,7 @@ class StrConverter(Converter):
         converter.db_encoding = kwargs.pop('db_encoding', None)
         converter.autostrip = kwargs.pop('autostrip', True)
     def validate(converter, val, obj=None):
-        if PY2 and isinstance(val, str): val = val.decode('ascii')
-        elif not isinstance(val, unicode): throw(TypeError,
+        if not isinstance(val, unicode): throw(TypeError,
             'Value type for attribute %s must be %s. Got: %r' % (converter.attr, unicode.__name__, type(val)))
         if converter.autostrip: val = val.strip()
         max_len = converter.max_len
@@ -672,10 +671,6 @@ class BlobConverter(Converter):
         if not isinstance(val, buffer):
             try: val = buffer(val)
             except: pass
-        elif PY2 and converter.attr is not None and converter.attr.is_part_of_unique_index:
-            try: hash(val)
-            except TypeError:
-                val = buffer(val)
         return val
     def sql_type(converter):
         return 'BLOB'
@@ -847,8 +842,6 @@ class ArrayConverter(Converter):
         if item_type == float:
             item_type = (float, int)
         for i, v in enumerate(items):
-            if PY2 and isinstance(v, str):
-                v = v.decode('ascii')
             if not isinstance(v, item_type):
                 if hasattr(v, '__index__'):
                     items[i] = v.__index__()

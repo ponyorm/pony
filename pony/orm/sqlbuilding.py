@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2, izip, imap, itervalues, basestring, unicode, buffer, int_types
+from pony.py23compat import imap, basestring, unicode, buffer, int_types
 
 from operator import attrgetter
 from decimal import Decimal
@@ -47,7 +47,7 @@ class Param(object):
         elif paramstyle == 'named': return u':p%d' % param.id
         elif paramstyle == 'pyformat': return u'%%(p%d)s' % param.id
         else: throw(NotImplementedError)
-    if not PY2: __str__ = __unicode__
+    __str__ = __unicode__
     def __repr__(param):
         return '%s(%r)' % (param.__class__.__name__, param.paramkey)
 
@@ -81,19 +81,12 @@ class Value(object):
             return 'DATE ' + self.quote_str(str(value))
         if isinstance(value, timedelta):
             return "INTERVAL '%s' HOUR TO SECOND" % timedelta2str(value)
-        if PY2:
-            if isinstance(value, (int, long, float, Decimal)):
-                return str(value)
-            if isinstance(value, buffer):
-                return "X'%s'" % hexlify(value)
-        else:
-            if isinstance(value, (int, float, Decimal)):
-                return str(value)
-            if isinstance(value, bytes):
-                return "X'%s'" % hexlify(value).decode('ascii')
+        if isinstance(value, (int, float, Decimal)):
+            return str(value)
+        if isinstance(value, bytes):
+            return "X'%s'" % hexlify(value).decode('ascii')
         assert False, repr(value)  # pragma: no cover
-    if not PY2:
-        __str__ = __unicode__
+    __str__ = __unicode__
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):

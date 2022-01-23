@@ -1,5 +1,4 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY2
 
 import unittest
 
@@ -70,9 +69,7 @@ class TestCollections(unittest.TestCase):
         g = Group['3132']
         g.subjects.create(name='Biology', groups=[g])
 
-    @raises_exception(TransactionIntegrityError,
-                      "Object Subject[u'Math'] cannot be stored in the database..." if PY2 else
-                      "Object Subject['Math'] cannot be stored in the database...")
+    @raises_exception(TransactionIntegrityError, "Object Subject['Math'] cannot be stored in the database...")
     @db_session
     def test_collection_create_many2many_3(self):
         g = Group['3132']

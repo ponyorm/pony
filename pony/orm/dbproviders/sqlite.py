@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
+from pony.py23compat import basestring, buffer, int_types, unicode
 
 import os.path, sys, re, json
 import sqlite3 as sqlite
@@ -65,7 +65,7 @@ class SQLiteValue(Value):
         if isinstance(value, timedelta):
             return repr(value.total_seconds() / (24 * 60 * 60))
         return Value.__unicode__(self)
-    if not PY2: __str__ = __unicode__
+    __str__ = __unicode__
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
