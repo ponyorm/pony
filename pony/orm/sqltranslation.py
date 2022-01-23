@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY310, items_list, izip, xrange, basestring, unicode, buffer, with_metaclass, int_types
+from pony.py23compat import PY310, items_list, xrange, basestring, unicode, buffer, with_metaclass, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -58,7 +58,7 @@ def sqlor(items):
 
 def join_tables(alias1, alias2, columns1, columns2):
     assert len(columns1) == len(columns2)
-    return sqland([ [ 'EQ', [ 'COLUMN', alias1, c1 ], [ 'COLUMN', alias2, c2 ] ] for c1, c2 in izip(columns1, columns2) ])
+    return sqland([ [ 'EQ', [ 'COLUMN', alias1, c1 ], [ 'COLUMN', alias2, c2 ] ] for c1, c2 in zip(columns1, columns2) ])
 
 def type2str(t):
     if type(t) is tuple: return 'list'
@@ -576,7 +576,7 @@ class SQLTranslator(ASTTranslator):
                 prev_translator.left_join = translator.left_join
                 prev_translator.optimize = translator.optimize
                 prev_translator.namespace_stack = [
-                    {name: expr for name, expr in izip(names, prev_translator.expr_monads)}
+                    {name: expr for name, expr in zip(names, prev_translator.expr_monads)}
                 ]
                 prev_translator.limit, prev_translator.offset = combine_limit_and_offset(
                     prev_translator.limit, prev_translator.offset, prev_limit, prev_offset)
@@ -597,7 +597,7 @@ class SQLTranslator(ASTTranslator):
         else:
             aliases = []
             aliases_dict = {}
-            for name, base_expr_monad in izip(names, prev_translator.expr_monads):
+            for name, base_expr_monad in zip(names, prev_translator.expr_monads):
                 t = base_expr_monad.type
                 if isinstance(t, EntityMeta):
                     t_aliases = []
@@ -616,7 +616,7 @@ class SQLTranslator(ASTTranslator):
                 tablerefs[name] = tableref
             tableref.make_join()
 
-            for name, base_expr_monad in izip(names, prev_translator.expr_monads):
+            for name, base_expr_monad in zip(names, prev_translator.expr_monads):
                 t = base_expr_monad.type
                 if isinstance(t, EntityMeta):
                     columns = aliases_dict[base_expr_monad]
@@ -910,7 +910,7 @@ class SQLTranslator(ASTTranslator):
 
         if not original_names:
             assert argnames
-            namespace = {name: monad for name, monad in izip(argnames, translator.expr_monads)}
+            namespace = {name: monad for name, monad in zip(argnames, translator.expr_monads)}
         elif argnames:
             namespace = {name: translator.namespace[name] for name in argnames}
         else:
@@ -1717,9 +1717,9 @@ class ListMonad(Monad):
             if not_in: sql = [ 'NOT_IN', left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
             else: sql = [ 'IN', left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
         elif not_in:
-            sql = sqland([ sqlor([ [ 'NE', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
+            sql = sqland([ sqlor([ [ 'NE', a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
         else:
-            sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
+            sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
         return BoolExprMonad(sql, nullable=x.nullable or any(item.nullable for item in monad.items))
     def getsql(monad, sqlquery=None):
         return [ [ 'ROW' ] + [ item.getsql()[0] for item in monad.items ] ]
@@ -2312,7 +2312,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
     def getsql(monad, sqlquery=None):
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
-        return [ [ 'PARAM', param, converter ] for param, converter in izip(monad.params, entity._pk_converters_) ]
+        return [ [ 'PARAM', param, converter ] for param, converter in zip(monad.params, entity._pk_converters_) ]
     def requires_distinct(monad, joined=False):
         assert False  # pragma: no cover
 
@@ -2605,9 +2605,9 @@ class CmpMonad(BoolMonad):
                 clauses.append(sqland(clause))
             return [ sqlor(clauses) ]
         if op == '==':
-            return [ sqland([ [ monad.EQ, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
+            return [ sqland([ [ monad.EQ, a, b ] for a, b in zip(left_sql, right_sql) ]) ]
         if op == '!=':
-            return [ sqlor([ [ monad.NE, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
+            return [ sqlor([ [ monad.NE, a, b ] for a, b in zip(left_sql, right_sql) ]) ]
         assert False, op  # pragma: no cover
 
 class LogicalBinOpMonad(BoolMonad):
@@ -2808,7 +2808,7 @@ class FuncDecimalMonad(FuncMonad):
 class FuncDateMonad(FuncMonad):
     func = date
     def call(monad, year, month, day):
-        for arg, name in izip((year, month, day), ('year', 'month', 'day')):
+        for arg, name in zip((year, month, day), ('year', 'month', 'day')):
             if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of date(year, month, day) function must be of 'int' type. "
                 "Got: %r" % (name, type2str(arg.type)))
@@ -2820,7 +2820,7 @@ class FuncDateMonad(FuncMonad):
 class FuncTimeMonad(FuncMonad):
     func = time
     def call(monad, *args):
-        for arg, name in izip(args, ('hour', 'minute', 'second', 'microsecond')):
+        for arg, name in zip(args, ('hour', 'minute', 'second', 'microsecond')):
             if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of time(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
             if not isinstance(arg, ConstMonad): throw(NotImplementedError)
@@ -2830,7 +2830,7 @@ class FuncTimedeltaMonad(FuncMonad):
     func = timedelta
     def call(monad, days=None, seconds=None, microseconds=None, milliseconds=None, minutes=None, hours=None, weeks=None):
         args = days, seconds, microseconds, milliseconds, minutes, hours, weeks
-        for arg, name in izip(args, ('days', 'seconds', 'microseconds', 'milliseconds', 'minutes', 'hours', 'weeks')):
+        for arg, name in zip(args, ('days', 'seconds', 'microseconds', 'milliseconds', 'minutes', 'hours', 'weeks')):
             if arg is None: continue
             if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of timedelta(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
@@ -2842,7 +2842,7 @@ class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
     def call(monad, year, month, day, hour=None, minute=None, second=None, microsecond=None):
         args = year, month, day, hour, minute, second, microsecond
-        for arg, name in izip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
+        for arg, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
             if arg is None: continue
             if not isinstance(arg, NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
@@ -3095,7 +3095,7 @@ class AttrSetMonad(SetMixin, Monad):
                 subquery_ast = [ 'SELECT', [ 'ALL' ] + expr_list, from_ast, [ 'WHERE' ] + conditions ]
                 sql_ast = [ sqlop, [ 'ROW' ] + item.getsql(), subquery_ast ]
             else:
-                conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
+                conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in zip(item.getsql(), expr_list) ]
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
             result = BoolExprMonad(sql_ast, nullable=False)
             result.nogroup = True
@@ -3104,7 +3104,7 @@ class AttrSetMonad(SetMixin, Monad):
             translator.distinct = True
             tableref = monad.make_tableref(translator.sqlquery)
             expr_list = monad.make_expr_list()
-            expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in izip(expr_list, item.getsql()) ])
+            expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in zip(expr_list, item.getsql()) ])
             return BoolExprMonad(expr_ast, nullable=False)
         else:
             sqlquery = SqlQuery(translator, translator.sqlquery)
@@ -3116,7 +3116,7 @@ class AttrSetMonad(SetMixin, Monad):
             from_ast = translator.sqlquery.from_ast
             from_ast[0] = 'LEFT_JOIN'
             from_ast.extend(sqlquery.from_ast[1:])
-            conditions = [ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in izip(columns, item.getsql()) ]
+            conditions = [ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in zip(columns, item.getsql()) ]
             conditions.extend(sqlquery.conditions)
             from_ast[-1][-1] = sqland([ from_ast[-1][-1] ] + conditions)
             expr_ast = sqland([ [ 'IS_NULL', expr ] for expr in expr_list ])
@@ -3520,7 +3520,7 @@ class QuerySetMonad(SetMixin, Monad):
 
             alias = sqlquery.make_alias('t')
             outer_conditions = [ [ 'EQ', item_column, [ 'COLUMN', alias, new_name ] ]
-                                    for item_column, new_name in izip(item_columns, new_names) ]
+                                    for item_column, new_name in zip(item_columns, new_names) ]
             sqlquery.from_ast.append([ alias, 'SELECT', subquery_ast[1:], sqland(outer_conditions) ])
             if not_in: sql_ast = sqland([ [ 'IS_NULL', [ 'COLUMN', alias, new_name ] ]
                                               for new_name in new_names ])
@@ -3559,7 +3559,7 @@ class QuerySetMonad(SetMixin, Monad):
                     new_where_ast = [ 'WHERE' ]
                     subquery_ast = [ 'SELECT', new_select_ast, new_from_ast, new_where_ast ]
                 select_ast, from_ast, where_ast = subquery_ast[1:4]
-                in_conditions = [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
+                in_conditions = [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in zip(item_columns, select_ast[1:]) ]
                 if not ambiguous_names and sub.aggregated:
                     having_ast = find_or_create_having_ast(subquery_ast)
                     having_ast += in_conditions

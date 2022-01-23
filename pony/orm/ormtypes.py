@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import items_list, izip, basestring, unicode, buffer, int_types, iteritems
+from pony.py23compat import items_list, basestring, unicode, buffer, int_types, iteritems
 
 import sys, types, weakref
 from decimal import Decimal
@@ -231,7 +231,7 @@ def are_comparable_types(t1, t2, op='=='):
     if tt1 is tuple:
         if not tt2 is tuple: return False
         if len(t1) != len(t2): return False
-        for item1, item2 in izip(t1, t2):
+        for item1, item2 in zip(t1, t2):
             if not are_comparable_types(item1, item2): return False
         return True
     if tt1 is RawSQLType or tt2 is RawSQLType: return True
