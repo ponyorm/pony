@@ -71,7 +71,8 @@ raw_sql_cache = {}
 def parse_raw_sql(sql):
     result = raw_sql_cache.get(sql)
     if result is not None: return result
-    assert isinstance(sql, basestring) and len(sql) > 0
+    if not isinstance(sql, basestring) or not sql:
+        throw(TypeError, "Raw SQL string fragment expected. Got: %r" % sql)
     items = []
     codes = []
     pos = 0
