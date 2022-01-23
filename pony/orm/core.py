@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
+from pony.py23compat import iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
@@ -113,7 +113,7 @@ def format_arguments(arguments):
 
 def args2str(args):
     if isinstance(args, (tuple, list)):
-        return '[%s]' % ', '.join(imap(repr, args))
+        return '[%s]' % ', '.join(map(repr, args))
     elif isinstance(args, dict):
         return '{%s}' % ', '.join('%s:%s' % (repr(key), repr(val)) for key, val in sorted(iteritems(args)))
 
@@ -143,7 +143,7 @@ class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval=None):
         if pkval is not None:
             if type(pkval) is tuple:
-                pkval = ','.join(imap(repr, pkval))
+                pkval = ','.join(map(repr, pkval))
             else: pkval = repr(pkval)
             msg = '%s[%s]' % (entity.__name__, pkval)
         else: msg = entity.__name__
@@ -1126,7 +1126,7 @@ class Database(object):
                     if isinstance(attr.py_type, Array) and provider.dialect != 'PostgreSQL':
                         pass  # GIN indexes are supported only in PostgreSQL
                     else:
-                        columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
+                        columns = tuple(map(table.column_dict.__getitem__, attr.columns))
                         table.add_index(attr.index, columns, is_unique=attr.is_unique)
             entity._initialize_bits_()
 
@@ -1437,7 +1437,7 @@ class Database(object):
 
         def deserialize(x):
             t = type(x)
-            if t is list: return list(imap(deserialize, x))
+            if t is list: return list(map(deserialize, x))
             if t is dict:
                 if '_id_' not in x:
                     return {key: deserialize(val) for key, val in iteritems(x)}
@@ -2510,7 +2510,7 @@ class Attribute(object):
         t = attr.py_type
         if isinstance(t, type): t = t.__name__
         options = []
-        if attr.args: options.append(', '.join(imap(str, attr.args)))
+        if attr.args: options.append(', '.join(map(str, attr.args)))
         if attr.auto: options.append('auto=True')
         for k, v in sorted(attr.kwargs.items()):
             options.append('%s=%r' % (k, v))
@@ -3307,7 +3307,7 @@ class SetInstance(object):
     def __str__(wrapper):
         cache = wrapper._obj_._session_cache_
         if cache is None or not cache.is_alive: content = '...'
-        else: content = ', '.join(imap(str, wrapper))
+        else: content = ', '.join(map(str, wrapper))
         return '%s([%s])' % (wrapper.__class__.__name__, content)
     @cut_traceback
     def __nonzero__(wrapper):
@@ -4100,7 +4100,7 @@ class EntityMeta(type):
             if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
             avdict[attr] = attr.validate(val, None, entity, from_db=False)
         if entity._pk_is_composite_:
-            pkval = tuple(imap(avdict.get, entity._pk_attrs_))
+            pkval = tuple(map(avdict.get, entity._pk_attrs_))
             if None in pkval: pkval = None
         else: pkval = avdict.get(entity._pk_attrs_[0])
         for attr in avdict:
@@ -4701,7 +4701,7 @@ class Entity(with_metaclass(EntityMeta)):
             val = kwargs.get(attr.name, DEFAULT)
             avdict[attr] = attr.validate(val, obj, from_db=False)
         if entity._pk_is_composite_:
-            pkval = tuple(imap(avdict.get, entity._pk_attrs_))
+            pkval = tuple(map(avdict.get, entity._pk_attrs_))
             if None in pkval: pkval = None
         else: pkval = avdict.get(entity._pk_attrs_[0])
 
@@ -4786,7 +4786,7 @@ class Entity(with_metaclass(EntityMeta)):
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s[new:%d]' % (obj.__class__.__name__, obj._newid_)
-        if obj._pk_is_composite_: pkval = ','.join(imap(repr, pkval))
+        if obj._pk_is_composite_: pkval = ','.join(map(repr, pkval))
         else: pkval = repr(pkval)
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     @classmethod
@@ -5522,7 +5522,7 @@ def get_globals_and_locals(args, kwargs, frame_depth, from_generator=False):
             locals = locals.copy()
             locals.update(func.gi_frame.f_locals)
         if len(args) > 3: throw(TypeError, 'Excess positional argument%s: %s'
-                                % (len(args) > 4 and 's' or '', ', '.join(imap(repr, args[3:]))))
+                                % (len(args) > 4 and 's' or '', ', '.join(map(repr, args[3:]))))
     else:
         locals = {}
         if frame_depth is not None:

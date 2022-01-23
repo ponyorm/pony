@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import imap, basestring, unicode, buffer, int_types
+from pony.py23compat import basestring, unicode, buffer, int_types
 
 from operator import attrgetter
 from decimal import Decimal
@@ -185,7 +185,7 @@ class SQLBuilder(object):
             if param.id is None: param.id = i + 1
             layout.append(param.paramkey)
         builder.layout = layout
-        builder.sql = u''.join(imap(unicode, builder.result)).rstrip('\n')
+        builder.sql = u''.join(map(unicode, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
             def adapter(values):
                 return tuple(param.eval(values) for param in params)
@@ -392,7 +392,7 @@ class SQLBuilder(object):
     def STAR(builder, table_alias):
         return builder.quote_name(table_alias), '.*'
     def ROW(builder, *items):
-        return '(', join(', ', imap(builder, items)), ')'
+        return '(', join(', ', map(builder, items)), ')'
     def VALUE(builder, value):
         return builder.value_class(builder.paramstyle, value)
     def AND(builder, *cond_list):
@@ -428,7 +428,7 @@ class SQLBuilder(object):
         a, b = builder(a), builder(b)
         return 'abs(', a, ' - ', b, ') / coalesce(nullif(greatest(abs(', a, '), abs(', b, ')), 0), 1) > 1e-14'
     def CONCAT(builder, *args):
-        return '(',  join(' || ', imap(builder, args)), ')'
+        return '(',  join(' || ', map(builder, args)), ')'
     def NEG(builder, expr):
         return '-(', builder(expr), ')'
     def IS_NULL(builder, expr):
@@ -466,7 +466,7 @@ class SQLBuilder(object):
             if builder.dialect == 'PostgreSQL':
                 return 'COUNT(', builder.ROW(*expr_list), ')'
             else:
-                return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
+                return 'COUNT(', join(', ', map(builder, expr_list)), ')'
         if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
         if len(expr_list) == 1:
             return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
@@ -474,7 +474,7 @@ class SQLBuilder(object):
         if builder.dialect == 'PostgreSQL':
             return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
         elif builder.dialect == 'MySQL':
-            return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
+            return 'COUNT(DISTINCT ', join(', ', map(builder, expr_list)), ')'
         # Oracle and SQLite queries translated to completely different subquery syntax
         else: throw(NotImplementedError)  # This line must not be executed
     def SUM(builder, distinct, expr):
@@ -498,19 +498,19 @@ class SQLBuilder(object):
     ABS = make_unary_func('abs')
     def COALESCE(builder, *args):
         if len(args) < 2: assert False  # pragma: no cover
-        return 'coalesce(', join(', ', imap(builder, args)), ')'
+        return 'coalesce(', join(', ', map(builder, args)), ')'
     def MIN(builder, distinct, *args):
         assert not distinct, distinct
         if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MIN'
         else: fname = builder.least_func_name
-        return fname, '(',  join(', ', imap(builder, args)), ')'
+        return fname, '(',  join(', ', map(builder, args)), ')'
     def MAX(builder, distinct, *args):
         assert not distinct, distinct
         if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MAX'
         else: fname = builder.greatest_func_name
-        return fname, '(',  join(', ', imap(builder, args)), ')'
+        return fname, '(',  join(', ', map(builder, args)), ')'
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
         return 'substr(', builder(expr), ', ', builder(start), ', ', builder(len), ')'

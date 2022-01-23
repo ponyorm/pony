@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import imap, basestring, unicode, pickle, iteritems
+from pony.py23compat import basestring, unicode, pickle, iteritems
 
 import ast, io, re, os.path, sys, inspect, types, warnings
 

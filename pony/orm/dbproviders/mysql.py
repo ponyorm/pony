@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, basestring, buffer, int_types
+from pony.py23compat import basestring, buffer, int_types
 
 import json
 from decimal import Decimal
@@ -61,7 +61,7 @@ class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
     value_class = MySQLValue
     def CONCAT(builder, *args):
-        return 'concat(',  join(', ', imap(builder, args)), ')'
+        return 'concat(',  join(', ', map(builder, args)), ')'
     def TRIM(builder, expr, chars=None):
         if chars is None: return 'trim(', builder(expr), ')'
         return 'trim(both ', builder(chars), ' from ' ,builder(expr), ')'
@@ -186,7 +186,7 @@ class MySQLJsonConverter(dbapiprovider.JsonConverter):
     NE = 'JSON_NE'
     def init(self, kwargs):
         if self.provider.server_version < (5, 7, 8):
-            version = '.'.join(imap(str, self.provider.server_version))
+            version = '.'.join(map(str, self.provider.server_version))
             raise NotImplementedError("MySQL %s has no JSON support" % version)
 
 class MySQLProvider(DBAPIProvider):
@@ -341,6 +341,6 @@ def str2datetime(s):
     if 19 < len(s) < 26: s += '000000'[:26-len(s)]
     s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
     try:
-        return datetime(*imap(int, s.split()))
+        return datetime(*map(int, s.split()))
     except ValueError:
         return None  # for incorrect values like 0000-00-00 00:00:00
