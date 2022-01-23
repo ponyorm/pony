@@ -8,7 +8,6 @@ PY310 = sys.version_info[:2] >= (3, 10)
 
 import builtins, pickle
 from io import StringIO
-xrange = range
 basestring = str
 unicode = str
 buffer = bytes

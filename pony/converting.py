@@ -1,7 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import iteritems, xrange, unicode, basestring
+from pony.py23compat import iteritems, unicode, basestring
 
 import re
 from datetime import datetime, date, time, timedelta
@@ -32,7 +32,7 @@ isbn_re = re.compile(r'(?:\d[ -]?)+x?')
 
 def isbn10_checksum(digits):
     if len(digits) != 9: raise ValueError()
-    reminder = sum(digit*coef for digit, coef in zip(map(int, digits), xrange(10, 1, -1))) % 11
+    reminder = sum(digit*coef for digit, coef in zip(map(int, digits), range(10, 1, -1))) % 11
     if reminder == 1: return 'X'
     return reminder and str(11 - reminder) or '0'
 

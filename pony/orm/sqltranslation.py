@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY310, items_list, xrange, basestring, unicode, buffer, with_metaclass, int_types
+from pony.py23compat import PY310, items_list, basestring, unicode, buffer, with_metaclass, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -446,7 +446,7 @@ class SQLTranslator(ASTTranslator):
         if isinstance(expr_type, EntityMeta):
             entity = expr_type
             translator.expr_type = entity
-            monad.orderby_columns = list(xrange(1, len(entity._pk_columns_)+1))
+            monad.orderby_columns = list(range(1, len(entity._pk_columns_)+1))
             if monad.aggregated: throw(TranslationError)
             if isinstance(monad, QuerySetMonad):
                 throw(NotImplementedError)
@@ -508,7 +508,7 @@ class SQLTranslator(ASTTranslator):
                         if None in values: return None
                         return constructor(values)
                     row_layout.append((func, slice(offset, next_offset), ast2src(m.node)))
-                    m.orderby_columns = list(xrange(offset+1, next_offset+1))
+                    m.orderby_columns = list(range(offset+1, next_offset+1))
                     offset = next_offset
                 else:
                     converter = provider.get_converter_by_py_type(expr_type)
@@ -1267,9 +1267,9 @@ class SqlQuery(object):
     def join_table(sqlquery, parent_alias, alias, table_name, join_cond):
         new_item = [alias, 'TABLE', table_name, join_cond]
         from_ast = sqlquery.from_ast
-        for i in xrange(1, len(from_ast)):
+        for i in range(1, len(from_ast)):
             if from_ast[i][0] == parent_alias:
-                for j in xrange(i+1, len(from_ast)):
+                for j in range(i+1, len(from_ast)):
                     if len(from_ast[j]) < 4:  # item without join condition
                         from_ast.insert(j, new_item)
                         return
@@ -2308,7 +2308,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
             assert monad.translator.database is entity._database_, (paramkey, monad.translator.database, entity._database_)
         varkey, i, j = paramkey
         assert j is None
-        monad.params = tuple((varkey, i, j) for j in xrange(len(entity._pk_converters_)))
+        monad.params = tuple((varkey, i, j) for j in range(len(entity._pk_converters_)))
     def getsql(monad, sqlquery=None):
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
@@ -2599,7 +2599,7 @@ class CmpMonad(BoolMonad):
             if monad.translator.row_value_syntax:
                 return [ [ cmp_ops[op], [ 'ROW' ] + left_sql, [ 'ROW' ] + right_sql ] ]
             clauses = []
-            for i in xrange(size):
+            for i in range(size):
                 clause = [ [ monad.EQ, left_sql[j], right_sql[j] ] for j in range(i) ]
                 clause.append([ cmp_ops[op], left_sql[i], right_sql[i] ])
                 clauses.append(sqland(clause))

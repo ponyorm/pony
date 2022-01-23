@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import iteritems, itervalues, items_list, values_list, xrange, cmp, \
+from pony.py23compat import iteritems, itervalues, items_list, values_list, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
@@ -513,7 +513,7 @@ class DBSessionContextManager(object):
 
             exc = tb = None
             try:
-                for i in xrange(db_session.retry+1):
+                for i in range(db_session.retry+1):
                     db_session._enter()
                     exc_type = exc = tb = None
                     try:
@@ -915,7 +915,7 @@ class Database(object):
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
             ast = [ 'INSERT', table_name, kwargs.keys(),
-                    [ [ 'PARAM', (i, None, None) ] for i in xrange(len(kwargs)) ], returning ]
+                    [ [ 'PARAM', (i, None, None) ] for i in range(len(kwargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
@@ -1871,7 +1871,7 @@ class SessionCache(object):
         prev_immediate = cache.immediate
         cache.immediate = True
         try:
-            for i in xrange(50):
+            for i in range(50):
                 if not cache.modified: return
 
                 with cache.flush_disabled():
@@ -2257,7 +2257,7 @@ class Attribute(object):
                                   for i, (column, converter) in enumerate(zip(pk_columns, pk_converters)) ]
                 sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
                 sql, adapter = database._ast2sql(sql_ast)
-                offsets = tuple(xrange(len(attr.columns)))
+                offsets = tuple(range(len(attr.columns)))
                 attr.lazy_sql_cache = sql, adapter, offsets
             else: sql, adapter, offsets = attr.lazy_sql_cache
             arguments = adapter(obj._get_raw_pkval_())
@@ -2777,19 +2777,19 @@ def construct_batchload_criteria_list(alias, columns, converters, batch_size, ro
     if len(columns) == 1:
         column = columns[0]
         converter = converters[0]
-        param_list = [ param(i+start, 0, converter) for i in xrange(batch_size) ]
+        param_list = [ param(i+start, 0, converter) for i in range(batch_size) ]
         condition = [ 'IN', [ 'COLUMN', alias, column ], param_list ]
         return [ condition ]
     elif row_value_syntax:
         row = [ 'ROW' ] + [ [ 'COLUMN', alias, column ] for column in columns ]
         param_list = [ [ 'ROW' ] + [ param(i+start, j, converter) for j, converter in enumerate(converters) ]
-                       for i in xrange(batch_size) ]
+                       for i in range(batch_size) ]
         condition = [ 'IN', row, param_list ]
         return [ condition ]
     else:
         conditions = [ [ 'AND' ] + [ [ converter.EQ, [ 'COLUMN', alias, column ], param(i+start, j, converter) ]
                                      for j, (column, converter) in enumerate(zip(columns, converters)) ]
-                       for i in xrange(batch_size) ]
+                       for i in range(batch_size) ]
         return [ [ 'OR' ] + conditions ]
 
 class Set(Collection):
@@ -2834,7 +2834,7 @@ class Set(Collection):
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         result = set()
         if not reverse.is_collection:
-            for i in xrange(0, len(objects), max_batch_size):
+            for i in range(0, len(objects), max_batch_size):
                 batch = objects[i:i+max_batch_size]
                 sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(batch), reverse)
                 arguments = adapter(batch)
@@ -2843,7 +2843,7 @@ class Set(Collection):
         else:
             pk_len = len(entity._pk_columns_)
             m2m_dict = defaultdict(set)
-            for i in xrange(0, len(objects), max_batch_size):
+            for i in range(0, len(objects), max_batch_size):
                 batch = objects[i:i+max_batch_size]
                 sql, adapter = attr.construct_sql_m2m(len(batch))
                 arguments = adapter(batch)
@@ -3640,7 +3640,7 @@ class Multiset(object):
     @cut_traceback
     def __iter__(multiset):
         for item, cnt in iteritems(multiset._items_):
-            for i in xrange(cnt): yield item
+            for i in range(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
         if isinstance(other, Multiset):
@@ -4054,10 +4054,10 @@ class EntityMeta(type):
         result = []
         tried_ids = set()
         found_in_cache = False
-        for i in xrange(5):
+        for i in range(5):
             ids = []
             n = (limit - len(result)) * (i+1)
-            for j in xrange(n * 2):
+            for j in range(n * 2):
                 id = randint(1, max_id)
                 if id in tried_ids: continue
                 if id in ids: continue
@@ -4186,7 +4186,7 @@ class EntityMeta(type):
                 used_columns.add(offset)
             else: attr_offsets[attr] = offsets
         if len(used_columns) < len(col_names):
-            for i in xrange(len(col_names)):
+            for i in range(len(col_names)):
                 if i not in used_columns: throw(NameError,
                     'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
         for attr in entity._pk_attrs_:
@@ -4797,7 +4797,7 @@ class Entity(with_metaclass(EntityMeta)):
         if cache is None or not cache.is_alive:
             throw(DatabaseSessionIsOver, 'Cannot load objects from the database: the database session is over')
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
-        for i in xrange(0, len(objects), max_batch_size):
+        for i in range(0, len(objects), max_batch_size):
             batch = objects[i:i+max_batch_size]
             sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(batch))
             arguments = adapter(batch)
@@ -5935,7 +5935,7 @@ class Query(object):
         translator = query._translator
         if translator.order: pass
         elif type(translator.expr_type) is tuple:
-            query = query.order_by(*[i+1 for i in xrange(len(query._translator.expr_type))])
+            query = query.order_by(*[i+1 for i in range(len(query._translator.expr_type))])
         else:
             query = query.order_by(1)
         objects = query.without_distinct()[:1]
@@ -6417,7 +6417,7 @@ class QueryResult(object):
                 width_dict[col_num] = base_len
 
         writeln(strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(col_names))))
-        writeln(strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names)))))
+        writeln(strjoin('+', ('-' * width_dict[i] for i in range(len(col_names)))))
         for row in rows:
             writeln(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
         stream.flush()
