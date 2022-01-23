@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import itervalues, items_list, values_list, cmp, \
+from pony.py23compat import items_list, values_list, cmp, \
                             basestring, unicode, buffer, int_types, builtins, with_metaclass
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
@@ -2930,7 +2930,7 @@ class Set(Collection):
         if prefetching:
             pk_index = cache.indexes[entity._pk_attrs_]
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
-            for obj2 in itervalues(pk_index):
+            for obj2 in pk_index.values():
                 if obj2 is obj: continue
                 if obj2._status_ in created_or_deleted_statuses: continue
                 setdata2 = obj2._vals_.get(attr)
@@ -3621,7 +3621,7 @@ class Multiset(object):
     def __repr__(multiset):
         cache = multiset._obj_._session_cache_
         if cache is not None and cache.is_alive:
-            size = builtins.sum(itervalues(multiset._items_))
+            size = builtins.sum(multiset._items_.values())
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''

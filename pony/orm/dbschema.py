@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import itervalues, basestring, int_types
+from pony.py23compat import basestring, int_types
 
 from operator import attrgetter
 
@@ -32,7 +32,7 @@ class DBSchema(object):
         tables = []
         created_tables = set()
         split = schema.provider.split_table_name
-        tables_to_create = sorted(itervalues(schema.tables), key=lambda table: split(table.name))
+        tables_to_create = sorted(schema.tables.values(), key=lambda table: split(table.name))
         while tables_to_create:
             for table in tables_to_create:
                 if table.parent_tables.issubset(created_tables):
@@ -66,7 +66,7 @@ class DBSchema(object):
     def check_tables(schema, provider, connection):
         cursor = connection.cursor()
         split = provider.split_table_name
-        for table in sorted(itervalues(schema.tables), key=lambda table: split(table.name)):
+        for table in sorted(schema.tables.values(), key=lambda table: split(table.name)):
             alias = provider.base_name(table.name)
             sql_ast = [ 'SELECT',
                         [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
@@ -133,13 +133,13 @@ class Table(DBObject):
             cmd.append(schema.indent + column.get_sql() + ',')
         if len(table.pk_index.columns) > 1:
             cmd.append(schema.indent + table.pk_index.get_sql() + ',')
-        indexes = [ index for index in itervalues(table.indexes)
+        indexes = [ index for index in table.indexes.values()
                     if not index.is_pk and index.is_unique and len(index.columns) > 1 ]
         for index in indexes: assert index.name is not None
         indexes.sort(key=attrgetter('name'))
         for index in indexes: cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
-            for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
+            for foreign_key in sorted(table.foreign_keys.values(), key=lambda fk: fk.name):
                 if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
                 cmd.append(schema.indent+foreign_key.get_sql() + ',')
         interleave_fks = [ fk for fk in table.foreign_keys.values() if fk.interleave ]
@@ -168,18 +168,18 @@ class Table(DBObject):
         if created_tables is None: created_tables = set()
         created_tables.add(table)
         result = [ table ]
-        indexes = [ index for index in itervalues(table.indexes) if not index.is_pk and not index.is_unique ]
+        indexes = [ index for index in table.indexes.values() if not index.is_pk and not index.is_unique ]
         for index in indexes: assert index.name is not None
         indexes.sort(key=attrgetter('name'))
         result.extend(indexes)
         schema = table.schema
         if schema.named_foreign_keys:
-            for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
+            for foreign_key in sorted(table.foreign_keys.values(), key=lambda fk: fk.name):
                 if foreign_key.parent_table not in created_tables: continue
                 result.append(foreign_key)
             for child_table in table.child_tables:
                 if child_table not in created_tables: continue
-                for foreign_key in sorted(itervalues(child_table.foreign_keys), key=lambda fk: fk.name):
+                for foreign_key in sorted(child_table.foreign_keys.values(), key=lambda fk: fk.name):
                     if foreign_key.parent_table is not table: continue
                     result.append(foreign_key)
         return result

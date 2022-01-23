@@ -16,9 +16,6 @@ int_types = (int,)
 def cmp(a, b):
     return (a > b) - (a < b)
 
-def itervalues(dict):
-    return iter(dict.values())
-
 def items_list(dict):
     return list(dict.items())
 
