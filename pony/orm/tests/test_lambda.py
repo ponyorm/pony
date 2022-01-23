@@ -8,6 +8,7 @@ db = Database()
 
 
 class User(db.Entity):
+    id = PrimaryKey(int)
     login = Required(str)
     password = Required(str)
     created_at = Required(datetime, default=datetime.now())
@@ -21,9 +22,9 @@ class TestLambda(unittest.TestCase):
     @classmethod
     def setUp(self) -> None:
         with db_session:
-            User(login='test', password='123456', created_at=datetime(2012, 12, 13, 5, 25, 30))
-            User(login='test2', password='123456', created_at=datetime(2015, 12, 13, 5, 25, 30))
-            User(login='test3', password='123456')
+            User(id=1, login='test', password='123456', created_at=datetime(2012, 12, 13, 5, 25, 30))
+            User(id=2, login='test2', password='123456', created_at=datetime(2015, 12, 13, 5, 25, 30))
+            User(id=3, login='test3', password='123456')
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -35,6 +36,27 @@ class TestLambda(unittest.TestCase):
             User.select().delete()
 
     @db_session
-    def test1(self):
+    def test_select(self):
         result = User.select(lambda u: u.created_at < datetime.now() - timedelta(days=365))[:]
-        self.assertEqual([User[1], User[2]], result)
+        self.assertEqual([u.id for u in result], [1, 2])
+
+    @db_session
+    def test_order_by_1(self):
+        result = User.select().order_by(lambda u: u.id)
+        self.assertEqual([u.id for u in result], [1, 2, 3])
+
+    @db_session
+    def test_order_by_2(self):
+        result = User.select().order_by(lambda u: desc(u.id))
+        self.assertEqual([u.id for u in result], [3, 2, 1])
+
+    @db_session
+    def test_order_by_3(self):
+        result = User.select().order_by(lambda u: (u.login, u.id))
+        self.assertEqual([u.id for u in result], [1, 2, 3])
+
+    @db_session
+    def test_order_by_4(self):
+        result = User.select().order_by(lambda u: (desc(u.login), desc(u.id)))
+        self.assertEqual([u.id for u in result], [3, 2, 1])
+
