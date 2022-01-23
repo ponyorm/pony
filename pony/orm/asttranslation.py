@@ -269,19 +269,12 @@ class PythonTranslator(ASTTranslator):
         if len(node.elts) == 1:
             return '(%s,)' % node.elts[0].src
         return '(%s)' % ', '.join(elt.src for elt in node.elts)
-    def postAssTuple(translator, node):
-        node.priority = 1
-        if len(node.nodes) == 1: return '(%s,)' % node.nodes[0].src
-        else: return '(%s)' % ', '.join(item.src for item in node.nodes)
     def postDict(translator, node):
         node.priority = 1
         return '{%s}' % ', '.join('%s:%s' % (key.src, value.src) for key, value in zip(node.keys, node.values))
     def postSet(translator, node):
         node.priority = 1
         return '{%s}' % ', '.join(item.src for item in node.nodes)
-    def postBackquote(translator, node):
-        node.priority = 1
-        return '`%s`' % node.expr.src
     def postName(translator, node):
         node.priority = 1
         return node.id
