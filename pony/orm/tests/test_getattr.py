@@ -1,5 +1,3 @@
-from pony.py23compat import basestring
-
 import unittest
 
 from pony.orm import *
@@ -45,7 +43,7 @@ class Test(unittest.TestCase):
 
     @db_session
     def test_no_caching(self):
-        for attr_name, attr_type in zip(['name', 'age'], [basestring, int]):
+        for attr_name, attr_type in zip(['name', 'age'], [str, int]):
             val = select(getattr(x, attr_name) for x in self.db.Artist).first()
             self.assertIsInstance(val, attr_type)
 

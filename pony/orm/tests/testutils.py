@@ -1,5 +1,4 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring
 
 import re
 from contextlib import contextmanager
@@ -49,7 +48,7 @@ def raises_if(test_case, cond, exc_class, test_msg=None):
 def flatten(x):
     result = []
     for el in x:
-        if hasattr(el, "__iter__") and not isinstance(el, basestring):
+        if hasattr(el, "__iter__") and not isinstance(el, str):
             result.extend(flatten(el))
         else:
             result.append(el)
@@ -100,7 +99,7 @@ class TestDatabase(Database):
     sql = None
     def bind(self, provider, *args, **kwargs):
         provider_name = provider
-        assert isinstance(provider_name, basestring)
+        assert isinstance(provider_name, str)
         if self.real_provider_name is not None:
             provider_name = self.real_provider_name
         self.provider_name = provider_name

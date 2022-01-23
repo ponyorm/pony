@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import basestring, buffer, int_types
+from pony.py23compat import buffer, int_types
 
 import json
 from decimal import Decimal
@@ -211,7 +211,7 @@ class MySQLProvider(DBAPIProvider):
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
-        (basestring, MySQLStrConverter),
+        (str, MySQLStrConverter),
         (int_types, dbapiprovider.IntConverter),
         (float, MySQLRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),

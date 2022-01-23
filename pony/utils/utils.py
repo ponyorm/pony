@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import basestring, unicode, pickle
+from pony.py23compat import unicode, pickle
 
 import ast, io, re, os.path, sys, inspect, types, warnings
 
@@ -300,7 +300,7 @@ def parse_expr(s, pos=0):
         else: assert False  # pragma: no cover
 
 def tostring(x):
-    if isinstance(x, basestring): return x
+    if isinstance(x, str): return x
     if hasattr(x, '__unicode__'):
         try: return unicode(x)
         except: pass

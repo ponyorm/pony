@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import basestring, unicode, buffer, int_types
+from pony.py23compat import unicode, buffer, int_types
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -86,7 +86,7 @@ class PGSQLBuilder(SQLBuilder):
         for value in values:
             if isinstance(value, int):
                 result.append(str(value))
-            elif isinstance(value, basestring):
+            elif isinstance(value, str):
                 result.append(value if is_ident(value) else '"%s"' % value.replace('"', '\\"'))
             else: assert False, value
         return '{%s}' % ','.join(result)
@@ -297,7 +297,7 @@ class PGProvider(DBAPIProvider):
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
-        (basestring, dbapiprovider.StrConverter),
+        (str, dbapiprovider.StrConverter),
         (int_types, PGIntConverter),
         (float, PGRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),

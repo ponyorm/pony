@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import cmp, basestring, unicode, buffer, int_types, builtins
+from pony.py23compat import cmp, unicode, buffer, int_types, builtins
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
 from operator import attrgetter, itemgetter
@@ -706,7 +706,7 @@ class OnConnectDecorator(object):
     @staticmethod
     def check_provider(provider):
         if provider:
-            if not isinstance(provider, basestring):
+            if not isinstance(provider, str):
                 throw(TypeError, "'provider' option should be type of 'string', got %r" % type(provider).__name__)
             if provider not in known_providers:
                 throw(BindingError, 'Unknown provider %s' % provider)
@@ -719,7 +719,7 @@ class OnConnectDecorator(object):
     def __call__(self, func=None, provider=None):
         if isinstance(func, types.FunctionType):
             self.database._on_connect_funcs.append((func, provider or self.provider))
-        if not provider and func is basestring:
+        if not provider and func is str:
             provider = func
         OnConnectDecorator.check_provider(provider)
         return OnConnectDecorator(self.database, provider)
@@ -771,7 +771,7 @@ class Database(object):
         if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
             provider_cls = provider
         else:
-            if not isinstance(provider, basestring):
+            if not isinstance(provider, str):
                 throw(TypeError, 'Provider name should be string. Got: %r' % type(provider).__name__)
             if provider == 'pygresql': throw(TypeError,
                 'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
@@ -979,7 +979,7 @@ class Database(object):
             elif table_name is None:
                 table_name = provider.get_default_entity_table_name(entity)
                 entity._table_ = table_name
-            else: assert isinstance(table_name, (basestring, tuple))
+            else: assert isinstance(table_name, (str, tuple))
 
             table = schema.tables.get(table_name)
             if table is None: table = schema.add_table(table_name, entity)
@@ -1014,7 +1014,7 @@ class Database(object):
                         if not attr.table:
                             seq_counter = itertools.count(2)
                             while m2m_table is not None:
-                                if isinstance(table_name, basestring):
+                                if isinstance(table_name, str):
                                     new_table_name = table_name + '_%d' % next(seq_counter)
                                 else:
                                     schema_name, base_name = provider.split_table_name(table_name)
@@ -1149,9 +1149,9 @@ class Database(object):
             else: throw(TypeError, 'Table name cannot be None')
         elif isinstance(table_name, tuple):
             for component in table_name:
-                if not isinstance(component, basestring):
+                if not isinstance(component, str):
                     throw(TypeError, 'Invalid table name component: {}'.format(component))
-        elif isinstance(table_name, basestring):
+        elif isinstance(table_name, str):
             table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         else: throw(TypeError, 'Invalid table name: {}'.format(table_name))
         return table_name
@@ -1170,7 +1170,7 @@ class Database(object):
             if provider.table_exists(connection, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
-                    if isinstance(table_name, basestring):
+                    if isinstance(table_name, str):
                         normalized_table_name = provider.normalize_name(table_name)
                     else:
                         schema_name, base_name = provider.split_table_name(table_name)
@@ -1235,7 +1235,7 @@ class Database(object):
                     d['reverse'] = attr.reverse.name
                 if attr.lazy: d['lazy'] = True
                 if attr.nullable: d['nullable'] = True
-                if attr.default and issubclass(type(attr.default), (int_types, basestring)):
+                if attr.default and issubclass(type(attr.default), (int_types, str)):
                     d['defaultValue'] = attr.default
                 attrs.append(d)
             d = dict(name=entity.__name__, newAttrs=attrs, pkAttrs=[ attr.name for attr in entity._pk_attrs_ ])
@@ -1476,7 +1476,7 @@ def perm(*args, **kwargs):
 
 def _split_names(typename, names):
     if names is None: return set()
-    if isinstance(names, basestring):
+    if isinstance(names, str):
         names = names.replace(',', ' ').split()
     else:
         try: namelist = list(names)
@@ -1607,7 +1607,7 @@ def get_user_groups(user):
     for cls, func in usergroup_functions:
         if cls is None or isinstance(user, cls):
             groups = func(user)
-            if isinstance(groups, basestring):  # single group name
+            if isinstance(groups, str):  # single group name
                 result.add(groups)
             elif groups is not None:
                 result.update(groups)
@@ -1626,7 +1626,7 @@ def get_user_roles(user, obj):
         if user_cls is None or isinstance(user, user_cls):
             if obj_cls is None or isinstance(obj, obj_cls):
                 roles = func(user, obj)
-                if isinstance(roles, basestring):  # single role name
+                if isinstance(roles, str):  # single role name
                     result.add(roles)
                 elif roles is not None:
                     result.update(roles)
@@ -1643,7 +1643,7 @@ def get_object_labels(obj):
         for obj_cls, func in objlabel_functions:
             if obj_cls is None or isinstance(obj, obj_cls):
                 labels = func(obj)
-                if isinstance(labels, basestring):  # single label name
+                if isinstance(labels, str):  # single label name
                     result.add(labels)
                 elif labels is not None:
                     result.update(labels)
@@ -2030,15 +2030,15 @@ class Attribute(object):
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
         attr.id = next(attr_id_counter)
-        if not isinstance(py_type, (type, basestring, types.FunctionType, Array)):
+        if not isinstance(py_type, (type, str, types.FunctionType, Array)):
             if py_type is datetime: throw(TypeError,
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
             throw(TypeError, 'Incorrect type of attribute: %r' % py_type)
         attr.py_type = py_type
-        attr.is_string = type(py_type) is type and issubclass(py_type, basestring)
+        attr.is_string = type(py_type) is type and issubclass(py_type, str)
         attr.type_has_empty_value = attr.is_string or hasattr(attr.py_type, 'default_empty_value')
         attr.is_collection = isinstance(attr, Collection)
-        attr.is_relation = isinstance(attr.py_type, (EntityMeta, basestring, types.FunctionType))
+        attr.is_relation = isinstance(attr.py_type, (EntityMeta, str, types.FunctionType))
         attr.is_basic = not attr.is_collection and not attr.is_relation
         attr.sql_type = kwargs.pop('sql_type', None)
         attr.entity = attr.name = None
@@ -2048,7 +2048,7 @@ class Attribute(object):
 
         attr.reverse = kwargs.pop('reverse', None)
         if not attr.reverse: pass
-        elif not isinstance(attr.reverse, (basestring, Attribute)):
+        elif not isinstance(attr.reverse, (str, Attribute)):
             throw(TypeError, "Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not attr.is_relation:
             throw(TypeError, 'Reverse option cannot be set for this type: %r' % attr.py_type)
@@ -2058,14 +2058,14 @@ class Attribute(object):
         if attr.column is not None:
             if attr.columns is not None:
                 throw(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
-            if not isinstance(attr.column, basestring):
+            if not isinstance(attr.column, str):
                 throw(TypeError, "Parameter 'column' must be a string. Got: %r" % attr.column)
             attr.columns = [ attr.column ]
         elif attr.columns is not None:
             if not isinstance(attr.columns, (tuple, list)):
                 throw(TypeError, "Parameter 'columns' must be a list. Got: %r'" % attr.columns)
             for column in attr.columns:
-                if not isinstance(column, basestring):
+                if not isinstance(column, str):
                     throw(TypeError, "Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
@@ -2117,7 +2117,7 @@ class Attribute(object):
             attr.default = None
 
         sql_default = attr.sql_default
-        if isinstance(sql_default, basestring):
+        if isinstance(sql_default, str):
             if sql_default == '': throw(TypeError,
                 "'sql_default' option value cannot be empty string, "
                 "because it should be valid SQL literal or expression. "
@@ -2461,7 +2461,7 @@ class Attribute(object):
         return val._get_raw_pkval_()
     def get_columns(attr):
         assert not attr.is_collection
-        assert not isinstance(attr.py_type, basestring)
+        assert not isinstance(attr.py_type, str)
         if attr._columns_checked: return attr.columns
 
         provider = attr.entity._database_.provider
@@ -2569,7 +2569,7 @@ class Discriminator(Required):
             except ValueError: throw(TypeError,
                 "Incorrect discriminator value is set for %s attribute '%s' of '%s' type: %r"
                 % (entity.__name__, attr.name, attr.py_type.__name__, discr_value))
-        elif issubclass(attr.py_type, basestring):
+        elif issubclass(attr.py_type, str):
             discr_value = entity._discriminator_ = entity.__name__
         else: throw(TypeError, "Discriminator value for entity %s "
                                "with custom discriminator column '%s' of '%s' type is not set"
@@ -2613,7 +2613,7 @@ class Index(object):
         index.entity = entity
         attrs = index.attrs
         for i, attr in enumerate(index.attrs):
-            if isinstance(attr, basestring):
+            if isinstance(attr, str):
                 try: attr = getattr(entity, attr)
                 except AttributeError: throw(AttributeError,
                     'Entity %s does not have attribute %s' % (entity.__name__, attr))
@@ -2692,11 +2692,11 @@ class Collection(Attribute):
     def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
         table = kwargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
-        if table is not None and not isinstance(table, basestring):
+        if table is not None and not isinstance(table, str):
             if not isinstance(table, (list, tuple)):
                 throw(TypeError, "Parameter 'table' must be a string. Got: %r" % table)
             for name_part in table:
-                if not isinstance(name_part, basestring):
+                if not isinstance(name_part, str):
                     throw(TypeError, 'Each part of table name must be a string. Got: %r' % name_part)
             table = tuple(table)
         attr.table = table
@@ -2709,14 +2709,14 @@ class Collection(Attribute):
         if attr.reverse_column is not None:
             if attr.reverse_columns is not None and attr.reverse_columns != [ attr.reverse_column ]:
                 throw(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
-            if not isinstance(attr.reverse_column, basestring):
+            if not isinstance(attr.reverse_column, str):
                 throw(TypeError, "Parameter 'reverse_column' must be a string. Got: %r" % attr.reverse_column)
             attr.reverse_columns = [ attr.reverse_column ]
         elif attr.reverse_columns is not None:
             if not isinstance(attr.reverse_columns, (tuple, list)):
                 throw(TypeError, "Parameter 'reverse_columns' must be a list. Got: %r" % attr.reverse_columns)
             for reverse_column in attr.reverse_columns:
-                if not isinstance(reverse_column, basestring):
+                if not isinstance(reverse_column, str):
                     throw(TypeError, "Parameter 'reverse_columns' must be a list of strings. Got: %r" % attr.reverse_columns)
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
         else: attr.reverse_columns = []
@@ -3829,11 +3829,11 @@ class EntityMeta(type):
         try: table_name = entity.__dict__['_table_']
         except KeyError: entity._table_ = None
         else:
-            if not isinstance(table_name, basestring):
+            if not isinstance(table_name, str):
                 if not isinstance(table_name, (list, tuple)): throw(TypeError,
                     '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
                 for name_part in table_name:
-                    if not isinstance(name_part, basestring):throw(TypeError,
+                    if not isinstance(name_part, str):throw(TypeError,
                         'Each part of table name must be a string. Got: %r' % name_part)
                 entity._table_ = table_name = tuple(table_name)
 
@@ -3891,7 +3891,7 @@ class EntityMeta(type):
         database = entity._database_
         for attr in entity._new_attrs_:
             py_type = attr.py_type
-            if isinstance(py_type, basestring):
+            if isinstance(py_type, str):
                 rentity = database.entities.get(py_type)
                 if rentity is None:
                     throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
@@ -3915,7 +3915,7 @@ class EntityMeta(type):
                                    'Entities %s and %s belongs to different databases'
                                    % (entity.__name__, entity2.__name__))
             reverse = attr.reverse
-            if isinstance(reverse, basestring):
+            if isinstance(reverse, str):
                 attr2 = getattr(entity2, reverse, None)
                 if attr2 is None: throw(ERDiagramError, 'Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
@@ -4169,7 +4169,7 @@ class EntityMeta(type):
         objects = entity._fetch_objects(cursor, attr_offsets, 1, for_update, avdict)
         return objects[0] if objects else None
     def _find_by_sql_(entity, max_fetch_count, sql, globals, locals, frame_depth):
-        if not isinstance(sql, basestring): throw(TypeError)
+        if not isinstance(sql, str): throw(TypeError)
         database = entity._database_
         cursor = database._exec_raw_sql(sql, globals, locals, frame_depth+1)
 
@@ -4372,7 +4372,7 @@ class EntityMeta(type):
             names = get_lambda_args(func)
             code_key = id(func.__code__)
             cond_expr, external_names, cells = decompile(func)
-        elif isinstance(func, basestring):
+        elif isinstance(func, str):
             code_key = func
             lambda_ast = string2ast(func)
             if not isinstance(lambda_ast, ast.Lambda):
@@ -4542,15 +4542,15 @@ class EntityMeta(type):
     def drop_table(entity, with_all_data=False):
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
     def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
-        if only and not isinstance(only, basestring): only = tuple(only)
-        if exclude and not isinstance(exclude, basestring): exclude = tuple(exclude)
+        if only and not isinstance(only, str): only = tuple(only)
+        if exclude and not isinstance(exclude, str): exclude = tuple(exclude)
         key = (only, exclude, with_collections, with_lazy)
         attrs = entity._attrnames_cache_.get(key)
         if not attrs:
             attrs = []
             append = attrs.append
             if only:
-                if isinstance(only, basestring): only = only.replace(',', ' ').split()
+                if isinstance(only, str): only = only.replace(',', ' ').split()
                 get_attr = entity._adict_.get
                 for attrname in only:
                     attr = get_attr(attrname)
@@ -4565,7 +4565,7 @@ class EntityMeta(type):
                         if with_lazy: append(attr)
                     else: append(attr)
             if exclude:
-                if isinstance(exclude, basestring): exclude = exclude.replace(',', ' ').split()
+                if isinstance(exclude, str): exclude = exclude.replace(',', ' ').split()
                 for attrname in exclude:
                     if attrname not in entity._adict_: throw(AttributeError,
                         'Entity %s does not have attribute %s' % (entity.__name__, attrname))
@@ -4837,7 +4837,7 @@ class Entity(object, metaclass=EntityMeta):
             args = attrs
             attrs = set()
             for arg in args:
-                if isinstance(arg, basestring):
+                if isinstance(arg, str):
                     attr = entity._adict_.get(arg)
                     if attr is None:
                         if not is_ident(arg): throw(ValueError, 'Invalid attribute name: %r' % arg)
@@ -5503,10 +5503,10 @@ def get_globals_and_locals(args, kwargs, frame_depth, from_generator=False):
     assert args_len > 0
     func = args[0]
     if from_generator:
-        if not isinstance(func, (basestring, types.GeneratorType)): throw(TypeError,
+        if not isinstance(func, (str, types.GeneratorType)): throw(TypeError,
             'The first positional argument must be generator expression or its text source. Got: %r' % func)
     else:
-        if not isinstance(func, (basestring, types.FunctionType)): throw(TypeError,
+        if not isinstance(func, (str, types.FunctionType)): throw(TypeError,
             'The first positional argument must be lambda function or its text source. Got: %r' % func)
     if args_len > 1:
         globals = args[1]
@@ -5540,7 +5540,7 @@ def make_query(args, frame_depth, left_join=False):
     if isinstance(gen, types.GeneratorType):
         tree, external_names, cells = decompile(gen)
         code_key = id(gen.gi_frame.f_code)
-    elif isinstance(gen, basestring):
+    elif isinstance(gen, str):
         tree = string2ast(gen)
         if not isinstance(tree, ast.GeneratorExp):
             throw(TypeError, 'Source code should represent generator. Got: %s' % gen)
@@ -5603,7 +5603,7 @@ def desc(expr):
         return expr.attr
     if isinstance(expr, int_types):
         return -expr
-    if isinstance(expr, basestring):
+    if isinstance(expr, str):
         return 'desc(%s)' % expr
     return expr
 
@@ -6001,7 +6001,7 @@ class Query(object):
                 query._database._translator_cache[new_key] = new_translator
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
-        if isinstance(args[0], (basestring, types.FunctionType)):
+        if isinstance(args[0], (str, types.FunctionType)):
             func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=cut_traceback_depth+2)
             return query._process_lambda(func, globals, locals, order_by=True)
 
@@ -6030,7 +6030,7 @@ class Query(object):
     def _process_lambda(query, func, globals, locals, order_by=False, original_names=False):
         prev_translator = query._translator
         argnames = ()
-        if isinstance(func, basestring):
+        if isinstance(func, str):
             func_id = func
             func_ast = string2ast(func)
             if isinstance(func_ast, ast.Lambda):
@@ -6215,7 +6215,7 @@ class Query(object):
                 if aggr_func_name == 'AVG':
                     expr_type = float
                 elif aggr_func_name == 'GROUP_CONCAT':
-                    expr_type = basestring
+                    expr_type = str
                 else:
                     expr_type = translator.expr_type
                 provider = query._database.provider
@@ -6232,7 +6232,7 @@ class Query(object):
     @cut_traceback
     def group_concat(query, sep=None, distinct=None):
         if sep is not None:
-            if not isinstance(sep, basestring):
+            if not isinstance(sep, str):
                 throw(TypeError, '`sep` option for `group_concat` should be of type str. Got: %s' % type(sep).__name__)
         return query._aggregate('GROUP_CONCAT', distinct, sep)
     @cut_traceback
@@ -6471,7 +6471,7 @@ def show(entity):
         #     print('  %s: %s' % (attr.name, strcut(value, width-len(attr.name)-4)))
         # print()
         QueryResult([ x ], None, x.__class__, None).show()
-    elif isinstance(x, (basestring, types.GeneratorType)):
+    elif isinstance(x, (str, types.GeneratorType)):
         select(x).show()
     elif hasattr(x, 'show'):
         x.show()

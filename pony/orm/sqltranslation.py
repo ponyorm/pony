@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY310, basestring, unicode, buffer, int_types
+from pony.py23compat import PY310, unicode, buffer, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -189,7 +189,7 @@ class SQLTranslator(ASTTranslator):
                     exc.args = (ast2src(node),)
                 else:
                     msg = exc.args[0]
-                    if isinstance(msg, basestring) and '{EXPR}' in msg:
+                    if isinstance(msg, str) and '{EXPR}' in msg:
                         msg = msg.replace('{EXPR}', ast2src(node))
                         exc.args = (msg,) + exc.args[1:]
                 reraise(exc_class, exc, tb)
@@ -643,7 +643,7 @@ class SQLTranslator(ASTTranslator):
                 if expr[0] == 'AS': expr = expr[1]
                 select_ast[i+1] = [ 'AS', expr, alias ]
         elif star is not None:
-            assert isinstance(star, basestring)
+            assert isinstance(star, str)
             for section in subquery_ast:
                 assert section[0] not in ('GROUP_BY', 'HAVING'), subquery_ast
             select_ast[1:] = [ [ 'STAR', star ] ]
@@ -1612,7 +1612,7 @@ class RawSQLMonad(Monad):
         result = []
         types = enumerate(rawtype.types)
         for item in monad.rawtype.items:
-            if isinstance(item, basestring):
+            if isinstance(item, str):
                 result.append(item)
             else:
                 expr, code = item
@@ -1894,7 +1894,7 @@ def make_string_func(sqlop):
 
 class StringMixin(MonadMixin):
     def mixin_init(monad):
-        assert issubclass(monad.type, basestring), monad.type
+        assert issubclass(monad.type, str), monad.type
     __add__ = make_string_binop('+', 'CONCAT')
     def __getitem__(monad, index):
         root_translator = monad.translator.root_translator
@@ -2689,7 +2689,7 @@ class HybridFuncMonad(Monad):
             finally:
                 translator.code_key = prev_code_key
         except Exception as e:
-            if len(e.args) == 1 and isinstance(e.args[0], basestring):
+            if len(e.args) == 1 and isinstance(e.args[0], str):
                 msg = e.args[0] + ' (inside %s)' % (monad.func_name)
                 e.args = (msg,)
             raise
@@ -2897,7 +2897,7 @@ class FuncGetattrMonad(FuncMonad):
                 translator.fixed_param_values[key] = attrname
         else: throw(TranslationError, 'Expression `{EXPR}` cannot be translated into SQL '
                                       'because %s will be different for each row' % ast2src(name_monad.node))
-        if not isinstance(attrname, basestring):
+        if not isinstance(attrname, str):
             throw(TypeError, 'In `{EXPR}` second argument should be a string. Got: %r' % attrname)
         return obj_monad.getattr(attrname)
 
@@ -2937,7 +2937,7 @@ class FuncGroupConcatMonad(FuncMonad):
         if sep is not None:
             if distinct and monad.translator.database.provider.dialect == 'SQLite':
                 throw(TypeError, 'SQLite does not allow to specify distinct and separator in group_concat at the same time: {EXPR}')
-            if not(isinstance(sep, StringConstMonad) and isinstance(sep.value, basestring)):
+            if not(isinstance(sep, StringConstMonad) and isinstance(sep.value, str)):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % ast2src(sep.node))
             sep = sep.value
         return x.aggregate('GROUP_CONCAT', distinct=distinct, sep=sep)
@@ -3670,7 +3670,7 @@ class QuerySetMonad(SetMixin, Monad):
         return monad.aggregate('AVG', distinct)
     def call_group_concat(monad, sep=None, distinct=None):
         if sep is not None:
-            if not isinstance(sep, basestring):
+            if not isinstance(sep, str):
                 throw(TypeError, '`sep` option of `group_concat` should be type of str. Got: %s' % type(sep).__name__)
         return monad.aggregate('GROUP_CONCAT', distinct, sep=sep)
     def getsql(monad):

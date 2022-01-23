@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring, unicode, buffer, int_types
+from pony.py23compat import unicode, buffer, int_types
 
 from operator import attrgetter
 from decimal import Decimal
@@ -72,7 +72,7 @@ class Value(object):
             return 'null'
         if isinstance(value, bool):
             return value and '1' or '0'
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             return self.quote_str(value)
         if isinstance(value, datetime):
             return 'TIMESTAMP ' + self.quote_str(datetime2timestamp(value))
@@ -99,7 +99,7 @@ def flat(tree):
     result_append = result.append
     while stack:
         x = stack_pop()
-        if isinstance(x, basestring): result_append(x)
+        if isinstance(x, str): result_append(x)
         else:
             try: stack_extend(x)
             except TypeError: result_append(x)
@@ -199,10 +199,10 @@ class SQLBuilder(object):
         builder.params = params
         builder.adapter = adapter
     def __call__(builder, ast):
-        if isinstance(ast, basestring):
+        if isinstance(ast, str):
             throw(AstError, 'An SQL AST list was expected. Got string: %r' % ast)
         symbol = ast[0]
-        if not isinstance(symbol, basestring):
+        if not isinstance(symbol, str):
             throw(AstError, 'Invalid node name in AST: %r' % ast)
         method = getattr(builder, symbol, None)
         if method is None: throw(AstError, 'Method not found: %s' % symbol)
@@ -231,7 +231,7 @@ class SQLBuilder(object):
     def DELETE(builder, alias, from_ast, where=None):
         builder.indent += 1
         if alias is not None:
-            assert isinstance(alias, basestring)
+            assert isinstance(alias, str)
             if not where: return 'DELETE ', alias, ' ', builder(from_ast)
             return 'DELETE ', alias, ' ', builder(from_ast), builder(where)
         else:
@@ -304,7 +304,7 @@ class SQLBuilder(object):
             if builder.suppress_aliases: alias = None
             elif alias is not None: alias = builder.quote_name(alias)
             if kind == 'TABLE':
-                if isinstance(x, basestring): result.append(builder.quote_name(x))
+                if isinstance(x, str): result.append(builder.quote_name(x))
                 else: result.append(builder.compound_name(x))
                 if alias is not None: result += ' ', alias  # Oracle does not support 'AS' here
             elif kind == 'SELECT':
@@ -655,8 +655,8 @@ class SQLBuilder(object):
     def RANDOM(builder):
         return 'RAND()'
     def RAWSQL(builder, sql):
-        if isinstance(sql, basestring): return sql
-        return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
+        if isinstance(sql, str): return sql
+        return [ x if isinstance(x, str) else builder(x) for x in sql ]
     def build_json_path(builder, path):
         empty_slice = slice(None, None, None)
         has_params = False
@@ -668,7 +668,7 @@ class SQLBuilder(object):
             elif isinstance(item, Value):
                 value = item.value
                 if value is Ellipsis or value == empty_slice: has_wildcards = True
-                else: assert isinstance(value, (int, basestring)), value
+                else: assert isinstance(value, (int, str)), value
             else: assert False, item
         if has_params:
             paramkey = tuple(item.paramkey if isinstance(item, Param) else
@@ -686,7 +686,7 @@ class SQLBuilder(object):
         empty_slice = slice(None, None, None)
         for value in values:
             if isinstance(value, int): append('[%d]' % value)
-            elif isinstance(value, basestring):
+            elif isinstance(value, str):
                 append('.' + value if is_ident(value) else '."%s"' % value.replace('"', '\\"'))
             elif value is Ellipsis: append('.*')
             elif value == empty_slice: append('[*]')

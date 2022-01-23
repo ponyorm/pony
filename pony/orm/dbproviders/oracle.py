@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import basestring, unicode, buffer, int_types
+from pony.py23compat import unicode, buffer, int_types
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
@@ -39,7 +39,7 @@ class OraSequence(DBObject):
         sequence.table = table
         table_name = table.name
         if name is not None: sequence.name = name
-        elif isinstance(table_name, basestring): sequence.name = table_name + '_SEQ'
+        elif isinstance(table_name, str): sequence.name = table_name + '_SEQ'
         else: sequence.name = tuple(table_name[:-1]) + (table_name[0] + '_SEQ',)
     def exists(sequence, provider, connection, case_sensitive=True):
         if case_sensitive: sql = 'SELECT sequence_name FROM all_sequences ' \
@@ -73,7 +73,7 @@ class OraTrigger(DBObject):
         trigger.column = column
         trigger.sequence = sequence
         table_name = table.name
-        if not isinstance(table_name, basestring): table_name = table_name[-1]
+        if not isinstance(table_name, str): table_name = table_name[-1]
         trigger.name = table_name + '_BI' # Before Insert
     def exists(trigger, provider, connection, case_sensitive=True):
         if case_sensitive: sql = 'SELECT trigger_name FROM all_triggers ' \
@@ -246,7 +246,7 @@ class OraBuilder(SQLBuilder):
     def JSON_NONZERO(builder, expr):
         return 'COALESCE(', builder(expr), ''', 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_CONTAINS(builder, expr, path, key):
-        assert key[0] == 'VALUE' and isinstance(key[1], basestring)
+        assert key[0] == 'VALUE' and isinstance(key[1], str)
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         path_with_key_sql, _, _ = builder.build_json_path(path + [ key ])
         expr_sql = builder(expr)
@@ -402,7 +402,7 @@ class OraProvider(DBAPIProvider):
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, OraBoolConverter),
-        (basestring, OraStrConverter),
+        (str, OraStrConverter),
         (int_types, OraIntConverter),
         (float, OraRealConverter),
         (Decimal, OraDecimalConverter),
@@ -515,7 +515,7 @@ class OraProvider(DBAPIProvider):
 
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
-        if not isinstance(index_name, basestring): throw(NotImplementedError)
+        if not isinstance(index_name, str): throw(NotImplementedError)
         if case_sensitive: sql = 'SELECT index_name FROM all_indexes WHERE owner = :o ' \
                                  'AND index_name = :i AND table_owner = :o AND table_name = :t'
         else: sql = 'SELECT index_name FROM all_indexes WHERE owner = :o ' \
@@ -527,7 +527,7 @@ class OraProvider(DBAPIProvider):
 
     def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
-        if not isinstance(fk_name, basestring): throw(NotImplementedError)
+        if not isinstance(fk_name, str): throw(NotImplementedError)
         if case_sensitive:
             sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'R' " \
                   'AND table_name = :tn AND constraint_name = :cn AND owner = :o'

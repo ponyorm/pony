@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring, unicode, buffer, int_types
+from pony.py23compat import unicode, buffer, int_types
 
 import sys, types, weakref
 from decimal import Decimal
@@ -63,7 +63,7 @@ raw_sql_cache = {}
 def parse_raw_sql(sql):
     result = raw_sql_cache.get(sql)
     if result is not None: return result
-    if not isinstance(sql, basestring) or not sql:
+    if not isinstance(sql, str) or not sql:
         throw(TypeError, "Raw SQL string fragment expected. Got: %r" % sql)
     items = []
     codes = []
@@ -184,7 +184,7 @@ def normalize_type(t):
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
     if t in (slice, type(Ellipsis)): return t
-    if issubclass(t, basestring): return unicode
+    if issubclass(t, str): return unicode
     if issubclass(t, (dict, Json)): return Json
     if issubclass(t, Array): return t
     throw(TypeError, 'Unsupported type %r' % t.__name__)
@@ -242,8 +242,8 @@ def are_comparable_types(t1, t2, op='=='):
             if t1 is t2: return True
             if (t1, t2) in coercions: return True
             if tt1 is not type or tt2 is not type: return False
-            if issubclass(t1, int_types) and issubclass(t2, basestring): return True
-            if issubclass(t2, int_types) and issubclass(t1, basestring): return True
+            if issubclass(t1, int_types) and issubclass(t2, str): return True
+            if issubclass(t2, int_types) and issubclass(t1, str): return True
             return False
         if tt1.__name__ == tt2.__name__ == 'EntityMeta':
             return t1._root_ is t2._root_
@@ -346,7 +346,7 @@ class TrackedArray(TrackedList):
         TrackedList.__setitem__(self, index, item)
 
     def __contains__(self, item):
-        if not isinstance(item, basestring) and hasattr(item, '__iter__'):
+        if not isinstance(item, str) and hasattr(item, '__iter__'):
             return all(it in set(self) for it in item)
         return list.__contains__(self, item)
 

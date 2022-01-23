@@ -1,4 +1,4 @@
-from pony.py23compat import basestring, pickle
+from pony.py23compat import pickle
 
 import unittest
 
@@ -422,7 +422,7 @@ class TestJson(unittest.TestCase):
         attr = Product.info
         val = p._vals_[attr]
         dbval = p._dbvals_[attr]
-        self.assertIsInstance(dbval, basestring)
+        self.assertIsInstance(dbval, str)
         self.assertIsInstance(val, TrackedValue)
         p.info['os']['version'] = '9'
         self.assertIs(val, p._vals_[attr])

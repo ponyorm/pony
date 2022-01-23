@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import basestring, buffer, int_types, unicode
+from pony.py23compat import buffer, int_types, unicode
 
 import os.path, sys, re, json
 import sqlite3 as sqlite
@@ -326,7 +326,7 @@ class SQLiteProvider(DBAPIProvider):
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
-        (basestring, dbapiprovider.StrConverter),
+        (str, dbapiprovider.StrConverter),
         (int_types, SQLiteIntConverter),
         (float, dbapiprovider.RealConverter),
         (Decimal, SQLiteDecimalConverter),
@@ -530,7 +530,7 @@ def _parse_path(path):
     if path in path_cache:
         return path_cache[path]
     keys = None
-    if isinstance(path, basestring) and path.startswith('$'):
+    if isinstance(path, str) and path.startswith('$'):
         keys = []
         pos = 1
         path_len = len(path)
@@ -557,7 +557,7 @@ def _traverse(obj, keys):
     return obj
 
 def _extract(expr, *paths):
-    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    expr = json.loads(expr) if isinstance(expr, str) else expr
     result = []
     for path in paths:
         keys = _parse_path(path)
@@ -582,19 +582,19 @@ def py_json_value(expr, path):
     return result if type(result) not in (list, dict) else None
 
 def py_json_contains(expr, path, key):
-    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    expr = json.loads(expr) if isinstance(expr, str) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
     return type(expr) in (list, dict) and key in expr
 
 def py_json_nonzero(expr, path):
-    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    expr = json.loads(expr) if isinstance(expr, str) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
     return bool(expr)
 
 def py_json_array_length(expr, path=None):
-    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    expr = json.loads(expr) if isinstance(expr, str) else expr
     if path:
         keys = _parse_path(path)
         expr = _traverse(expr, keys)
@@ -640,9 +640,9 @@ def py_make_array(*items):
 def py_string_slice(s, start, end):
     if s is None:
         return None
-    if isinstance(start, basestring):
+    if isinstance(start, str):
         start = int(start)
-    if isinstance(end, basestring):
+    if isinstance(end, str):
         end = int(end)
     return s[start:end]
 

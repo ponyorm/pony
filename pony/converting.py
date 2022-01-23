@@ -1,7 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import unicode, basestring
+from pony.py23compat import unicode
 
 import re
 from datetime import datetime, date, time, timedelta
@@ -193,7 +193,7 @@ def _extract_time_parts(groupdict):
     elif am and hh == '12': hh = 0
     elif pm and hh != '12': hh = int(hh) + 12
 
-    if isinstance(ss, basestring) and '.' in ss:
+    if isinstance(ss, str) and '.' in ss:
         ss, mcs = ss.split('.', 1)
         if len('mcs') < 6: mcs = (mcs + '000000')[:6]
     else: mcs = 0
