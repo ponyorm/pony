@@ -75,7 +75,11 @@ classifiers = [
     'Topic :: Database'
 ]
 
-author = "Alexander Kozlovsky, Alexey Malashkevich, Alexander Tischenko"
+author = ', '.join([
+    'Alexander Kozlovsky <alexander.kozlovsky@gmail.com>',
+    'Alexey Malashkevich <alexey@ponyorm.org>',
+    'Alexander Tischenko <sashaaero@yandex.ru>'
+])
 author_email = "team@ponyorm.com"
 url = "https://ponyorm.com"
 licence = "Apache License Version 2.0"
