@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import cmp, basestring, unicode, buffer, int_types, builtins, with_metaclass
+from pony.py23compat import cmp, basestring, unicode, buffer, int_types, builtins
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
 from operator import attrgetter, itemgetter
@@ -4672,7 +4672,7 @@ class EntityProxy(object):
         return not self.__eq__(other)
 
 
-class Entity(with_metaclass(EntityMeta)):
+class Entity(object, metaclass=EntityMeta):
     __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(

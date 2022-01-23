@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY310, basestring, unicode, buffer, with_metaclass, int_types
+from pony.py23compat import PY310, basestring, unicode, buffer, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -1458,10 +1458,10 @@ class MonadMeta(type):
             cls_dict[name] = wrap_monad_method(cls_name, func)
         return super(MonadMeta, meta).__new__(meta, cls_name, bases, cls_dict)
 
-class MonadMixin(with_metaclass(MonadMeta)):
+class MonadMixin(object, metaclass=MonadMeta):
     pass
 
-class Monad(with_metaclass(MonadMeta)):
+class Monad(object, metaclass=MonadMeta):
     disable_distinct = False
     disable_ordering = False
     def __init__(monad, type, nullable=True):
@@ -2716,7 +2716,7 @@ class FuncMonadMeta(MonadMeta):
             for func in functions: registered_functions[func] = monad_cls
         return monad_cls
 
-class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
+class FuncMonad(Monad, metaclass=FuncMonadMeta):
     def __call__(monad, *args, **kwargs):
         for arg in args:
             assert isinstance(arg, Monad)
