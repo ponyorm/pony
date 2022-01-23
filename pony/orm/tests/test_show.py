@@ -1,5 +1,3 @@
-from pony.py23compat import StringIO
-
 import io, sys, unittest
 import contextlib
 from decimal import Decimal

@@ -1,7 +1,6 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import pickle
 
-import ast, io, re, os.path, sys, inspect, types, warnings
+import ast, io, re, os.path, sys, inspect, types, warnings, pickle
 
 from datetime import datetime
 from itertools import count as _count

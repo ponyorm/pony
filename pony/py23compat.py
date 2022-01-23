@@ -6,8 +6,6 @@ PY38 = sys.version_info[:2] >= (3, 8)
 PY39 = sys.version_info[:2] >= (3, 9)
 PY310 = sys.version_info[:2] >= (3, 10)
 
-import builtins, pickle
-from io import StringIO
 unicode = str
 buffer = bytes
 int_types = (int,)

@@ -1,6 +1,4 @@
-from pony.py23compat import pickle
-
-import unittest
+import pickle, unittest
 
 from pony.orm import *
 from pony.orm.tests.testutils import raises_exception, raises_if

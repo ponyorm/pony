@@ -1,7 +1,6 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import pickle
 
-import unittest
+import pickle, unittest
 from datetime import date
 from decimal import Decimal
 

@@ -1,4 +1,5 @@
-from pony.py23compat import StringIO
+from io import StringIO
+
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
 

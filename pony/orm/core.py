@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import cmp, unicode, buffer, int_types, builtins
+from pony.py23compat import cmp, unicode, buffer, int_types
 
-import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
+import builtins, json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
