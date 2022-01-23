@@ -16,9 +16,6 @@ int_types = (int,)
 def cmp(a, b):
     return (a > b) - (a < b)
 
-def values_list(dict):
-    return list(dict.values())
-
 # Armin's recipe from http://lucumr.pocoo.org/2013/5/21/porting-to-python-3-redux/
 def with_metaclass(meta, *bases):
     class metaclass(meta):

@@ -1,6 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import values_list, cmp, \
-                            basestring, unicode, buffer, int_types, builtins, with_metaclass
+from pony.py23compat import cmp, basestring, unicode, buffer, int_types, builtins, with_metaclass
 
 import json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
 from operator import attrgetter, itemgetter
@@ -920,7 +919,7 @@ class Database(object):
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
-        arguments = adapter(values_list(kwargs))  # order of values same as order of keys
+        arguments = adapter(list(kwargs.values()))  # order of values same as order of keys
         if returning is not None:
             return database._exec_sql(sql, arguments, returning_id=True, start_transaction=True)
         cursor = database._exec_sql(sql, arguments, start_transaction=True)
