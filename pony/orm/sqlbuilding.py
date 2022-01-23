@@ -39,7 +39,7 @@ class Param(object):
                 value = converter.val2dbval(value)
             value = converter.py2sql(value)
         return value
-    def __unicode__(param):
+    def __str__(param):
         paramstyle = param.style
         if paramstyle == 'qmark': return u'?'
         elif paramstyle == 'format': return u'%s'
@@ -47,7 +47,6 @@ class Param(object):
         elif paramstyle == 'named': return u':p%d' % param.id
         elif paramstyle == 'pyformat': return u'%%(p%d)s' % param.id
         else: throw(NotImplementedError)
-    __str__ = __unicode__
     def __repr__(param):
         return '%s(%r)' % (param.__class__.__name__, param.paramkey)
 
@@ -67,7 +66,7 @@ class Value(object):
     def __init__(self, paramstyle, value):
         self.paramstyle = paramstyle
         self.value = value
-    def __unicode__(self):
+    def __str__(self):
         value = self.value
         if value is None:
             return 'null'
@@ -86,7 +85,6 @@ class Value(object):
         if isinstance(value, bytes):
             return "X'%s'" % hexlify(value).decode('ascii')
         assert False, repr(value)  # pragma: no cover
-    __str__ = __unicode__
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):

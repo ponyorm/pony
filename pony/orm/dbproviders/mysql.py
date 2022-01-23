@@ -49,14 +49,13 @@ class MySQLTranslator(SQLTranslator):
 
 class MySQLValue(Value):
     __slots__ = []
-    def __unicode__(self):
+    def __str__(self):
         value = self.value
         if isinstance(value, timedelta):
             if value.microseconds:
                 return "INTERVAL '%s' HOUR_MICROSECOND" % timedelta2str(value)
             return "INTERVAL '%s' HOUR_SECOND" % timedelta2str(value)
-        return Value.__unicode__(self)
-    __str__ = __unicode__
+        return Value.__str__(self)
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'

@@ -56,7 +56,7 @@ class SQLiteTranslator(SQLTranslator):
 
 class SQLiteValue(Value):
     __slots__ = []
-    def __unicode__(self):
+    def __str__(self):
         value = self.value
         if isinstance(value, datetime):
             return self.quote_str(datetime2timestamp(value))
@@ -64,8 +64,7 @@ class SQLiteValue(Value):
             return self.quote_str(str(value))
         if isinstance(value, timedelta):
             return repr(value.total_seconds() / (24 * 60 * 60))
-        return Value.__unicode__(self)
-    __str__ = __unicode__
+        return Value.__str__(self)
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'

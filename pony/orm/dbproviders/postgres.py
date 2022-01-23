@@ -45,12 +45,11 @@ class PGTranslator(SQLTranslator):
 
 class PGValue(Value):
     __slots__ = []
-    def __unicode__(self):
+    def __str__(self):
         value = self.value
         if isinstance(value, bool):
             return value and 'true' or 'false'
-        return Value.__unicode__(self)
-    __str__ = __unicode__
+        return Value.__str__(self)
 
 class PGSQLBuilder(SQLBuilder):
     dialect = 'PostgreSQL'
