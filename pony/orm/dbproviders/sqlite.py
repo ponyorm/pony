@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import buffer, int_types, unicode
+from pony.py23compat import buffer, int_types
 
 import os.path, sys, re, json
 import sqlite3 as sqlite
@@ -174,7 +174,7 @@ class SQLiteBuilder(SQLBuilder):
         fname = 'json_extract' if builder.json1_available else 'py_json_extract'
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', path_sql, '))'
-    json_value_type_mapping = {unicode: 'text', bool: 'integer', int: 'integer', float: 'real'}
+    json_value_type_mapping = {str: 'text', bool: 'integer', int: 'integer', float: 'real'}
     def JSON_VALUE(builder, expr, path, type):
         func_name = 'json_extract' if builder.json1_available else 'py_json_extract'
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
@@ -271,7 +271,7 @@ def dumps(items):
 class SQLiteArrayConverter(dbapiprovider.ArrayConverter):
     array_types = {
         int: ('int', SQLiteIntConverter),
-        unicode: ('text', dbapiprovider.StrConverter),
+        str: ('text', dbapiprovider.StrConverter),
         float: ('real', dbapiprovider.RealConverter)
     }
 
@@ -502,18 +502,18 @@ def make_string_function(name, base_func):
         if value is None:
             return None
         t = type(value)
-        if t is not unicode:
+        if t is not str:
             if t is buffer:
                 value = hexlify(value).decode('ascii')
             else:
-                value = unicode(value)
+                value = str(value)
         result = base_func(value)
         return result
     func.__name__ = name
     return func
 
-py_upper = make_string_function('py_upper', unicode.upper)
-py_lower = make_string_function('py_lower', unicode.lower)
+py_upper = make_string_function('py_upper', str.upper)
+py_lower = make_string_function('py_lower', str.lower)
 
 def py_json_unwrap(value):
     # [null,some-value] -> some-value

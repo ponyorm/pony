@@ -14,7 +14,7 @@ class TestObjectToDict(unittest.TestCase):
         db = cls.db = Database()
 
         class Student(db.Entity):
-            name = Required(unicode)
+            name = Required(str)
             scholarship = Optional(int)
             gpa = Optional(Decimal, 3, 1)
             dob = Optional(date)
@@ -27,7 +27,7 @@ class TestObjectToDict(unittest.TestCase):
             students = Set(Student)
 
         class Course(db.Entity):
-            name = Required(unicode, unique=True)
+            name = Required(str, unique=True)
             students = Set(Student)
 
         setup_database(db)
@@ -189,7 +189,7 @@ class TestSerializationToDict(unittest.TestCase):
         db = cls.db = Database()
 
         class Student(db.Entity):
-            name = Required(unicode)
+            name = Required(str)
             scholarship = Optional(int)
             gpa = Optional(Decimal, 3, 1)
             dob = Optional(date)
@@ -202,7 +202,7 @@ class TestSerializationToDict(unittest.TestCase):
             students = Set(Student)
 
         class Course(db.Entity):
-            name = Required(unicode, unique=True)
+            name = Required(str, unique=True)
             students = Set(Student)
 
         setup_database(db)

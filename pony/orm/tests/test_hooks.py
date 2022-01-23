@@ -12,7 +12,7 @@ db = Database()
 
 class Person(db.Entity):
     id = PrimaryKey(int)
-    name = Required(unicode)
+    name = Required(str)
     age = Required(int)
 
     def before_insert(self):

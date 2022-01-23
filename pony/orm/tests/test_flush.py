@@ -10,7 +10,7 @@ db = Database()
 
 
 class Person(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
 
 
 class TestFlush(unittest.TestCase):

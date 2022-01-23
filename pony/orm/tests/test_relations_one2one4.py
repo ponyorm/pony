@@ -9,11 +9,11 @@ from pony.orm.tests import setup_database, teardown_database
 db = Database()
 
 class Person(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     passport = Optional("Passport")
 
 class Passport(db.Entity):
-    code = Required(unicode)
+    code = Required(str)
     person = Required("Person")
 
 class TestOneToOne4(unittest.TestCase):

@@ -13,11 +13,11 @@ class TestOneToOne3(unittest.TestCase):
         self.db = Database()
 
         class Person(self.db.Entity):
-            name = Required(unicode)
+            name = Required(str)
             passport = Optional("Passport", cascade_delete=True)
 
         class Passport(self.db.Entity):
-            code = Required(unicode)
+            code = Required(str)
             person = Required("Person")
 
         setup_database(self.db)

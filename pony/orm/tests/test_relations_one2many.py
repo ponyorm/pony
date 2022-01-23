@@ -13,7 +13,7 @@ class TestOneToManyRequired(unittest.TestCase):
 
         class Student(db.Entity):
             id = PrimaryKey(int)
-            name = Required(unicode)
+            name = Required(str)
             group = Required('Group')
 
         class Group(db.Entity):
@@ -195,7 +195,7 @@ class TestOneToManyOptional(unittest.TestCase):
 
         class Student(db.Entity):
             id = PrimaryKey(int)
-            name = Required(unicode)
+            name = Required(str)
             group = Optional('Group')
 
         class Group(db.Entity):

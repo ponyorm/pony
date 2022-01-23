@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY310, unicode, buffer, int_types
+from pony.py23compat import PY310, buffer, int_types
 
 import ast, types, sys, re, itertools, inspect
 from decimal import Decimal
@@ -149,8 +149,8 @@ class SQLTranslator(ASTTranslator):
             is_array = False
             if t and translator.database.provider.array_converter_cls is not None:
                 types = set(t)
-                if len(types) == 1 and unicode in types:
-                    item_type = unicode
+                if len(types) == 1 and str in types:
+                    item_type = str
                     is_array = True
                 else:
                     item_type = int
@@ -1179,7 +1179,7 @@ class SQLTranslator(ASTTranslator):
             if monad.nullable:
                 nullable = True
             sql.append(monad.getsql()[0])
-        return StringExprMonad(unicode, sql, nullable=nullable)
+        return StringExprMonad(str, sql, nullable=nullable)
     def postFormattedValue(translator, node):
         if node.format_spec is not None:
             throw(NotImplementedError, 'You cannot set width and precision for f-string expression in query')
@@ -1548,7 +1548,7 @@ class Monad(object, metaclass=MonadMeta):
         if func_name == 'AVG':
             result_type = float
         elif func_name == 'GROUP_CONCAT':
-            result_type = unicode
+            result_type = str
         else:
             result_type = expr_type
         if distinct is None:
@@ -1577,7 +1577,7 @@ class Monad(object, metaclass=MonadMeta):
     def to_int(monad):
         return NumericExprMonad(int, [ 'TO_INT', monad.getsql()[0] ], nullable=monad.nullable)
     def to_str(monad):
-        return StringExprMonad(unicode, [ 'TO_STR', monad.getsql()[0] ], nullable=monad.nullable)
+        return StringExprMonad(str, [ 'TO_STR', monad.getsql()[0] ], nullable=monad.nullable)
     def to_real(monad):
         return NumericExprMonad(float, [ 'TO_REAL', monad.getsql()[0] ], nullable=monad.nullable)
 
@@ -2203,7 +2203,7 @@ class AttrMonad(Monad):
     def new(parent, attr, *args, **kwargs):
         t = normalize_type(attr.py_type)
         if t in numeric_types: cls = NumericAttrMonad
-        elif t is unicode: cls = StringAttrMonad
+        elif t is str: cls = StringAttrMonad
         elif t is date: cls = DateAttrMonad
         elif t is time: cls = TimeAttrMonad
         elif t is timedelta: cls = TimedeltaAttrMonad
@@ -2273,7 +2273,7 @@ class ParamMonad(Monad):
     def new(t, paramkey):
         t = normalize_type(t)
         if t in numeric_types: cls = NumericParamMonad
-        elif t is unicode: cls = StringParamMonad
+        elif t is str: cls = StringParamMonad
         elif t is date: cls = DateParamMonad
         elif t is time: cls = TimeParamMonad
         elif t is timedelta: cls = TimedeltaParamMonad
@@ -2342,7 +2342,7 @@ class ExprMonad(Monad):
     @staticmethod
     def new(t, sql, nullable=True):
         if t in numeric_types: cls = NumericExprMonad
-        elif t is unicode: cls = StringExprMonad
+        elif t is str: cls = StringExprMonad
         elif t is date: cls = DateExprMonad
         elif t is time: cls = TimeExprMonad
         elif t is timedelta: cls = TimedeltaExprMonad
@@ -2398,7 +2398,7 @@ class JsonItemMonad(JsonMixin, Monad):
     def to_int(monad):
         return monad.cast_from_json(int)
     def to_str(monad):
-        return monad.cast_from_json(unicode)
+        return monad.cast_from_json(str)
     def to_real(monad):
         return monad.cast_from_json(float)
     def cast_from_json(monad, type):
@@ -2425,7 +2425,7 @@ class ConstMonad(Monad):
         if isinstance(value_type, tuple):
             return ListMonad([ConstMonad.new(item) for item in value])
         elif value_type in numeric_types: cls = NumericConstMonad
-        elif value_type is unicode: cls = StringConstMonad
+        elif value_type is str: cls = StringConstMonad
         elif value_type is date: cls = DateConstMonad
         elif value_type is time: cls = TimeConstMonad
         elif value_type is timedelta: cls = TimedeltaConstMonad
@@ -2875,7 +2875,7 @@ class FuncConcatMonad(FuncMonad):
             if translator.database.provider_name == 'cockroach' and not isinstance(arg, StringMixin):
                 arg = arg.to_str()
             result_ast.extend(arg.getsql())
-        return ExprMonad.new(unicode, result_ast, nullable=any(arg.nullable for arg in args))
+        return ExprMonad.new(str, result_ast, nullable=any(arg.nullable for arg in args))
 
 class FuncLenMonad(FuncMonad):
     func = len
@@ -3239,7 +3239,7 @@ class AttrSetMonad(SetMixin, Monad):
         if func_name == 'AVG':
             result_type = float
         elif func_name == 'GROUP_CONCAT':
-            result_type = unicode
+            result_type = str
         else:
             result_type = item_type
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
@@ -3412,7 +3412,7 @@ class NumericSetExprMonad(SetMixin, Monad):
         if func_name == 'AVG':
             result_type = float
         elif func_name == 'GROUP_CONCAT':
-            result_type = unicode
+            result_type = str
         else:
             result_type = monad.type.item_type
         aggr_ast = [ func_name, distinct, expr ]
@@ -3654,7 +3654,7 @@ class QuerySetMonad(SetMixin, Monad):
         if func_name == 'AVG':
             result_type = float
         elif func_name == 'GROUP_CONCAT':
-            result_type = unicode
+            result_type = str
         else:
             result_type = expr_type
         return ExprMonad.new(result_type, sql_ast, func_name != 'SUM')

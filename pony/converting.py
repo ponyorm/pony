@@ -1,7 +1,6 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import unicode
 
 import re
 from datetime import datetime, date, time, timedelta
@@ -226,23 +225,23 @@ def timedelta2str(td):
     return '-' + result
 
 converters = {
-    int:  (int, unicode, 'Incorrect number'),
-    float: (float, unicode, 'Must be a real number'),
-    'IP': (check_ip, unicode, 'Incorrect IP address'),
-    'positive': (check_positive, unicode, 'Must be a positive number'),
-    'identifier': (check_identifier, unicode, 'Incorrect identifier'),
-    'ISBN': (check_isbn, unicode, 'Incorrect ISBN'),
-    'email': (check_email, unicode, 'Incorrect e-mail address'),
-    'rfc2822_email': (check_rfc2822_email, unicode, 'Must be correct e-mail address'),
-    date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
-    time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
-    datetime: (str2datetime, unicode, 'Must be correct date & time'),
+    int:  (int, str, 'Incorrect number'),
+    float: (float, str, 'Must be a real number'),
+    'IP': (check_ip, str, 'Incorrect IP address'),
+    'positive': (check_positive, str, 'Must be a positive number'),
+    'identifier': (check_identifier, str, 'Incorrect identifier'),
+    'ISBN': (check_isbn, str, 'Incorrect ISBN'),
+    'email': (check_email, str, 'Incorrect e-mail address'),
+    'rfc2822_email': (check_rfc2822_email, str, 'Must be correct e-mail address'),
+    date: (str2date, str, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
+    time: (str2time, str, 'Must be correct time (hh:mm or hh:mm:ss)'),
+    datetime: (str2datetime, str, 'Must be correct date & time'),
     }
 
 def str2py(value, type):
-    if type is None or not isinstance(value, unicode): return value
+    if type is None or not isinstance(value, str): return value
     if isinstance(type, tuple): str2py, py2str, err_msg = type
-    else: str2py, py2str, err_msg = converters.get(type, (type, unicode, None))
+    else: str2py, py2str, err_msg = converters.get(type, (type, str, None))
     try: return str2py(value)
     except ValidationError: raise
     except:

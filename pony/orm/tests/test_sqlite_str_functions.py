@@ -13,7 +13,7 @@ db = Database('sqlite', ':memory:')
 
 
 class Person(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     age = Optional(int)
     image = Optional(buffer)
 

@@ -17,11 +17,11 @@ class Department(db.Entity):
 class Group(db.Entity):
     number = PrimaryKey(int)
     dept = Required(Department)
-    major = Required(unicode)
+    major = Required(str)
     students = Set("Student")
 
 class Course(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     dept = Required(Department)
     semester = Required(int)
     credits = Required(int)
@@ -30,7 +30,7 @@ class Course(db.Entity):
 
 class Student(db.Entity):
     id = PrimaryKey(int, auto=True)
-    name = Required(unicode)
+    name = Required(str)
     dob = Required(date)
     picture = Optional(buffer)
     gpa = Required(float, default=0)

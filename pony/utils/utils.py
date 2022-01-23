@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import unicode, pickle
+from pony.py23compat import pickle
 
 import ast, io, re, os.path, sys, inspect, types, warnings
 
@@ -302,7 +302,7 @@ def parse_expr(s, pos=0):
 def tostring(x):
     if isinstance(x, str): return x
     if hasattr(x, '__unicode__'):
-        try: return unicode(x)
+        try: return str(x)
         except: pass
     if hasattr(x, 'makeelement'): return cElementTree.tostring(x)
     try: return str(x)
@@ -313,7 +313,7 @@ def tostring(x):
     return '<%s object at 0x%X>' % (x.__class__.__name__)
 
 def strjoin(sep, strings, source_encoding='ascii', dest_encoding=None):
-    "Can join mix of unicode and byte strings in different encodings"
+    "Can join mix of str and byte strings in different encodings"
     strings = list(strings)
     try: return sep.join(strings)
     except UnicodeDecodeError: pass

@@ -8,7 +8,7 @@ db = Database()
 
 
 class Person(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     friends = Set('Person', reverse='friends')
 
 

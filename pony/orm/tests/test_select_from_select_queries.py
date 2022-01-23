@@ -14,8 +14,8 @@ class Group(db.Entity):
 
 
 class Student(db.Entity):
-    first_name = Required(unicode)
-    last_name = Required(unicode)
+    first_name = Required(str)
+    last_name = Required(str)
     age = Required(int)
     group = Required('Group')
     scholarship = Required(int, default=0)
@@ -27,7 +27,7 @@ class Student(db.Entity):
 
 
 class Course(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     semester = Required(int)
     credits = Required(int)
     PrimaryKey(name, semester)

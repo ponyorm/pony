@@ -2199,8 +2199,8 @@ class Attribute(object):
                     if from_db: return converter.sql2py(val)
                     val = converter.validate(val, obj)
                 except UnicodeDecodeError as e:
-                    throw(ValueError, 'Value for attribute %s cannot be converted to %s: %s'
-                                      % (attr, unicode.__name__, truncate_repr(val)))
+                    throw(ValueError,
+                          'Value for attribute %s cannot be converted to str: %s' % (attr, truncate_repr(val)))
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):
@@ -4324,7 +4324,7 @@ class EntityMeta(type):
             discr_offset = attr_offsets[discr_attr][0]
             discr_value = discr_attr.validate(row[discr_offset], None, entity, from_db=True)
             real_entity_subclass = discr_attr.code2cls[discr_value]
-            discr_value = real_entity_subclass._discriminator_  # To convert unicode to str in Python 2.x
+            discr_value = real_entity_subclass._discriminator_  # To convert str to str in Python 2.x
 
         database = entity._database_
         cache = local.db2cache[database]

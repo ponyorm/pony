@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import unicode, buffer, int_types
+from pony.py23compat import buffer, int_types
 
 import os, re, json
 from decimal import Decimal, InvalidOperation
@@ -459,8 +459,8 @@ class StrConverter(Converter):
         converter.db_encoding = kwargs.pop('db_encoding', None)
         converter.autostrip = kwargs.pop('autostrip', True)
     def validate(converter, val, obj=None):
-        if not isinstance(val, unicode): throw(TypeError,
-            'Value type for attribute %s must be %s. Got: %r' % (converter.attr, unicode.__name__, type(val)))
+        if not isinstance(val, str): throw(TypeError,
+            'Value type for attribute %s must be str. Got: %r' % (converter.attr, type(val)))
         if converter.autostrip: val = val.strip()
         max_len = converter.max_len
         val_len = len(val)
@@ -822,7 +822,7 @@ class JsonConverter(Converter):
 class ArrayConverter(Converter):
     array_types = {
         int: ('int', IntConverter),
-        unicode: ('text', StrConverter),
+        str: ('text', StrConverter),
         float: ('real', RealConverter)
     }
 

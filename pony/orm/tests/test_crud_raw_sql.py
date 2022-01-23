@@ -9,7 +9,7 @@ from pony.orm.tests import setup_database, teardown_database, only_for
 db = Database()
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     age = Optional(int)
     friends = Set("Student", reverse='friends')
     group = Required("Group")
@@ -23,7 +23,7 @@ class Group(db.Entity):
 
 class Bio(db.Entity):
     picture = Optional(buffer)
-    desc = Required(unicode)
+    desc = Required(str)
     Student = Required(Student)
 
 

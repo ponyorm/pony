@@ -18,14 +18,14 @@ class Group(db.Entity):
     students = Set('Student')
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     age = Required(int)
     group = Required('Group')
     scholarship = Required(int, default=0)
     courses = Set('Course')
 
 class Course(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     semester = Required(int)
     PrimaryKey(name, semester)
     students = Set('Student')

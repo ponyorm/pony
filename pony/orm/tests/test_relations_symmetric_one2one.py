@@ -10,7 +10,7 @@ db = Database()
 
 
 class Person(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     spouse = Optional('Person', reverse='spouse')
 
 

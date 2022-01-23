@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import unicode, buffer, int_types
+from pony.py23compat import buffer, int_types
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -165,7 +165,7 @@ class PGJsonConverter(dbapiprovider.JsonConverter):
 class PGArrayConverter(dbapiprovider.ArrayConverter):
     array_types = {
         int: ('int', PGIntConverter),
-        unicode: ('text', dbapiprovider.StrConverter),
+        str: ('text', dbapiprovider.StrConverter),
         float: ('double precision', PGRealConverter)
     }
 

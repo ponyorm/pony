@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import unicode, buffer, int_types
+from pony.py23compat import buffer, int_types
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
@@ -566,7 +566,7 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
         if scale != -127:
             return cursor.var(cx_Oracle.STRING, 100, cursor.arraysize, outconverter=to_decimal)
     elif defaultType in (cx_Oracle.STRING, cx_Oracle.FIXED_CHAR):
-        return cursor.var(unicode, size, cursor.arraysize)  # from cx_Oracle example
+        return cursor.var(str, size, cursor.arraysize)  # from cx_Oracle example
     return None
 
 class OraPool(object):

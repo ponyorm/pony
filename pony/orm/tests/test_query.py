@@ -13,7 +13,7 @@ db = Database()
 
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     scholarship = Optional(int)
     gpa = Optional(Decimal,3,1)
     group = Required('Group')
@@ -59,7 +59,7 @@ class TestQuery(unittest.TestCase):
     @raises_exception(ExprEvalError, "`a` raises NameError: name 'a' is not defined")
     def test4(self):
         select(a for s in Student)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'StrArray' in expression: s.name == x" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types 'str' and 'StrArray' in expression: s.name == x")
     def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)

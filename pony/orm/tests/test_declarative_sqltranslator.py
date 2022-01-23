@@ -15,7 +15,7 @@ class Department(db.Entity):
     courses = Set('Course')
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     group = Required('Group')
     scholarship = Required(int, default=0)
     picture = Optional(buffer)
@@ -30,7 +30,7 @@ class Group(db.Entity):
 
 class Course(db.Entity):
     dept = Required(Department)
-    name = Required(unicode)
+    name = Required(str)
     credits = Optional(int)
     semester = Required(int)
     PrimaryKey(name, semester)
@@ -46,18 +46,18 @@ class Grade(db.Entity):
     teacher = Required('Teacher')
 
 class Teacher(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     grades = Set(Grade)
 
 class Room(db.Entity):
-    name = PrimaryKey(unicode)
+    name = PrimaryKey(str)
     groups = Set(Group)
 
 
 db2 = Database()
 
 class Room2(db2.Entity):
-    name = PrimaryKey(unicode)
+    name = PrimaryKey(str)
 
 name1 = 'S1'
 

@@ -10,12 +10,12 @@ db = Database()
 
 
 class Male(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     wife = Optional('Female', column='wife')
 
 
 class Female(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     husband = Optional('Male', column='husband')
 
 

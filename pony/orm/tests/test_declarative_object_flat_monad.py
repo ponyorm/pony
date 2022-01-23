@@ -7,7 +7,7 @@ from pony.orm.tests import setup_database, teardown_database
 db = Database()
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     scholarship = Optional(int)
     group = Required("Group")
     marks = Set("Mark")
@@ -19,7 +19,7 @@ class Group(db.Entity):
     subjects = Set("Subject")
 
 class Subject(db.Entity):
-    name = PrimaryKey(unicode)
+    name = PrimaryKey(str)
     groups = Set(Group)
     marks = Set("Mark")
 

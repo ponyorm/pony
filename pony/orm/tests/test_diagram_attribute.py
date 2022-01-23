@@ -423,14 +423,14 @@ class TestAttribute(unittest.TestCase):
     def test_nullable1(self):
         db = self.db
         class Entity1(db.Entity):
-            a = Optional(unicode, unique=True)
+            a = Optional(str, unique=True)
         db.generate_mapping(check_tables=False)
         self.assertEqual(Entity1.a.nullable, True)
 
     def test_nullable2(self):
         db = self.db
         class Entity1(db.Entity):
-            a = Optional(unicode, unique=True)
+            a = Optional(str, unique=True)
         setup_database(db)
         with db_session:
             Entity1()
@@ -570,7 +570,7 @@ class TestAttribute(unittest.TestCase):
     def test_foreign_key_sql_type_1(self):
         db = self.db
         class Foo(db.Entity):
-            id = PrimaryKey(unicode, sql_type='SOME_TYPE')
+            id = PrimaryKey(str, sql_type='SOME_TYPE')
             bars = Set('Bar')
         class Bar(db.Entity):
             foo = Required(Foo)
@@ -584,7 +584,7 @@ class TestAttribute(unittest.TestCase):
     def test_foreign_key_sql_type_2(self):
         db = self.db
         class Foo(db.Entity):
-            id = PrimaryKey(unicode, sql_type='SOME_TYPE')
+            id = PrimaryKey(str, sql_type='SOME_TYPE')
             bars = Set('Bar')
         class Bar(db.Entity):
             foo = Required(Foo, sql_type='ANOTHER_TYPE')
@@ -598,7 +598,7 @@ class TestAttribute(unittest.TestCase):
     def test_foreign_key_sql_type_3(self):
         db = self.db
         class Foo(db.Entity):
-            id = PrimaryKey(unicode, sql_type='SERIAL')
+            id = PrimaryKey(str, sql_type='SERIAL')
             bars = Set('Bar')
         class Bar(db.Entity):
             foo = Required(Foo, sql_type='ANOTHER_TYPE')
@@ -611,7 +611,7 @@ class TestAttribute(unittest.TestCase):
     def test_foreign_key_sql_type_4(self):
         db = self.db
         class Foo(db.Entity):
-            id = PrimaryKey(unicode, sql_type='SERIAL')
+            id = PrimaryKey(str, sql_type='SERIAL')
             bars = Set('Bar')
         class Bar(db.Entity):
             foo = Required(Foo)
@@ -625,7 +625,7 @@ class TestAttribute(unittest.TestCase):
     def test_foreign_key_sql_type_5(self):
         db = self.db
         class Foo(db.Entity):
-            id = PrimaryKey(unicode, sql_type='serial')
+            id = PrimaryKey(str, sql_type='serial')
             bars = Set('Bar')
         class Bar(db.Entity):
             foo = Required(Foo)

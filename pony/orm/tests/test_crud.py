@@ -12,18 +12,18 @@ db = Database()
 
 class Group(db.Entity):
     id = PrimaryKey(int)
-    major = Required(unicode)
+    major = Required(str)
     students = Set('Student')
 
 class Student(db.Entity):
     id = PrimaryKey(int)
-    name = Required(unicode)
+    name = Required(str)
     age = Optional(int)
     passport = Optional("Passport")
     scholarship = Required(Decimal, default=0)
     picture = Optional(buffer, lazy=True)
-    email = Required(unicode, unique=True)
-    phone = Optional(unicode, unique=True)
+    email = Required(str, unique=True)
+    phone = Optional(str, unique=True)
     courses = Set('Course')
     group = Optional('Group')
 
@@ -34,7 +34,7 @@ class Passport(db.Entity):
 
 class Course(db.Entity):
     id = PrimaryKey(int)
-    name = Required(unicode)
+    name = Required(str)
     semester = Required(int)
     students = Set(Student)
     composite_key(name, semester)

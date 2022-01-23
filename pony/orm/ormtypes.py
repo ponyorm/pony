@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import unicode, buffer, int_types
+from pony.py23compat import buffer, int_types
 
 import sys, types, weakref
 from decimal import Decimal
@@ -159,8 +159,8 @@ def normalize(value):
         entity = value.entity
         return SetType(entity), entity
 
-    if isinstance(value, unicode):
-        return unicode, value
+    if isinstance(value, str):
+        return str, value
 
     if t in function_types:
         return FuncType(value), value
@@ -184,7 +184,7 @@ def normalize_type(t):
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
     if t in (slice, type(Ellipsis)): return t
-    if issubclass(t, str): return unicode
+    if issubclass(t, str): return str
     if issubclass(t, (dict, Json)): return Json
     if issubclass(t, Array): return t
     throw(TypeError, 'Unsupported type %r' % t.__name__)
@@ -218,7 +218,7 @@ def are_comparable_types(t1, t2, op='=='):
     tt2 = type(t2)
 
     t12 = {t1, t2}
-    if Json in t12 and t12 < {Json, str, unicode, int, bool, float}:
+    if Json in t12 and t12 < {Json, str, str, int, bool, float}:
         return True
     if op in ('in', 'not in'):
         if tt2 is RawSQLType: return True
@@ -323,7 +323,7 @@ class TrackedList(TrackedValue, list):
 
 def validate_item(item_type, item):
     if not isinstance(item, item_type):
-        if item_type is not unicode and hasattr(item, '__index__'):
+        if item_type is not str and hasattr(item, '__index__'):
             return item.__index__()
         throw(TypeError, 'Cannot store %r item in array of %r' % (type(item).__name__, item_type.__name__))
     return item
@@ -377,7 +377,7 @@ class IntArray(Array):
 
 
 class StrArray(Array):
-    item_type = unicode
+    item_type = str
 
 
 class FloatArray(Array):
@@ -385,7 +385,7 @@ class FloatArray(Array):
 
 
 numeric_types = {bool, int, float, Decimal}
-comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID, IntArray, StrArray, FloatArray}
+comparable_types = {int, float, Decimal, str, date, time, datetime, timedelta, bool, UUID, IntArray, StrArray, FloatArray}
 primitive_types = comparable_types | {buffer}
 function_types = {type, types.FunctionType, types.BuiltinFunctionType}
 type_normalization_dict = {}
@@ -393,6 +393,6 @@ type_normalization_dict = {}
 array_types = {
     int: IntArray,
     float: FloatArray,
-    unicode: StrArray
+    str: StrArray
 }
 

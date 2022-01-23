@@ -8,7 +8,7 @@ db = Database(**db_params)
 class Student(db.Entity):
     _table_ = "Students"
     record = PrimaryKey(int)
-    name = Required(unicode, column="fio")
+    name = Required(str, column="fio")
     group = Required("Group")
     scholarship = Required(int, default=0)
     marks = Set("Mark")
@@ -22,7 +22,7 @@ class Group(db.Entity):
 
 class Subject(db.Entity):
     _table_ = "Subjects"
-    name = PrimaryKey(unicode)
+    name = PrimaryKey(str)
     groups = Set("Group")
     marks = Set("Mark")
 

@@ -11,7 +11,7 @@ class TestLazy(unittest.TestCase):
         db = self.db = Database()
         class X(self.db.Entity):
             a = Required(int)
-            b = Required(unicode, lazy=True)
+            b = Required(str, lazy=True)
         self.X = X
         setup_database(db)
         with db_session:

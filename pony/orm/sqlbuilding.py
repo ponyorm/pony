@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import unicode, buffer, int_types
+from pony.py23compat import int_types
 
 from operator import attrgetter
 from decimal import Decimal
@@ -185,7 +185,7 @@ class SQLBuilder(object):
             if param.id is None: param.id = i + 1
             layout.append(param.paramkey)
         builder.layout = layout
-        builder.sql = u''.join(map(unicode, builder.result)).rstrip('\n')
+        builder.sql = u''.join(map(str, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
             def adapter(values):
                 return tuple(param.eval(values) for param in params)

@@ -386,11 +386,11 @@ db = Database()
 
 class Group(db.Entity):
     id = PrimaryKey(int)
-    major = Required(unicode)
+    major = Required(str)
     students = Set('Student')
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     picture = Optional(buffer, lazy=True)
     group = Required('Group')
 

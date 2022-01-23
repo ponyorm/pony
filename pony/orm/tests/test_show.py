@@ -13,7 +13,7 @@ db = Database()
 
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     scholarship = Optional(int)
     gpa = Optional(Decimal, 3, 1)
     dob = Optional(date)
@@ -26,7 +26,7 @@ class Group(db.Entity):
     students = Set(Student)
 
 class Course(db.Entity):
-    name = Required(unicode, unique=True)
+    name = Required(str, unique=True)
     students = Set(Student)
 
 

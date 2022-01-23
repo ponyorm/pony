@@ -9,7 +9,7 @@ from pony.orm.tests import setup_database, teardown_database
 db = Database()
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     scholarship = Optional(int)
     group = Required(int)
 

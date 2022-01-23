@@ -13,7 +13,7 @@ from pony.orm.tests import setup_database, teardown_database
 db = Database()
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     dob = Optional(date)
     gpa = Optional(float)
     scholarship = Optional(Decimal, 7, 2)
@@ -30,7 +30,7 @@ class Department(db.Entity):
     groups = Set(Group)
 
 class Course(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     semester = Required(int)
     PrimaryKey(name, semester)
     students = Set(Student)
@@ -90,7 +90,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(ExprEvalError, "`Course[123]` raises TypeError: Invalid count of attrs in Course primary key (1 instead of 2)")
     def test9(self):
         select(s for s in Student if Course[123] in s.courses)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'float' in expression: s.name < s.gpa" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types 'str' and 'float' in expression: s.name < s.gpa")
     def test10(self):
         select(s for s in Student if s.name < s.gpa)
     @raises_exception(ExprEvalError, "`Group(101)` raises TypeError: Group constructor accept only keyword arguments. Got: 1 positional argument")
@@ -99,46 +99,44 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(ExprEvalError, "`Group[date(2011, 1, 2)]` raises TypeError: Value type for attribute Group.number must be int. Got: %r" % date)
     def test12(self):
         select(s for s in Student if s.group == Group[date(2011, 1, 2)])
-    @raises_exception(TypeError, "Unsupported operand types 'int' and '%s' for operation '+' in expression: s.group.number + s.name" % unicode.__name__)
+    @raises_exception(TypeError, "Unsupported operand types 'int' and 'str' for operation '+' in expression: s.group.number + s.name")
     def test13(self):
         select(s for s in Student if s.group.number + s.name < 0)
     @raises_exception(TypeError, "Unsupported operand types 'Decimal' and 'float' for operation '+' in expression: s.scholarship + 1.1")
     def test14(self):
         select(s for s in Student if s.scholarship + 1.1 > 10)
-    @raises_exception(TypeError, "Unsupported operand types 'Decimal' and '%s' for operation '**' "
-                                 "in expression: s.scholarship ** 'abc'" % unicode.__name__)
+    @raises_exception(TypeError, "Unsupported operand types 'Decimal' and 'str' for operation '**' "
+                                 "in expression: s.scholarship ** 'abc'")
     def test15(self):
         select(s for s in Student if s.scholarship ** 'abc' > 10)
-    @raises_exception(TypeError, "Unsupported operand types '%s' and 'int' for operation '+' in expression: s.name + 2" % unicode.__name__)
+    @raises_exception(TypeError, "Unsupported operand types 'str' and 'int' for operation '+' in expression: s.name + 2")
     def test16(self):
         select(s for s in Student if s.name + 2 > 10)
     @raises_exception(TypeError, "Step is not supported in s.name[1:3:5]")
     def test17(self):
         select(s for s in Student if s.name[1:3:5] == 'A')
-    @raises_exception(TypeError, "Invalid type of start index (expected 'int', got '%s') in string slice s.name['a':1]"
-                                 % unicode.__name__)
+    @raises_exception(TypeError, "Invalid type of start index (expected 'int', got 'str') in string slice s.name['a':1]")
     def test18(self):
         select(s for s in Student if s.name['a':1] == 'A')
-    @raises_exception(TypeError, "Invalid type of stop index (expected 'int', got '%s') in string slice s.name[1:'a']"
-                                 % unicode.__name__)
+    @raises_exception(TypeError, "Invalid type of stop index (expected 'int', got 'str') in string slice s.name[1:'a']")
     def test19(self):
         select(s for s in Student if s.name[1:'a'] == 'A')
-    @raises_exception(TypeError, "String indices must be integers. Got '%s' in expression s.name['a']" % unicode.__name__)
+    @raises_exception(TypeError, "String indices must be integers. Got 'str' in expression s.name['a']")
     def test21(self):
         select(s.name for s in Student if s.name['a'] == 'h')
-    @raises_exception(TypeError, "Incomparable types 'int' and '%s' in expression: 1 in s.name" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types 'int' and 'str' in expression: 1 in s.name")
     def test22(self):
         select(s.name for s in Student if 1 in s.name)
-    @raises_exception(TypeError, "Expected '%s' argument but got 'int' in expression s.name.startswith(1)" % unicode.__name__)
+    @raises_exception(TypeError, "Expected 'str' argument but got 'int' in expression s.name.startswith(1)")
     def test23(self):
         select(s.name for s in Student if s.name.startswith(1))
-    @raises_exception(TypeError, "Expected '%s' argument but got 'int' in expression s.name.endswith(1)" % unicode.__name__)
+    @raises_exception(TypeError, "Expected 'str' argument but got 'int' in expression s.name.endswith(1)")
     def test24(self):
         select(s.name for s in Student if s.name.endswith(1))
-    @raises_exception(TypeError, "'chars' argument must be of '%s' type in s.name.strip(1), got: 'int'" % unicode.__name__)
+    @raises_exception(TypeError, "'chars' argument must be of 'str' type in s.name.strip(1), got: 'int'")
     def test25(self):
         select(s.name for s in Student if s.name.strip(1))
-    @raises_exception(AttributeError, "'%s' object has no attribute 'unknown': s.name.unknown" % unicode.__name__)
+    @raises_exception(AttributeError, "'str' object has no attribute 'unknown': s.name.unknown")
     def test26(self):
         result = set(select(s for s in Student if s.name.unknown() == "joe"))
     @raises_exception(AttributeError, "Entity Group does not have attribute foo: s.group.foo")
@@ -148,8 +146,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test28(self):
         g = Group[101]
         select(s for s in Student if s.name == g.dept.foo.bar)
-    @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. "
-                                 "Got: '%s'" % unicode.__name__)
+    @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'str'")
     def test29(self):
         select(s for s in Student if s.dob < date('2011', 1, 1))
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
@@ -172,16 +169,16 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(AttributeError, "s.courses.foo")
     def test34(self):
         select(s for s in Student if 'x' in s.courses.foo.bar)
-    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got '%s' in sum(s.courses.name)" % unicode.__name__)
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'str' in sum(s.courses.name)")
     def test35(self):
         select(s for s in Student if sum(s.courses.name) > 10)
-    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got '%s' in sum(c.name for c in s.courses)" % unicode.__name__)
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'str' in sum(c.name for c in s.courses)")
     def test36(self):
         select(s for s in Student if sum(c.name for c in s.courses) > 10)
-    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got '%s' in sum(c.name for c in s.courses)" % unicode.__name__)
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'str' in sum(c.name for c in s.courses)")
     def test37(self):
         select(s for s in Student if sum(c.name for c in s.courses) > 10)
-    @raises_exception(TypeError, "Function avg() expects query or items of numeric type, got '%s' in avg(c.name for c in s.courses)" % unicode.__name__)
+    @raises_exception(TypeError, "Function avg() expects query or items of numeric type, got 'str' in avg(c.name for c in s.courses)")
     def test38(self):
         select(s for s in Student if avg(c.name for c in s.courses) > 10 and len(s.courses) > 1)
     @raises_exception(TypeError, "strip() takes at most 1 argument (3 given)")
@@ -224,23 +221,23 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         # cannot compare JSON value to dynamic string,
         # because a database does not provide json.dumps(s.name) functionality
         select(s for s in Student if s.name == {'a': 'b'})
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a & 2" % unicode.__name__)
+    @raises_exception(IncomparableTypesError, "Incomparable types 'str' and 'int' in expression: s.name > a & 2")
     def test51(self):
         a = 1
         select(s for s in Student if s.name > a & 2)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'float' in expression: s.name > 1 / a - 3" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types 'str' and 'float' in expression: s.name > 1 / a - 3")
     def test52(self):
         a = 1
         select(s for s in Student if s.name > 1 / a - 3)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'int' in expression: s.name > 1 // a - 3" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types 'str' and 'int' in expression: s.name > 1 // a - 3")
     def test53(self):
         a = 1
         select(s for s in Student if s.name > 1 // a - 3)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'int' in expression: s.name > -a" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types 'str' and 'int' in expression: s.name > -a")
     def test54(self):
         a = 1
         select(s for s in Student if s.name > -a)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'list' in expression: s.name == [1, (2,)]" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types 'str' and 'list' in expression: s.name == [1, (2,)]")
     def test55(self):
         select(s for s in Student if s.name == [1, (2,)])
     @raises_exception(TypeError, "Delete query should be applied to a single entity. Got: (s, g)")

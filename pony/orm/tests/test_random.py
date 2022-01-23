@@ -9,7 +9,7 @@ db = Database()
 
 class Person(db.Entity):
     id = PrimaryKey(int)
-    name = Required(unicode)
+    name = Required(str)
 
 
 class TestRandom(unittest.TestCase):

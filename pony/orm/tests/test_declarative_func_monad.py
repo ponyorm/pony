@@ -14,7 +14,7 @@ db = Database()
 
 class Student(db.Entity):
     id = PrimaryKey(int)
-    name = Required(unicode)
+    name = Required(str)
     dob = Required(date)
     last_visit = Required(datetime)
     scholarship = Required(Decimal, 6, 2)
@@ -83,8 +83,7 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEqual(result, {Student[3], Student[4], Student[5]})
     # @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
-    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. "
-                                 "Got: '%s'" % unicode.__name__)
+    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'str'")
     def test_date_func2(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
@@ -101,8 +100,7 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
         self.assertEqual(result, {Student[3], Student[4], Student[5]})
     # @raises_exception(ExprEvalError, "datetime(1983, 'three', 3) raises TypeError: an integer is required")
-    @raises_exception(TypeError, "'month' argument of datetime(...) function must be of 'int' type. "
-                                 "Got: '%s'" % unicode.__name__)
+    @raises_exception(TypeError, "'month' argument of datetime(...) function must be of 'int' type. Got: 'str'")
     def test_datetime_func4(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)

@@ -8,29 +8,29 @@ from pony.orm.tests import setup_database, teardown_database
 db = Database()
 
 class AbstractUser(db.Entity):
-    username = PrimaryKey(unicode)
+    username = PrimaryKey(str)
 
 class User(AbstractUser):
     diagrams = Set('Diagram')
-    email = Optional(unicode)
+    email = Optional(str)
 
 class SubUser1(User):
-    attr1 = Optional(unicode)
+    attr1 = Optional(str)
 
 class SubUser2(User):
-    attr2 = Optional(unicode)
+    attr2 = Optional(str)
 
 class Organization(AbstractUser):
-    address = Optional(unicode)
+    address = Optional(str)
 
 class SubOrg1(Organization):
-    attr3 = Optional(unicode)
+    attr3 = Optional(str)
 
 class SubOrg2(Organization):
-    attr4 = Optional(unicode)
+    attr4 = Optional(str)
 
 class Diagram(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     owner = Required(User)
 
 
