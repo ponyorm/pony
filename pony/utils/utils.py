@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import basestring, unicode, pickle, iteritems
+from pony.py23compat import basestring, unicode, pickle
 
 import ast, io, re, os.path, sys, inspect, types, warnings
 
@@ -416,7 +416,7 @@ class HashableDict(dict):
         if getattr(self, '_hash', None) is not None:
             return self
         return HashableDict({deepcopy(key, memo): deepcopy(value, memo)
-                            for key, value in iteritems(self)})
+                            for key, value in self.items()})
     __setitem__ = _hashable_wrap(dict.__setitem__)
     __delitem__ = _hashable_wrap(dict.__delitem__)
     clear = _hashable_wrap(dict.clear)

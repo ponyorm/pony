@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import items_list, basestring, unicode, buffer, int_types, iteritems
+from pony.py23compat import items_list, basestring, unicode, buffer, int_types
 
 import sys, types, weakref
 from decimal import Decimal
@@ -276,7 +276,7 @@ def tracked_method(func):
         attr = self.attr
         if obj is not None:
             args = tuple(TrackedValue.make(obj, attr, arg) for arg in args)
-            if kwargs: kwargs = {key: TrackedValue.make(obj, attr, value) for key, value in iteritems(kwargs)}
+            if kwargs: kwargs = {key: TrackedValue.make(obj, attr, value) for key, value in kwargs.items()}
         result = func(self, *args, **kwargs)
         self._changed_()
         return result
@@ -285,7 +285,7 @@ def tracked_method(func):
 class TrackedDict(TrackedValue, dict):
     def __init__(self, obj, attr, value):
         TrackedValue.__init__(self, obj, attr)
-        dict.__init__(self, {key: self.make(obj, attr, val) for key, val in iteritems(value)})
+        dict.__init__(self, {key: self.make(obj, attr, val) for key, val in value.items()})
     def __reduce__(self):
         return dict, (dict(self),)
     __setitem__ = tracked_method(dict.__setitem__)

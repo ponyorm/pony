@@ -1,5 +1,3 @@
-from pony.py23compat import iteritems
-
 import json
 from datetime import date, datetime
 from decimal import Decimal
@@ -48,14 +46,14 @@ class Bag(object):
     @cut_traceback
     def to_dict(bag):
         bag.dicts.clear()
-        for entity, objects in iteritems(bag.objects):
+        for entity, objects in bag.objects.items():
             for obj in objects:
                 dicts = bag.dicts[entity]
                 if obj not in dicts: bag._process_object(obj)
         result = defaultdict(dict)
-        for entity, dicts in iteritems(bag.dicts):
+        for entity, dicts in bag.dicts.items():
             composite_pk = len(entity._pk_columns_) > 1
-            for obj, d in iteritems(dicts):
+            for obj, d in dicts.items():
                 pk = obj._get_raw_pkval_()
                 if composite_pk: pk = bag._reduce_composite_pk(pk)
                 else: pk = pk[0]

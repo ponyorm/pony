@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring, unicode, buffer, int_types, iteritems
+from pony.py23compat import basestring, unicode, buffer, int_types
 
 import os, re, json
 from decimal import Decimal, InvalidOperation
@@ -213,7 +213,7 @@ class DBAPIProvider(object):
         return provider.quote_name(name)
 
     def normalize_vars(provider, vars, vartypes):
-        for key, value in iteritems(vars):
+        for key, value in vars.items():
             vartype = vartypes[key]
             if isinstance(vartype, QueryType):
                 vartypes[key], vars[key] = value._normalize_var(vartype)
