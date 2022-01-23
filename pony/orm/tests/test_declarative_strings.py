@@ -67,6 +67,12 @@ class TestStringMethods(unittest.TestCase):
         self.assertEqual(result, {Student[1]})
         result = set(select(s for s in Student if s.name[0:] == "Ann"))
         self.assertEqual(result, {Student[1]})
+        result = set(select(s for s in Student if s.name[None:] == "Ann"))
+        self.assertEqual(result, {Student[1]})
+        result = set(select(s for s in Student if s.name[:None] == "Ann"))
+        self.assertEqual(result, {Student[1]})
+        result = set(select(s for s in Student if s.name[None:None] == "Ann"))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_2(self):
         result = set(select(s for s in Student if s.name[:3] == "Jon"))
