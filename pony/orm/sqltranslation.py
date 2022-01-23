@@ -235,6 +235,7 @@ class SQLTranslator(ASTTranslator):
         return result
 
     def __init__(translator, tree, parent_translator, code_key=None, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
+        ASTTranslator.__init__(translator, tree)
         translator.id = next(translator_counter)
         local.translators.append(translator)
         try:
@@ -248,7 +249,6 @@ class SQLTranslator(ASTTranslator):
     def init(translator, tree, parent_translator, code_key=None, filter_num=None, extractors=None, vars=None, vartypes=None, left_join=False, optimize=None):
         this = translator
         assert isinstance(tree, ast.GeneratorExp), tree
-        ASTTranslator.__init__(translator, tree)
         translator.can_be_cached = True
         translator.parent = parent_translator
         translator.injected = False
