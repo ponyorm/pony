@@ -109,17 +109,24 @@ class PythonTranslator(ASTTranslator):
     def postIfExp(translator, node):
         return '%s if %s else %s' % (node.body.src, node.test.src, node.orelse.src)
     def postLambda(translator, node):
-        argnames = list(node.argnames)
-        kwargs_name = argnames.pop() if node.kwargs else None
-        varargs_name = argnames.pop() if node.varargs else None
-        def_argnames = argnames[-len(node.defaults):] if node.defaults else []
-        nodef_argnames = argnames[:-len(node.defaults)] if node.defaults else argnames
-        args = ', '.join(nodef_argnames)
-        d_args = ', '.join('%s=%s' % (argname, default.src) for argname, default in zip(def_argnames, node.defaults))
-        v_arg = '*%s' % varargs_name if varargs_name else None
-        kw_arg = '**%s' % kwargs_name if kwargs_name else None
-        args = ', '.join(x for x in [args, d_args, v_arg, kw_arg] if x)
-        return 'lambda %s: %s' % (args, node.code.src)
+        return 'lambda %s: %s' % (node.args.src, node.body.src)
+    def postarguments(translator, node):
+        if node.defaults:
+            nodef_args = node.args[:-len(node.defaults)]
+            def_args = node.args[-len(node.defaults):]
+        else:
+            nodef_args = node.args
+            def_args = []
+
+        result = [arg.arg for arg in nodef_args]
+        result.extend('%s=%s' % (arg.arg, default.src) for arg, default in zip(def_args, node.defaults))
+        if node.vararg:
+            result.append('*%s' % node.vararg.arg)
+        if node.kwarg:
+            result.append('**%s' % node.kwarg.arg)
+        return ', '.join(result)
+    def postarg(translator, node):
+        return node.arg
     @priority(14)
     def postOr(translator, node):
         return ' or '.join(expr.src for expr in node.values)
@@ -345,7 +352,12 @@ class PreTranslator(ASTTranslator):
     def preLambda(translator, node):
         #if node.varargs or node.kwargs or node.defaults:
         #    throw(NotImplementedError)
-        translator.contexts.append(set(arg.arg for arg in node.args.args))
+        context = set(arg.arg for arg in node.args.args)
+        if node.args.vararg:
+            context.add(node.args.vararg.arg)
+        if node.args.kwarg:
+            context.add(node.args.kwarg.arg)
+        translator.contexts.append(context)
         translator.dispatch(node.body)
         translator.contexts.pop()
         return True

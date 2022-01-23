@@ -664,9 +664,11 @@ class Decompiler(object):
                 annotations = decompiler.stack.pop()
             if argc & 0x02:
                 kwonly_defaults = decompiler.stack.pop()
+                throw(NotImplementedError)
             if argc & 0x01:
                 defaults = decompiler.stack.pop()
-                throw(DecompileError)
+                assert isinstance(defaults, ast.Tuple)
+                defaults = defaults.elts
         else:
             qualname = decompiler.stack.pop()
             tos = decompiler.stack.pop()
@@ -678,18 +680,15 @@ class Decompiler(object):
         # decompiler.names.update(decompiler.names)  ???
         if codeobject.co_varnames[:1] == ('.0',):
             return func_decompiler.ast  # generator
-        argnames, varargs, keywords = inspect.getargs(codeobject)
-        if varargs:
-            argnames.append(varargs)
-        if keywords:
-            argnames.append(keywords)
+        argnames, vararg, kwarg = inspect.getargs(codeobject)
         args = ast.arguments(
             posonlyargs=[],
             args=[ast.arg(arg=v) for v in argnames],
             kwonlyargs=[],
             kw_defaults=[],
             defaults=defaults,
-            kwarg=None
+            vararg=ast.arg(arg=vararg) if vararg else None,
+            kwarg=ast.arg(arg=kwarg) if kwarg else None
         )
         return ast.Lambda(args, func_decompiler.ast)
 
