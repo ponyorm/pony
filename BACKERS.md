@@ -19,3 +19,4 @@ Pony ORM is Apache 2.0 licensed open source project. If you would like to suppor
 - Vincent Le Goff
 - Niklas Rosenstein
 - Xucong Zhan
+- Christian Does
