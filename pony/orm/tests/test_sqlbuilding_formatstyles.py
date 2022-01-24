@@ -1,7 +1,6 @@
 from __future__ import absolute_import, print_function, division
 
 import unittest
-from pony.orm.sqlsymbols import *
 from pony.orm.sqlbuilding import SQLBuilder
 from pony.orm.dbapiprovider import DBAPIProvider
 from pony.orm.tests.testutils import TestPool
@@ -12,11 +11,11 @@ class TestFormatStyles(unittest.TestCase):
         self.key1 = 'KEY1'
         self.key2 = 'KEY2'
         self.provider = DBAPIProvider(pony_pool_mockup=TestPool(None))
-        self.ast = [ SELECT, [ ALL, [COLUMN, None, 'A']], [ FROM, [None, TABLE, 'T1']],
-                     [ WHERE, [ EQ, [COLUMN, None, 'B'], [ PARAM, self.key1 ] ],
-                              [ EQ, [COLUMN, None, 'C'], [ PARAM, self.key2 ] ],
-                              [ EQ, [COLUMN, None, 'D'], [ PARAM, self.key2 ] ],
-                              [ EQ, [COLUMN, None, 'E'], [ PARAM, self.key1 ] ]
+        self.ast = [ 'SELECT', [ 'ALL', ['COLUMN', None, 'A']], [ 'FROM', [None, 'TABLE', 'T1']],
+                     [ 'WHERE', [ 'EQ', ['COLUMN', None, 'B'], [ 'PARAM', self.key1 ] ],
+                              [ 'EQ', ['COLUMN', None, 'C'], [ 'PARAM', self.key2 ] ],
+                              [ 'EQ', ['COLUMN', None, 'D'], [ 'PARAM', self.key2 ] ],
+                              [ 'EQ', ['COLUMN', None, 'E'], [ 'PARAM', self.key1 ] ]
                      ]
                    ]
     def test_qmark(self):
