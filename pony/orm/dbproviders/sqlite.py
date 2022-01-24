@@ -1,12 +1,10 @@
 from __future__ import absolute_import
 from pony.py23compat import buffer, int_types
 
-import os.path, sys, re, json
+import os.path, sys, re, json, datetime, time
 import sqlite3 as sqlite
 from decimal import Decimal
-from datetime import datetime, date, time, timedelta
 from random import random
-from time import strptime
 from threading import Lock
 from uuid import UUID
 from binascii import hexlify
@@ -58,11 +56,11 @@ class SQLiteValue(Value):
     __slots__ = []
     def __str__(self):
         value = self.value
-        if isinstance(value, datetime):
+        if isinstance(value, datetime.datetime):
             return self.quote_str(datetime2timestamp(value))
-        if isinstance(value, date):
+        if isinstance(value, datetime.date):
             return self.quote_str(str(value))
-        if isinstance(value, timedelta):
+        if isinstance(value, datetime.timedelta):
             return repr(value.total_seconds() / (24 * 60 * 60))
         return Value.__str__(self)
 
@@ -119,7 +117,7 @@ class SQLiteBuilder(SQLBuilder):
     def SECOND(builder, expr):
         return 'cast(substr(', builder(expr), ', 18, 2) as integer)'
     def datetime_add(builder, funcname, expr, td):
-        assert isinstance(td, timedelta)
+        assert isinstance(td, datetime.timedelta)
         modifiers = []
         seconds = td.seconds + td.days * 24 * 3600
         sign = '+' if seconds > 0 else '-'
@@ -141,21 +139,21 @@ class SQLiteBuilder(SQLBuilder):
         if not modifiers: return builder(expr)
         return funcname, '(', builder(expr), modifiers, ')'
     def DATE_ADD(builder, expr, delta):
-        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+        if delta[0] == 'VALUE' and isinstance(delta[1], datetime.timedelta):
             return builder.datetime_add('date', expr, delta[1])
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
     def DATE_SUB(builder, expr, delta):
-        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+        if delta[0] == 'VALUE' and isinstance(delta[1], datetime.timedelta):
             return builder.datetime_add('date', expr, -delta[1])
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
     def DATE_DIFF(builder, expr1, expr2):
         return 'julianday(', builder(expr1), ') - julianday(', builder(expr2), ')'
     def DATETIME_ADD(builder, expr, delta):
-        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+        if delta[0] == 'VALUE' and isinstance(delta[1], datetime.timedelta):
             return builder.datetime_add('datetime', expr, delta[1])
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
     def DATETIME_SUB(builder, expr, delta):
-        if delta[0] == 'VALUE' and isinstance(delta[1], timedelta):
+        if delta[0] == 'VALUE' and isinstance(delta[1], datetime.timedelta):
             return builder.datetime_add('datetime', expr, -delta[1])
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
     def DATETIME_DIFF(builder, expr1, expr2):
@@ -233,8 +231,8 @@ class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
 class SQLiteDateConverter(dbapiprovider.DateConverter):
     def sql2py(converter, val):
         try:
-            time_tuple = strptime(val[:10], '%Y-%m-%d')
-            return date(*time_tuple[:3])
+            time_tuple = time.strptime(val[:10], '%Y-%m-%d')
+            return datetime.date(*time_tuple[:3])
         except: return val
     def py2sql(converter, val):
         return val.strftime('%Y-%m-%d')
@@ -244,14 +242,14 @@ class SQLiteTimeConverter(dbapiprovider.TimeConverter):
         try:
             if len(val) <= 8: dt = datetime.strptime(val, '%H:%M:%S')
             else: dt = datetime.strptime(val, '%H:%M:%S.%f')
-            return dt.time()
+            return dt.datetime.time()
         except: return val
     def py2sql(converter, val):
         return val.isoformat()
 
 class SQLiteTimedeltaConverter(dbapiprovider.TimedeltaConverter):
     def sql2py(converter, val):
-        return timedelta(days=val)
+        return datetime.timedelta(days=val)
     def py2sql(converter, val):
         return val.days + (val.seconds + val.microseconds / 1000000.0) / 86400.0
 
@@ -330,10 +328,10 @@ class SQLiteProvider(DBAPIProvider):
         (int_types, SQLiteIntConverter),
         (float, dbapiprovider.RealConverter),
         (Decimal, SQLiteDecimalConverter),
-        (datetime, SQLiteDatetimeConverter),
-        (date, SQLiteDateConverter),
-        (time, SQLiteTimeConverter),
-        (timedelta, SQLiteTimedeltaConverter),
+        (datetime.datetime, SQLiteDatetimeConverter),
+        (datetime.date, SQLiteDateConverter),
+        (datetime.time, SQLiteTimeConverter),
+        (datetime.timedelta, SQLiteTimedeltaConverter),
         (UUID, dbapiprovider.UuidConverter),
         (buffer, dbapiprovider.BlobConverter),
         (Json, SQLiteJsonConverter)
