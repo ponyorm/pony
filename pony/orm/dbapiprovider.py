@@ -122,7 +122,8 @@ class DBAPIProvider(object):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
-    def __init__(provider, *args, **kwargs):
+    def __init__(provider, database, *args, **kwargs):
+        provider.database = database
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         call_on_connect = kwargs.pop('pony_call_on_connect', None)
         if pool_mockup: provider.pool = pool_mockup

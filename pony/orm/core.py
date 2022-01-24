@@ -724,11 +724,16 @@ class OnConnectDecorator(object):
         OnConnectDecorator.check_provider(provider)
         return OnConnectDecorator(self.database, provider)
 
+
+db_id_counter = itertools.count(1)
+
+
 class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
     def __init__(self, *args, **kwargs):
+        self.id = next(db_id_counter)
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         self.priority = 0
         self._insert_cache = {}
@@ -779,7 +784,7 @@ class Database(object):
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
         kwargs['pony_call_on_connect'] = self.call_on_connect
-        self.provider = provider_cls(*args, **kwargs)
+        self.provider = provider_cls(self, *args, **kwargs)
     @property
     def last_sql(database):
         return database._dblocal.last_sql

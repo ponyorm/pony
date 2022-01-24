@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import buffer, int_types
 
-import os.path, sys, re, json, datetime, time
+import os, os.path, sys, re, json, datetime, time
 import sqlite3 as sqlite
 from decimal import Decimal
 from random import random
@@ -337,8 +337,12 @@ class SQLiteProvider(DBAPIProvider):
         (Json, SQLiteJsonConverter)
     ]
 
-    def __init__(provider, *args, **kwargs):
-        DBAPIProvider.__init__(provider, *args, **kwargs)
+    def __init__(provider, database, filename, **kwargs):
+        is_shared_memory_db = filename == ':sharedmemory:'
+        if is_shared_memory_db:
+            filename = "file:memdb%d_%s?mode=memory&cache=shared" % (database.id, os.urandom(8).hex())
+            kwargs["uri"] = True
+        DBAPIProvider.__init__(provider, database, is_shared_memory_db, filename, **kwargs)
         provider.pre_transaction_lock = Lock()
         provider.transaction_lock = Lock()
 
@@ -434,8 +438,10 @@ class SQLiteProvider(DBAPIProvider):
                     raise
         DBAPIProvider.release(provider, connection, cache)
 
-    def get_pool(provider, filename, create_db=False, **kwargs):
-        if filename != ':memory:':
+    def get_pool(provider, is_shared_memory_db, filename, create_db=False, **kwargs):
+        if is_shared_memory_db or filename == ':memory:':
+            pass
+        else:
             # When relative filename is specified, it is considered
             # not relative to cwd, but to user module where
             # Database instance is created
@@ -450,7 +456,7 @@ class SQLiteProvider(DBAPIProvider):
             # 1 - SQLiteProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
             filename = absolutize_path(filename, frame_depth=cut_traceback_depth+5)
-        return SQLitePool(filename, create_db, **kwargs)
+        return SQLitePool(is_shared_memory_db, filename, create_db, **kwargs)
 
     def table_exists(provider, connection, table_name, case_sensitive=True):
         return provider._exists(connection, table_name, None, case_sensitive)
@@ -645,15 +651,19 @@ def py_string_slice(s, start, end):
     return s[start:end]
 
 class SQLitePool(Pool):
-    def __init__(pool, filename, create_db, **kwargs): # called separately in each thread
+    def __init__(pool, is_shared_memory_db, filename, create_db, **kwargs): # called separately in each thread
+        pool.is_shared_memory_db = is_shared_memory_db
         pool.filename = filename
         pool.create_db = create_db
         pool.kwargs = kwargs
         pool.con = None
     def _connect(pool):
         filename = pool.filename
-        if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
+        if pool.is_shared_memory_db or pool.filename == ':memory:':
+            pass
+        elif not pool.create_db and not os.path.exists(filename):
             throw(IOError, "Database file is not found: %r" % filename)
+
         pool.con = con = sqlite.connect(filename, isolation_level=None, **pool.kwargs)
         con.text_factory = _text_factory
 
@@ -685,10 +695,12 @@ class SQLitePool(Pool):
 
         con.execute('PRAGMA case_sensitive_like = true')
     def disconnect(pool):
-        if pool.filename != ':memory:':
+        if pool.is_shared_memory_db or pool.filename == ':memory:':
+            pass
+        else:
             Pool.disconnect(pool)
     def drop(pool, con):
-        if pool.filename != ':memory:':
-            Pool.drop(pool, con)
-        else:
+        if pool.is_shared_memory_db or pool.filename == ':memory:':
             con.rollback()
+        else:
+            Pool.drop(pool, con)
