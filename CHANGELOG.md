@@ -1,8 +1,9 @@
-# PonyORM release 0.7.15-RC1 (2022-01-10)
+# PonyORM release 0.7.15 (2022-01-27)
 
 ## Features
 
 * Add Python 3.10 support, drop support of Python < 3.7
+* You can create an in-memory SQLite database accessible from multiple threads by specifying ":sharedmemory:" as a file name 
 
 ## Bugfixes
 
