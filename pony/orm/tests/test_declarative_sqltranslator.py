@@ -453,7 +453,7 @@ class TestSQLTranslator(unittest.TestCase):
         result.remove(None)
     def test_if_expression(self):
         result = select(s.id if s.picture else -s.id for s in Student)[:]
-        self.assertEqual([1, -2, -3], result)
+        self.assertEqual({1, -2, -3}, set(result))
 
 
 if __name__ == "__main__":

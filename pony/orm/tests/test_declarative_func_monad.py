@@ -70,11 +70,11 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
         self.assertEqual(result, {Student[4], Student[5], Student[3]})
     def test_minmax5(self):
-        x = chr(128)
+        x = 'Z'
         result = set(select(s for s in Student if min(s.name, x) == "CC" ))
         self.assertEqual(result, {Student[3]})
     def test_minmax6(self):
-        x = chr(128)
+        x = 'Z'
         result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
         self.assertEqual(result, {Student[3], Student[4], Student[5]})
     def test_minmax7(self):
