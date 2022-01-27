@@ -1,8 +1,15 @@
+# PonyORM release 0.7.16 (2022-01-28)
+
+## Bugfixes
+
+* Fixes #628: DBAPIProvider.__init__() got multiple values for argument 'database' 
+
+
 # PonyORM release 0.7.15 (2022-01-27)
 
 ## Features
 
-* Add Python 3.10 support, drop support of Python < 3.7
+* Add Python 3.10 support, drop support of Python < 3.6
 * You can create an in-memory SQLite database accessible from multiple threads by specifying ":sharedmemory:" as a file name 
 
 ## Bugfixes
