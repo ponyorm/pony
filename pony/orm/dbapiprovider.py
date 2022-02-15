@@ -459,6 +459,7 @@ class StrConverter(Converter):
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
         converter.autostrip = kwargs.pop('autostrip', True)
+        converter.comment = kwargs.pop('comment', None)
     def validate(converter, val, obj=None):
         if not isinstance(val, str): throw(TypeError,
             'Value type for attribute %s must be str. Got: %r' % (converter.attr, type(val)))
