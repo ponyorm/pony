@@ -82,6 +82,10 @@ author = ', '.join([
 ])
 author_email = "team@ponyorm.com"
 url = "https://ponyorm.com"
+project_urls = {
+    "Documentation": "https://docs.ponyorm.org",
+    "Source": "https://github.com/ponyorm/pony",
+}
 licence = "Apache License Version 2.0"
 
 packages = [
@@ -121,6 +125,7 @@ if __name__ == "__main__":
         author=author,
         author_email=author_email,
         url=url,
+        project_urls=project_urls,
         license=licence,
         packages=packages,
         package_data=package_data,
