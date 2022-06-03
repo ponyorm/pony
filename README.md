@@ -17,11 +17,11 @@ By providing a Pythonic API, Pony facilitates fast app development. Pony is an e
 
 * Compact entity definitions
 * The concise query language
-* Ability to work with Pony interactively in a Python interpreter
+* Capability to work with Pony interactively in a Python interpreter
 * Comprehensive error messages, showing the exact part where an error occurred in the query
 * Displaying of the generated SQL in a readable format with indentation
 
-All this helps the developer to focus on implementing the business logic of an application, instead of struggling with a mapper trying to understand how to get the data from the database.
+All this helps the developer to focus on implementing the business logic of an application instead of struggling with a mapper and trying to understand how to get the data from the database.
 
 See the example [here](https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/estore.py)
 
@@ -29,7 +29,7 @@ See the example [here](https://github.com/ponyorm/pony/blob/orm/pony/orm/example
 Support Pony ORM Development
 ----------------------------
 
-Pony ORM is Apache 2.0 licensed open source project. If you would like to support Pony ORM development, please consider:
+Pony ORM is an Apache 2.0 licensed open source project. If you would like to support Pony ORM development, please consider:
 
 [Become a backer or sponsor](https://ponyorm.org/donation.html)
 
@@ -37,15 +37,15 @@ Pony ORM is Apache 2.0 licensed open source project. If you would like to suppor
 Online tool for database design
 -------------------------------
 
-Pony ORM also has the Entity-Relationship Diagram Editor which is a great tool for prototyping. You can create your database diagram online at [https://editor.ponyorm.com](https://editor.ponyorm.com), generate the database schema based on the diagram and start working with the database using declarative queries in seconds.
+Pony ORM also has the Entity-Relationship Diagram Editor which is a great tool for prototyping. You can create your database diagram online at [https://editor.ponyorm.com](https://editor.ponyorm.com), generate the database schema based on the diagram, and start working with the database using declarative queries in seconds.
 
 
 Documentation
 -------------
 
-Documenation is available at [https://docs.ponyorm.org](https://docs.ponyorm.org)
+Documentation is available at [https://docs.ponyorm.org](https://docs.ponyorm.org)
 The documentation source is avaliable at [https://github.com/ponyorm/pony-doc](https://github.com/ponyorm/pony-doc).
-Please create new documentation related issues [here](https://github.com/ponyorm/pony-doc/issues) or make a pull request with your improvements.
+Please create new documentation-related issues [here](https://github.com/ponyorm/pony-doc/issues) or make a pull request with your improvements.
 
 
 License
@@ -58,7 +58,7 @@ PonyORM community
 -----------------
 
 Please post your questions on [Stack Overflow](http://stackoverflow.com/questions/tagged/ponyorm).
-Meet the PonyORM team, chat with the community members, and get your questions answered on our community [Telegram group](https://t.me/ponyorm).
+Meet the Pony ORM team, chat with the community members, and get your questions answered on our community [Telegram group](https://t.me/ponyorm).
 Join our newsletter at [ponyorm.org](https://ponyorm.org).
 Reach us on [Twitter](https://twitter.com/ponyorm).
 
