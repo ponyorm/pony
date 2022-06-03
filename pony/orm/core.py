@@ -5610,7 +5610,7 @@ def desc(expr):
         return -expr
     if isinstance(expr, str):
         return 'desc(%s)' % expr
-    return expr
+    raise ValueError(f"Not able to sort by unknown expression type {expr}")
 
 def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
     if cells:
