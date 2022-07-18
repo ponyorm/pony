@@ -9,7 +9,9 @@ Pony is an advanced object-relational mapper. The most interesting feature of Po
 
 Here is an example query in Pony:
 
-    select(p for p in Product if p.name.startswith('A') and p.cost <= 1000)
+```python
+select(p for p in Product if p.name.startswith('A') and p.cost <= 1000)
+```
 
 Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
 
