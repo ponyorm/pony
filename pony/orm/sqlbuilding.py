@@ -232,8 +232,9 @@ class SQLBuilder(object):
         builder.indent += 1
         if alias is not None:
             assert isinstance(alias, str)
-            if not where: return 'DELETE ', alias, ' ', builder(from_ast)
-            return 'DELETE ', alias, ' ', builder(from_ast), builder(where)
+            if not where:
+                return 'DELETE ', builder.quote_name(alias), ' ', builder(from_ast)
+            return 'DELETE ', builder.quote_name(alias), ' ', builder(from_ast), builder(where)
         else:
             assert from_ast[0] == 'FROM' and len(from_ast) == 2 and from_ast[1][1] == 'TABLE'
             alias = from_ast[1][0]

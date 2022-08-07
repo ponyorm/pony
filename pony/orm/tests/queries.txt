@@ -754,7 +754,7 @@ WHERE "id" IN (
 
 MySQL:
 
-DELETE s FROM `student` `s`
+DELETE `s` FROM `student` `s`
   INNER JOIN `group` `group`
     ON `s`.`group` = `group`.`number`
 WHERE `group`.`dept` = 1
@@ -791,7 +791,7 @@ WHERE "ROWID" IN (
 
 MySQL:
 
-DELETE c FROM `course` `c`
+DELETE `c` FROM `course` `c`
   INNER JOIN `department` `department`
     ON `c`.`dept` = `department`.`number`
 WHERE `department`.`name` LIKE 'D%%'
