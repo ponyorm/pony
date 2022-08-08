@@ -424,7 +424,7 @@ select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 class DBSessionContextManager(object):
     __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', \
                 'immediate', 'ddl', 'serializable', 'strict', 'optimistic', \
-                'sql_debug', 'show_values'
+                'sql_debug', 'show_values', '_closed'
     def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False, optimistic=True,
                  retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
         if retry != 0:
@@ -448,6 +448,7 @@ class DBSessionContextManager(object):
         db_session.allowed_exceptions = allowed_exceptions
         db_session.sql_debug = sql_debug
         db_session.show_values = show_values
+        db_session._closed = None
     def __call__(db_session, *args, **kwargs):
         if not args and not kwargs: return db_session
         if len(args) > 1: throw(TypeError,
@@ -464,6 +465,7 @@ class DBSessionContextManager(object):
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
         db_session._enter()
     def _enter(db_session):
+
         if local.db_session is None:
             assert not local.db_context_counter
             local.db_session = db_session
@@ -472,10 +474,14 @@ class DBSessionContextManager(object):
         elif db_session.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
+        db_session._closed = False
         if db_session.sql_debug is not None:
             local.push_debug_state(db_session.sql_debug, db_session.show_values)
     def __exit__(db_session, exc_type=None, exc=None, tb=None):
+        if db_session._closed: return
         local.db_context_counter -= 1
+        assert local.db_context_counter >= 0
+        db_session._closed = True
         try:
             if not local.db_context_counter:
                 assert local.db_session is db_session
