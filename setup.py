@@ -111,7 +111,6 @@ if __name__ == "__main__":
         s = "Sorry, but %s %s requires Python of one of the following versions: 2.7, 3.3-3.8." \
             " You have version %s"
         print(s % (name, version, sys.version.split(' ', 1)[0]))
-        sys.exit(1)
 
     REQUIRES = ['docopt']
 
