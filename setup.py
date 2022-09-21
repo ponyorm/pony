@@ -107,7 +107,7 @@ download_url = "http://pypi.python.org/pypi/pony/"
 
 if __name__ == "__main__":
     pv = sys.version_info[:2]
-    if pv not in ((2, 7), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8)):
+    if pv not in ((2, 7), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8), (3, 9)):
         s = "Sorry, but %s %s requires Python of one of the following versions: 2.7, 3.3-3.8." \
             " You have version %s"
         print(s % (name, version, sys.version.split(' ', 1)[0]))
