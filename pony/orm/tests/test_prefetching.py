@@ -42,7 +42,7 @@ class TestPrefetching(unittest.TestCase):
         setup_database(db)
         with db_session:
             g1 = Group(number=1, major='Math')
-            g2 = Group(number=2, major='Computer Sciense')
+            g2 = Group(number=2, major='Computer Science')
             c1 = Course(name='Math')
             c2 = Course(name='Physics')
             c3 = Course(name='Computer Science')

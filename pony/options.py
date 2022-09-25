@@ -47,7 +47,7 @@ MEMCACHE = None  # Use in-process python version by default
 ALTERNATIVE_SESSION_MEMCACHE = None     # Use general memcache connection by default
 ALTERNATIVE_ORM_MEMCACHE = None         # Use general memcache connection by default
 ALTERNATIVE_TEMPLATING_MEMCACHE = None  # Use general memcache connection by default
-ALTERNATIVE_RESPONCE_MEMCACHE = None    # Use general memcache connection by default
+ALTERNATIVE_RESPONSE_MEMCACHE = None    # Use general memcache connection by default
 
 # pickle options:
 PICKLE_START_OFFSET = 230

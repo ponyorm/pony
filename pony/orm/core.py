@@ -204,7 +204,7 @@ class OptimizationFailed(PonyInternalException):
 
 class UseAnotherTranslator(PonyInternalException):
     def __init__(self, translator):
-        Exception.__init__(self, 'This exception should be catched internally by PonyORM')
+        Exception.__init__(self, 'This exception should be caught internally by PonyORM')
         self.translator = translator
 
 class PonyRuntimeWarning(RuntimeWarning):
@@ -4195,7 +4195,7 @@ class EntityMeta(type):
                     'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
         for attr in entity._pk_attrs_:
             if attr not in attr_offsets: throw(ValueError,
-                'Primary key attribue %s was not found in query result set' % attr)
+                'Primary key attribute %s was not found in query result set' % attr)
 
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
@@ -6047,7 +6047,7 @@ class Query(object):
             func_id = id(func.__code__)
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
-            'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
+            'Argument of filter() method must be a lambda function or its text. Got: %r' % func)
         else: assert False  # pragma: no cover
 
         if argnames:
