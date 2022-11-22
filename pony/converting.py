@@ -1,5 +1,3 @@
-# coding: cp1251
-
 from __future__ import absolute_import, print_function
 
 import re
@@ -134,7 +132,7 @@ datetime_re_list = [ re.compile('^%s(?:[t ]%s)?$' % (date_str, time_str), re.UNI
 
 month_lists = [
     "jan feb mar apr may jun jul aug sep oct nov dec".split(),
-    u"янв фев мар апр май июн июл авг сен окт ноя дек".split(),  # Russian
+    "СЏРЅРІ С„РµРІ РјР°СЂ Р°РїСЂ РјР°Р№ РёСЋРЅ РёСЋР» Р°РІРі СЃРµРЅ РѕРєС‚ РЅРѕСЏ РґРµРє".split(),  # Russian
     ]
 month_dict = {}
 
@@ -142,7 +140,7 @@ for month_list in month_lists:
     for i, month in enumerate(month_list):
         month_dict[month] = i + 1
 
-month_dict[u'мая'] = 5  # Russian
+month_dict['РјР°СЏ'] = 5  # Russian
 
 def str2date(s):
     s = s.strip().lower()
