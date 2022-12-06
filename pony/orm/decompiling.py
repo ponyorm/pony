@@ -719,6 +719,9 @@ class Decompiler(object):
     def RETURN_GENERATOR(decompiler):
         pass
 
+    def RESUME(decompiler, where):
+        pass
+
     def ROT_TWO(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
