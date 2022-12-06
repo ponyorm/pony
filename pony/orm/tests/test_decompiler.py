@@ -1,4 +1,6 @@
+import textwrap
 import unittest
+import ast
 
 from pony.orm.decompiling import Decompiler
 from pony.orm.asttranslation import ast2src
@@ -93,7 +95,81 @@ def create_test(gen):
 
 
 class TestDecompiler(unittest.TestCase):
-    pass
+    def assertDecompilesTo(self, src, expected):
+        code = compile(src, '<?>', 'eval').co_consts[0]
+        import dis
+        print(dis.dis(code))
+        dc = Decompiler(code)
+        expected = textwrap.dedent(expected).strip()
+        self.maxDiff = None
+        self.assertMultiLineEqual(expected, ast.dump(dc.ast, indent=2))
+
+    def test_ast1(self):
+        self.assertDecompilesTo(
+            '(a for a in [] if x and y and z and j)',
+            """
+            GeneratorExp(
+              elt=Name(id='a', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=And(),
+                      values=[
+                        Name(id='x', ctx=Load()),
+                        Name(id='y', ctx=Load()),
+                        Name(id='z', ctx=Load()),
+                        Name(id='j', ctx=Load())])],
+                  is_async=0)])
+            """)
+
+    def test_ast2(self):
+        self.assertDecompilesTo(
+            'lambda x, y, z, j: (x and y and z and j)',
+            """
+            BoolOp(
+              op=And(),
+              values=[
+                Name(id='x', ctx=Load()),
+                Name(id='y', ctx=Load()),
+                Name(id='z', ctx=Load()),
+                Name(id='j', ctx=Load())])
+            """)
+
+    def test_ast3(self):
+        self.assertDecompilesTo(
+            '(m for m in [] if x and y and z and j for n in [] if x and y and z and j)',
+            """
+            GeneratorExp(
+              elt=Name(id='m', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='m', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=And(),
+                      values=[
+                        Name(id='x', ctx=Load()),
+                        Name(id='y', ctx=Load()),
+                        Name(id='z', ctx=Load()),
+                        Name(id='j', ctx=Load())])],
+                  is_async=0),
+                comprehension(
+                  target=Name(id='n', ctx=Store()),
+                  iter=Constant(value=()),
+                  ifs=[
+                    BoolOp(
+                      op=And(),
+                      values=[
+                        Name(id='x', ctx=Load()),
+                        Name(id='y', ctx=Load()),
+                        Name(id='z', ctx=Load()),
+                        Name(id='j', ctx=Load())])],
+                  is_async=0)])
+            """)
 
 
 for i, gen in enumerate(generate_gens()):
