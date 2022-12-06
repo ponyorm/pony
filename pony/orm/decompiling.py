@@ -150,6 +150,7 @@ class Decompiler(object):
         decompiler.conditions_end = 0
         decompiler.instructions = []
         decompiler.instructions_map = {}
+        decompiler.kw_names = None
         decompiler.or_jumps = set()
         decompiler.get_instructions()
         decompiler.analyze_jumps()
@@ -399,6 +400,26 @@ class Decompiler(object):
     def CACHE(decompiler):
         pass
 
+    def CALL(decompiler, argc):
+        values = decompiler.pop_items(argc)
+
+        keys = decompiler.kw_names
+        decompiler.kw_names = None
+
+        args = values
+        keywords = None
+        if keys:
+            args = values[:-len(keys)]
+            keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys):])]
+
+        self = decompiler.stack.pop()
+        callable_ = decompiler.stack.pop()
+        if callable_ is None:
+            callable_ = self
+        else:
+            args.insert(0, self)
+        return ast.Call(callable_, args, keywords)
+
     def CALL_FUNCTION_VAR(decompiler, argc):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
 
@@ -600,6 +621,10 @@ class Decompiler(object):
         if decompiler.targets.get(endpos) is then:
             decompiler.targets[endpos] = if_exp
         return if_exp
+
+    def KW_NAMES(decompiler, kw_names):
+        # Stash for CALL
+        decompiler.kw_names = kw_names
 
     def IS_OP(decompiler, invert):
         return decompiler.COMPARE_OP('is not' if invert else 'is')
