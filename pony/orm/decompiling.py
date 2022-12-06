@@ -396,6 +396,9 @@ class Decompiler(object):
             return genexpr
         return ast.Call(tos, args, keywords)
 
+    def CACHE(decompiler):
+        pass
+
     def CALL_FUNCTION_VAR(decompiler, argc):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
 
