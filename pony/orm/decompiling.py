@@ -161,6 +161,7 @@ class Decompiler(object):
             throw(DecompileError, 'Compiled code should represent a single expression')
     def get_instructions(decompiler):
         PY36 = sys.version_info >= (3, 6)
+        PY311 = sys.version_info >= (3, 11)
         before_yield = True
         code = decompiler.code
         co_code = code.co_code
@@ -194,7 +195,14 @@ class Decompiler(object):
                 if op in hasconst:
                     arg = [code.co_consts[oparg]]
                 elif op in hasname:
-                    arg = [code.co_names[oparg]]
+                    if opname == 'LOAD_GLOBAL':
+                        push_null = False
+                        if PY311:
+                            push_null = oparg & 1
+                            oparg >>= 1
+                        arg = [code.co_names[oparg], push_null]
+                    else:
+                        arg = [code.co_names[oparg]]
                 elif op in hasjrel:
                     arg = [i + oparg * (2 if PY310 else 1)
                            * (-1 if 'BACKWARD' in opname else 1)]
@@ -666,7 +674,9 @@ class Decompiler(object):
         decompiler.names.add(varname)
         return ast.Name(varname, ast.Load())
 
-    def LOAD_GLOBAL(decompiler, varname):
+    def LOAD_GLOBAL(decompiler, varname, push_null):
+        if push_null:
+            decompiler.stack.append(None)
         decompiler.names.add(varname)
         return ast.Name(varname, ast.Load())
 
