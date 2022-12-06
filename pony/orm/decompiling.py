@@ -707,6 +707,9 @@ class Decompiler(object):
     def POP_TOP(decompiler):
         pass
 
+    def PRECALL(decompiler, argc):
+        pass
+
     def RETURN_VALUE(decompiler):
         if decompiler.next_pos != decompiler.end:
             throw(DecompileError)
