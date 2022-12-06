@@ -491,6 +491,9 @@ class Decompiler(object):
         op = operator_mapping[op]()
         return ast.Compare(oper1, [op], [oper2])
 
+    def COPY_FREE_VARS(decompiler, n):
+        pass
+
     def CONTAINS_OP(decompiler, invert):
         return decompiler.COMPARE_OP('not in' if invert else 'in')
 
