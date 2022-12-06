@@ -5,6 +5,10 @@ import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree, hasjabs
 from collections import defaultdict
+try:
+    from opcode import _nb_ops as nb_ops
+except ImportError:
+    nb_ops = None
 
 #from pony.thirdparty.compiler import ast, parse
 import ast
@@ -312,6 +316,34 @@ class Decompiler(object):
     BINARY_OR           = binop(ast.BitOr)
     BINARY_TRUE_DIVIDE  = BINARY_DIVIDE
     BINARY_MODULO       = binop(ast.Mod)
+
+    def BINARY_OP(decompiler, opcode):
+        opname, symbol = nb_ops[opcode]
+        inplace = opname.startswith('NB_INPLACE_')
+        opname = opname.split('_', 2 if inplace else 1)[-1]
+
+        op = {
+            "ADD": ast.Add,
+            "AND": ast.BitAnd,
+            "FLOOR_DIVIDE": ast.FloorDiv,
+            "LSHIFT": ast.LShift,
+            "MATRIX_MULTIPLY": ast.MatMult,
+            "MULTIPLY": ast.Mult,
+            "REMAINDER": ast.Mod,
+            "OR": ast.BitOr,
+            "POWER": ast.Pow,
+            "RSHIFT": ast.RShift,
+            "SUBTRACT": ast.Sub,
+            "TRUE_DIVIDE": ast.Div,
+            "XOR": ast.BitXor,
+        }[opname]
+
+        oper2 = decompiler.stack.pop()
+        oper1 = decompiler.stack.pop()
+        r = ast.BinOp(left=oper1, op=op(), right=oper2)
+        if inplace:
+            r = ast.Name(oper1, r)
+        return r
 
     def BINARY_SUBSCR(decompiler):
         node2 = decompiler.stack.pop()
