@@ -783,6 +783,9 @@ class Decompiler(object):
     def PRECALL(decompiler, argc):
         pass
 
+    def PUSH_NULL(decompiler):
+        decompiler.stack.append(None)
+
     def RETURN_VALUE(decompiler):
         if decompiler.next_pos != decompiler.end:
             throw(DecompileError)
