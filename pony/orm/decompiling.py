@@ -686,7 +686,8 @@ class Decompiler(object):
     def MAKE_FUNCTION(decompiler, argc):
         defaults = []
         if sys.version_info >= (3, 6):
-            qualname = decompiler.stack.pop()
+            if sys.version_info < (3, 11):
+                qualname = decompiler.stack.pop()
             tos = decompiler.stack.pop()
             if argc & 0x08:
                 func_closure = decompiler.stack.pop()
