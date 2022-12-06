@@ -209,7 +209,8 @@ class Decompiler(object):
             else: arg = []
             if opname == 'FOR_ITER':
                 decompiler.for_iter_pos = decompiler.pos
-            if opname == 'JUMP_ABSOLUTE' and arg[0] == decompiler.for_iter_pos:
+            if (opname in ('JUMP_ABSOLUTE', 'JUMP_NO_INTERRUPT')
+                    and arg[0] == decompiler.for_iter_pos):
                 decompiler.abs_jump_to_top = decompiler.pos
 
             if before_yield:
