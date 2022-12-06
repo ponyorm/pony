@@ -705,6 +705,9 @@ class Decompiler(object):
         expr = decompiler.stack.pop()
         return simplify(expr)
 
+    def RETURN_GENERATOR(decompiler):
+        pass
+
     def ROT_TWO(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
