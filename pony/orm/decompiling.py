@@ -211,6 +211,8 @@ class Decompiler(object):
                 elif op in hascompare:
                     arg = [cmp_op[oparg]]
                 elif op in hasfree:
+                    if PY311:
+                        oparg -= len(code.co_varnames)
                     arg = [free[oparg]]
                 elif op in hasjabs:
                     arg = [oparg * (2 if PY310 else 1)]
