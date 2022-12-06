@@ -195,7 +195,8 @@ class Decompiler(object):
                 elif op in hasname:
                     arg = [code.co_names[oparg]]
                 elif op in hasjrel:
-                    arg = [i + oparg * (2 if PY310 else 1)]
+                    arg = [i + oparg * (2 if PY310 else 1)
+                           * (-1 if 'BACKWARD' in opname else 1)]
                 elif op in haslocal:
                     arg = [code.co_varnames[oparg]]
                 elif op in hascompare:
@@ -693,6 +694,10 @@ class Decompiler(object):
         )
         return ast.Lambda(args, func_decompiler.ast)
 
+    POP_JUMP_BACKWARD_IF_FALSE = JUMP_IF_FALSE
+    POP_JUMP_BACKWARD_IF_TRUE = JUMP_IF_TRUE
+    POP_JUMP_FORWARD_IF_FALSE = JUMP_IF_FALSE
+    POP_JUMP_FORWARD_IF_TRUE = JUMP_IF_TRUE
     POP_JUMP_IF_FALSE = JUMP_IF_FALSE
     POP_JUMP_IF_TRUE = JUMP_IF_TRUE
 
