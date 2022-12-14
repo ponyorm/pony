@@ -448,7 +448,7 @@ class Decompiler(object):
         decompiler.kw_names = None
 
         args = values
-        keywords = None
+        keywords = []
         if keys:
             args = values[:-len(keys)]
             keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys):])]
@@ -459,7 +459,8 @@ class Decompiler(object):
             callable_ = self
         else:
             args.insert(0, self)
-        return ast.Call(callable_, args, keywords)
+        decompiler.stack.append(callable_)
+        return decompiler._call_function(args, keywords)
 
     def CALL_FUNCTION_VAR(decompiler, argc):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
@@ -629,6 +630,10 @@ class Decompiler(object):
                 break
             if not decompiler.stack:
                 break
+            if decompiler.stack[-1] is None:
+                decompiler.stack.pop()
+                if not decompiler.stack:
+                    break
             top2 = decompiler.stack[-1]
             if isinstance(top2, ast.comprehension):
                 break
@@ -717,7 +722,10 @@ class Decompiler(object):
         return ast.Name(varname, ast.Load())
 
     def LOAD_METHOD(decompiler, methname):
-        return decompiler.LOAD_ATTR(methname)
+        result = decompiler.LOAD_ATTR(methname)
+        if PY311:
+            decompiler.stack.append(None)
+        return result
 
     LOOKUP_METHOD = LOAD_METHOD  # For PyPy
 
