@@ -2,7 +2,7 @@
 
 ## Bugfixes
 
-* Fixes #628: DBAPIProvider.__init__() got multiple values for argument 'database' 
+* Fixes #628: DBAPIProvider.__init__() got multiple values for argument 'database'
 
 
 # PonyORM release 0.7.15 (2022-01-27)
@@ -10,7 +10,7 @@
 ## Features
 
 * Add Python 3.10 support, drop support of Python < 3.6
-* You can create an in-memory SQLite database accessible from multiple threads by specifying ":sharedmemory:" as a file name 
+* You can create an in-memory SQLite database accessible from multiple threads by specifying ":sharedmemory:" as a file name
 
 ## Bugfixes
 
@@ -132,7 +132,7 @@ This release contains no new features or bugfixes. The only reason for this rele
 
 * Support of Entity.select(**kwargs)
 * Support of SKIP LOCKED option in 'SELECT ... FOR UPDATE'
-* New function make_proxy(obj) to make cros-db_session proxy objects
+* New function make_proxy(obj) to make cross-db_session proxy objects
 * Specify ON DELETE CASCADE/SET NULL in foreign keys
 * Support of LIMIT in `SELECT FROM (SELECT ...)` type of queries
 * Support for negative JSON array indexes in SQLite
@@ -140,7 +140,7 @@ This release contains no new features or bugfixes. The only reason for this rele
 ## Improvements
 
 * Improved query prefetching: use fewer number of SQL queries
-* Memory optimization: deduplication of values recieved from the database in the same session
+* Memory optimization: deduplication of values received from the database in the same session
 * increase DBAPIProvider.max_params_count value
 
 ## Bugfixes
@@ -289,7 +289,7 @@ This release contains no new features or bugfixes. The only reason for this rele
 * Fixes #283: Lost Json update immediately after object creation
 * Fixes #284: `query.order_by()` orders Json numbers like strings
 * Fixes #288: Expression text parsing issue in Python 3
-* Fixes #293: translation of if-expressions in expression 
+* Fixes #293: translation of if-expressions in expression
 * Fixes #294: Real stack traces swallowed within IPython shell
 * `Collection.count()` method should check if session is alive
 * Set `obj._session_cache_` to None after exiting from db session for better garbage collection
@@ -582,7 +582,7 @@ This release fixes the setup.py problem that was found after the previous releas
 
 # Pony ORM Release 0.5.2 (2014-08-11)
 
-This release is a step forward to Python 3 support. While the external API wasn't changed, the internals were significantly refactored to provide forward compatibility with Python 3. 
+This release is a step forward to Python 3 support. While the external API wasn't changed, the internals were significantly refactored to provide forward compatibility with Python 3.
 
 ## Changes/features:
 

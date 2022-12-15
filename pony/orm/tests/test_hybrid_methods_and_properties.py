@@ -198,7 +198,7 @@ class TestHybridsAndProperties(unittest.TestCase):
 
     @db_session
     def test15(self):
-        # Test repeated use of the same generator with hybrid method/property that uses funciton from external scope
+        # Test repeated use of the same generator with hybrid method/property that uses function from external scope
         result = Person.find_by_full_name('Alexander Kozlovsky')
         self.assertEqual(set(obj.last_name for obj in result), {'Kozlovsky'})
         result = Person.find_by_full_name('Alexander Kozlovsky')

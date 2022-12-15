@@ -43,8 +43,8 @@ Pony ORM also has the Entity-Relationship Diagram Editor which is a great tool f
 Documentation
 -------------
 
-Documenation is available at [https://docs.ponyorm.org](https://docs.ponyorm.org)
-The documentation source is avaliable at [https://github.com/ponyorm/pony-doc](https://github.com/ponyorm/pony-doc).
+Documentation is available at [https://docs.ponyorm.org](https://docs.ponyorm.org)
+The documentation source is available at [https://github.com/ponyorm/pony-doc](https://github.com/ponyorm/pony-doc).
 Please create new documentation related issues [here](https://github.com/ponyorm/pony-doc/issues) or make a pull request with your improvements.
 
 
