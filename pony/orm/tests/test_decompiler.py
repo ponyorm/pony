@@ -1,6 +1,7 @@
 import textwrap
 import unittest
 import ast
+import sys
 
 from pony.orm.decompiling import Decompiler
 from pony.orm.asttranslation import ast2src
@@ -96,6 +97,10 @@ def create_test(gen):
 
 class TestDecompiler(unittest.TestCase):
     def assertDecompilesTo(self, src, expected):
+        # skip test due to ast.dump has no indent parameter
+        if sys.version_info[:2] <= (3, 8):
+            return
+
         code = compile(src, '<?>', 'eval').co_consts[0]
         import dis
         print(dis.dis(code))
