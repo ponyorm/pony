@@ -616,17 +616,13 @@ class Decompiler(object):
 
     def conditional_jump_none_impl(decompiler, endpos, negate):
         expr = decompiler.stack.pop()
-        op = ast.Is
-        if decompiler.pos >= decompiler.conditions_end:
-            clausetype = ast.And if negate else ast.Or
-        elif decompiler.pos in decompiler.or_jumps:
+        assert(decompiler.pos < decompiler.conditions_end)
+        if decompiler.pos in decompiler.or_jumps:
             clausetype = ast.Or
-            if negate:
-                op = ast.IsNot
+            op = ast.IsNot if negate else ast.Is
         else:
             clausetype = ast.And
-            if negate:
-                op = ast.IsNot
+            op = ast.Is if negate else ast.IsNot
         expr = ast.Compare(expr, [op()], [ast.Constant(None)])
         decompiler.stack.append(expr)
 
@@ -640,10 +636,10 @@ class Decompiler(object):
         return clause
 
     def jump_if_none(decompiler, endpos):
-        return decompiler.conditional_jump_none_impl(endpos, True)
+        return decompiler.conditional_jump_none_impl(endpos, False)
 
     def jump_if_not_none(decompiler, endpos):
-        return decompiler.conditional_jump_none_impl(endpos, False)
+        return decompiler.conditional_jump_none_impl(endpos, True)
 
     def process_target(decompiler, pos, partial=False):
         if pos is None:
@@ -998,6 +994,12 @@ test_lines = """
     (a for a in T1 if a in select(b for b in T2))
     (a for a in T1 if a in (b for b in T2 if b in (c for c in T3 if c == a)))
     (a for a in T1 if a > x and a in (b for b in T1 if b < y) and a < z)
+    (a for a in T if a.b is None)
+    (a for a in T if a.b is not None)
+    (a for a in T if a.b is None or a.b == c)
+    (a for a in T if a.b is not None or a.b == c)
+    (a for a in T if a.b is None and a.c == d)
+    (a for a in T if a.b is not None and a.c == d)
 """
 ##   should throw InvalidQuery due to using [] inside of a query
 ##   (a for a in T1 if a in [b for b in T2 if b in [(c, d) for c in T3]])
