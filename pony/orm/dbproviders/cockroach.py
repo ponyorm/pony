@@ -17,7 +17,7 @@ except ImportError:
 
 from pony.orm.dbproviders.postgres import (
     PGSQLBuilder, PGColumn, PGSchema, PGTranslator, PGProvider,
-    PGStrConverter, PGIntConverter, PGRealConverter,
+    PGIntConverter, PGRealConverter,
     PGDatetimeConverter, PGTimedeltaConverter,
     PGBlobConverter, PGJsonConverter, PGArrayConverter,
 )
@@ -60,7 +60,7 @@ class PGUuidConverter(dbapiprovider.UuidConverter):
 class CRArrayConverter(PGArrayConverter):
     array_types = {
         int: ('INT', PGIntConverter),
-        str: ('STRING', PGStrConverter),
+        str: ('STRING', dbapiprovider.StrConverter),
         float: ('DOUBLE PRECISION', PGRealConverter)
     }
 
@@ -96,7 +96,7 @@ class CRProvider(PGProvider):
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
-        (str, PGStrConverter),
+        (str, dbapiprovider.StrConverter),
         (int_types, CRIntConverter),
         (float, PGRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
