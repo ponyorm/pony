@@ -860,6 +860,8 @@ class ArrayConverter(Converter):
         return TrackedArray(obj, converter.attr, dbval)
 
     def val2dbval(converter, val, obj=None):
+        if converter.attr.nullable and val is None:
+            return val
         return list(val)
 
     def sql_type(converter):
