@@ -1,3 +1,7 @@
+# PonyORM release 0.7.17 (2023-06-15)
+
+* Introduce retry_delay into retry db_session
+
 # PonyORM release 0.7.16 (2022-01-28)
 
 ## Bugfixes
