@@ -426,7 +426,7 @@ class DBSessionContextManager(object):
                     'The same exception %s cannot be specified in both '
                     'allowed and retry exception lists simultaneously' % e.__name__)
         db_session.retry = retry
-        db_session.retry = retry_delay
+        db_session.retry_delay = retry_delay
         db_session.ddl = ddl
         db_session.serializable = serializable
         db_session.immediate = immediate or ddl or serializable or not optimistic

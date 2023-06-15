@@ -3,7 +3,7 @@ from __future__ import absolute_import, print_function
 import os, sys
 from os.path import dirname
 
-__version__ = '0.7.16'
+__version__ = '0.7.17'
 
 def detect_mode():
     try: import google.appengine
