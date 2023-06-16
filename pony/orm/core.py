@@ -419,6 +419,8 @@ class DBSessionContextManager(object):
                 "'retry_delay' parameter of db_session must be of integer type. Got: %s" % type(retry))
             if retry < 0: throw(TypeError,
                 "'retry' parameter of db_session must not be negative. Got: %d" % retry)
+            if retry_delay < 0: throw(TypeError,
+                "'retry_delay' parameter of db_session must not be negative. Got: %d" % retry)
             if ddl: throw(TypeError, "'ddl' and 'retry' parameters of db_session cannot be used together")
         if not callable(allowed_exceptions) and not callable(retry_exceptions):
             for e in allowed_exceptions:
