@@ -1,0 +1,239 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: tests-and-lint
+
+on:
+  push:
+    branches: [ github-actions ]
+  pull_request:
+    branches: [ github-actions ]
+
+jobs:
+  style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install flake8 pylint
+          if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
+      - name: Lint with flake8
+        run: |
+          flake8 pony --count --exit-zero --exclude tests,examples,flask,thirdparty  --max-complexity=10 --max-line-length=127 --statistics
+      - name: Lint with pylint
+        run:
+          pylint --ignore tests,examples,flask,thirdparty --exit-zero --max-line-length=127 --confidence INFERENCE --jobs 2 pony/
+
+
+  test-win:
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [windows-latest]
+        python-version: [2.7, 3.9]
+        database: [sqlite]
+        # architecture: [x64]
+
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install coverage
+        pip install -r pony\orm\tests\requirements.txt
+    - name: Test with coverage
+      run: |
+        # run unittest
+        coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
+        # run sql unittest
+        set PYTHONPATH=%CD%
+        coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony\orm\tests\sql_tests.py
+
+        # export teast results
+        coverage xml -i
+        coverage report -i
+    - name: Post coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        files: coverage.xml
+        name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        fail_ci_if_error: true # optional (default = false)
+        verbose: true # optional (default = false)
+
+
+  test-sqlite:
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-latest]
+        python-version: [2.7, 3.9]
+        database: [sqlite]
+        # architecture: [x64]
+
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install coverage
+        if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
+    - name: Test with coverage
+      run: |
+        # Setup database
+        export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }} && echo $pony_test_db
+        # run unittest
+        coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
+        # run sql test
+        PYTHONPATH=$(pwd) coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
+
+        # export teast results
+        coverage xml -i
+        coverage report -i
+    - name: Post coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        files: coverage.xml
+        name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        fail_ci_if_error: true # optional (default = false)
+        verbose: true # optional (default = false)
+
+  test-mysql:
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-latest]
+        python-version: [2.7, 3.9]
+        database: [mysql]
+        # architecture: [x64]
+
+    runs-on: ${{ matrix.runs-on }}
+
+    services:
+      mysql:
+        image: mysql
+        env:
+          MYSQL_DATABASE: pony
+          MYSQL_USER: pony
+          MYSQL_ROOT_PASSWORD: pony
+          MYSQL_PASSWORD: pony
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+        ports:
+          - 3306:3306
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install coverage
+        if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
+    - name: Test with coverage
+      run: |
+        # Setup database
+        export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }} && echo $pony_test_db
+        # run unittest
+        coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
+        # run sql unittest
+        PYTHONPATH=$(pwd) coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
+
+        # export teast results
+        coverage xml -i
+        coverage report -i
+    - name: Post coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        files: coverage.xml
+        name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        fail_ci_if_error: true # optional (default = false)
+        verbose: true # optional (default = false)
+
+
+  test-postgres:
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-latest]
+        python-version: [2.7, 3.9]
+        database: [postgres]
+        # architecture: [x64]
+
+    runs-on: ${{ matrix.runs-on }}
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_DB: pony
+          POSTGRES_USER: pony
+          POSTGRES_PASSWORD: pony
+          POSTGRES_PORT: 5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install coverage
+        if [ -f pony/orm/tests/requirements.txt ]; then pip install -r pony/orm/tests/requirements.txt; fi
+    - name: Test with coverage
+      run: |
+        # Setup database
+        export pony_test_db=$(pwd)/pony/orm/tests/dbconf/${{ matrix.database }} && echo $pony_test_db
+        # run unittest
+        coverage run --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch -m unittest discover
+        # run sql unittest
+        PYTHONPATH=$(pwd) coverage run -a --source pony.orm.dbapiprovider,pony.orm.dbschema,pony.orm.decompiling,pony.orm.core,pony.orm.sqlbuilding,pony.orm.sqltranslation --branch pony/orm/tests/sql_tests.py
+
+        # export teast results
+        coverage xml -i
+        coverage report -i
+    - name: Post coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+        files: coverage.xml
+        name: test-${{ matrix.database }}-${{ matrix.runs-on }}-${{ matrix.python-version }}
+        fail_ci_if_error: true # optional (default = false)
+        verbose: true # optional (default = false)
+
+
+  # TODO: test-cockroach
+
+
+  # TODO: test-oracle

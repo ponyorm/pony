@@ -1,0 +1,1 @@
+settings=dict(provider='cockroach', host='localhost', port=26257, user='root', sslmode='disable', database='defaultdb')

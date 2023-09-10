@@ -1,9 +1,14 @@
 # Downloads
-[![Downloads](https://pepy.tech/badge/pony)](https://pepy.tech/project/pony) [![Downloads](https://pepy.tech/badge/pony/month)](https://pepy.tech/project/pony/month) [![Downloads](https://pepy.tech/badge/pony/week)](https://pepy.tech/project/pony/week)
-
+[![Downloads](https://pepy.tech/badge/pony)](https://pepy.tech/project/pony) [![Downloads](https://pepy.tech/badge/pony/month)](https://pepy.tech/project/pony/month) [![Downloads](https://pepy.tech/badge/pony/week)](https://pepy.tech/project/pony/week)  
+[![pip](https://badge.fury.io/py/pony.svg)](https://pypi.org/project/pony)
 
 Pony Object-Relational Mapper
 =============================
+
+[![tests](https://github.com/k4black/pony/workflows/tests-and-lint/badge.svg?branch=github-actions)](https://github.com/k4black/pony/actions)
+[![codecov](https://codecov.io/gh/k4black/pony/branch/github-actions/graph/badge.svg?token=JDSZTDES6O)](https://codecov.io/gh/k4black/pony)
+
+[comment]: <> ([![Build history]&#40;https://buildstats.info/github/chart/k4black/pony&#41;]&#40;https://ci.appveyor.com/project/dustinmoris/ci-buildstats/history&#41;)
 
 Pony is an advanced object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using Python generator expressions and lambdas. Pony analyzes the abstract syntax tree of the expression and translates it into a SQL query.
 
