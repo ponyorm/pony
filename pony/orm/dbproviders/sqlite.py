@@ -655,6 +655,7 @@ class SQLitePool(Pool):
         pool.is_shared_memory_db = is_shared_memory_db
         pool.filename = filename
         pool.create_db = create_db
+        pool.row_factory = kwargs.pop("row_factory", None)
         pool.kwargs = kwargs
         pool.con = None
     def _connect(pool):
@@ -666,6 +667,7 @@ class SQLitePool(Pool):
 
         pool.con = con = sqlite.connect(filename, isolation_level=None, **pool.kwargs)
         con.text_factory = _text_factory
+        con.row_factory = pool.row_factory
 
         def create_function(name, num_params, func):
             func = keep_exception(func)
