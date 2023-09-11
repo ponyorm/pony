@@ -53,7 +53,7 @@ ALTERNATIVE_RESPONSE_MEMCACHE = None    # Use general memcache connection by def
 PICKLE_START_OFFSET = 230
 PICKLE_HTML_AS_PLAIN_STR = True
 
-# encoding options for pony.pathces.repr
+# encoding options for pony.patches.repr
 RESTORE_ESCAPES = True
 SOURCE_ENCODING = None
 CONSOLE_ENCODING = None
