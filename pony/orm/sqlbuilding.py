@@ -301,7 +301,8 @@ class SQLBuilder(object):
             if i > 0:
                 if join_cond is None: result.append(', ')
                 else: result += [ '\n', indent, '  %s JOIN ' % join_type ]
-            if builder.suppress_aliases: alias = None
+            if builder.suppress_aliases or alias == x:
+                alias = None
             elif alias is not None: alias = builder.quote_name(alias)
             if kind == 'TABLE':
                 if isinstance(x, str): result.append(builder.quote_name(x))
