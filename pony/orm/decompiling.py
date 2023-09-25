@@ -706,9 +706,15 @@ class Decompiler(object):
     def IS_OP(decompiler, invert):
         return decompiler.COMPARE_OP('is not' if invert else 'is')
 
-    def LIST_APPEND(decompiler, offset=None):
-        throw(InvalidQuery('Use generator expression (... for ... in ...) '
-                           'instead of list comprehension [... for ... in ...] inside query'))
+    def LIST_APPEND(decompiler, offset):
+        tos = decompiler.stack.pop()
+        list_node = decompiler.stack[-offset]
+        if isinstance(list_node, ast.comprehension):
+            throw(InvalidQuery('Use generator expression (... for ... in ...) '
+                               'instead of list comprehension [... for ... in ...] inside query'))
+
+        assert isinstance(list_node, ast.List), list_node
+        list_node.elts.append(tos)
 
     def LIST_EXTEND(decompiler, offset):
         if offset != 1:
@@ -724,6 +730,12 @@ class Decompiler(object):
         values = [make_const(v) for v in items.value]
         lst.elts.extend(values)
         return lst
+
+    def LIST_TO_TUPLE(decompiler):
+        tos = decompiler.stack.pop()
+        if not isinstance(tos, ast.List):
+            throw(InvalidQuery, "Translation error, please contact developers: list expected, got: %r" % tos)
+        return ast.Tuple(tos.elts, ast.Load())
 
     def LOAD_ATTR(decompiler, attr_name):
         return ast.Attribute(decompiler.stack.pop(), attr_name, ast.Load())
