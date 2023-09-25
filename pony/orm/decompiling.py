@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY37, PYPY, PY38, PY39, PY310, PY311
+from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PYPY
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -164,7 +164,6 @@ class Decompiler(object):
         if decompiler.stack:
             throw(DecompileError, 'Compiled code should represent a single expression')
     def get_instructions(decompiler):
-        PY36 = sys.version_info >= (3, 6)
         before_yield = True
         code = decompiler.code
         co_code = code.co_code
