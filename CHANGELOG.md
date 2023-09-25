@@ -1,3 +1,17 @@
+# PonyORM release 0.7.17 (2023-09-25)
+
+## Bugfixes
+
+* Fix #636 nullable IntArray and StrArray 
+* Fix quoting table alias in MySQL DELETE queries
+* Fix handling of default argument values in hibrid methods and functions
+
+
+## Features
+
+* Add Python 3.11 support, drop support for Python < 3.8
+
+
 # PonyORM release 0.7.16 (2022-01-28)
 
 ## Bugfixes
