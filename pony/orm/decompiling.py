@@ -31,11 +31,12 @@ def decompile(x):
     elif t is types.GeneratorType:
         codeobject = x.gi_frame.f_code
     elif t is types.FunctionType:
+        x = inspect.unwrap(x)
         codeobject = x.__code__
         if x.__closure__:
             cells = dict(zip(codeobject.co_freevars, x.__closure__))
     else:
-        throw(TypeError)
+        throw(TypeError("Can't decompile %r" % t))
     key = get_codeobject_id(codeobject)
     result = ast_cache.get(key)
     if result is None:
