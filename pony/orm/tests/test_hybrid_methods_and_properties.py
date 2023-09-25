@@ -24,6 +24,9 @@ class Person(db.Entity):
     def full_name_2(self):
         return concat(self.first_name, sep, self.last_name)  # tests using of function `concat` from external scope
 
+    def full_name_with_default_separator(self, separator='_'):
+        return self.first_name + separator + self.last_name
+
     @property
     def has_car(self):
         return not self.cars.is_empty()
@@ -124,9 +127,14 @@ class TestHybridsAndProperties(unittest.TestCase):
         teardown_database(db)
 
     @db_session
-    def test1(self):
+    def test1a(self):
         persons = select(p.full_name for p in Person if p.has_car)[:]
         self.assertEqual(set(persons), {'Alexander Kozlovsky', 'Alexei Malashkevich', 'Alexander Tischenko'})
+
+    @db_session
+    def test1b(self):
+        persons = select(p.full_name_with_default_separator() for p in Person if p.has_car)[:]
+        self.assertEqual(set(persons), {'Alexander_Kozlovsky', 'Alexei_Malashkevich', 'Alexander_Tischenko'})
 
     @db_session
     def test2(self):

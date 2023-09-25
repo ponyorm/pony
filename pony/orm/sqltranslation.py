@@ -1013,8 +1013,11 @@ class SQLTranslator(ASTTranslator):
     def resolve_name(translator, name):
         if name not in translator.namespace:
             throw(TranslationError, 'Name %s is not found in %s' % (name, translator.namespace))
+
         monad = translator.namespace[name]
-        assert isinstance(monad, Monad)
+        if not isinstance(monad, Monad):
+            raise AssertionError('Name `%s` was expected to be resolved to a monad. Got: %r' % (name, monad))
+
         if monad.translator is not translator:
             monad.translator.sqlquery.used_from_subquery = True
         return monad
@@ -2655,6 +2658,11 @@ class HybridFuncMonad(Monad):
     def __call__(monad, *args, **kwargs):
         translator = monad.translator
         name_mapping = inspect.getcallargs(monad.func, *(monad.params + args), **kwargs)
+
+        for name, value in name_mapping.items():
+            if not isinstance(value, Monad):
+                value = ConstMonad.new(value)
+                name_mapping[name] = value
 
         func = monad.func
         func_id = id(func)
