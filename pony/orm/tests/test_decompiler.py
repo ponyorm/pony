@@ -102,8 +102,8 @@ class TestDecompiler(unittest.TestCase):
             return
 
         code = compile(src, '<?>', 'eval').co_consts[0]
-        import dis
-        print(dis.dis(code))
+        # import dis
+        # print(dis.dis(code))
         dc = Decompiler(code)
         expected = textwrap.dedent(expected).strip()
         self.maxDiff = None
