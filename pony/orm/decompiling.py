@@ -172,7 +172,6 @@ class Decompiler(object):
         while decompiler.pos < decompiler.end:
             i = decompiler.pos
             op = code.co_code[i]
-            opname = opnames[op].replace('+', '_')
             if PY36:
                 extended_arg = 0
                 oparg = code.co_code[i+1]
@@ -193,6 +192,8 @@ class Decompiler(object):
                         i += 1
                         oparg = co_code[i] + co_code[i + 1] * 256 + oparg * 65536
                         i += 2
+
+            opname = opnames[op].replace('+', '_')
             if op >= HAVE_ARGUMENT:
                 if op in hasconst:
                     arg = [code.co_consts[oparg]]
