@@ -1,5 +1,13 @@
+from __future__ import absolute_import
+
+import importlib
+
 from pony.orm import db_session
-from flask import request
+
+
+flask_lib = importlib.import_module('flask')
+request = getattr(flask_lib, 'request', None)
+
 
 def _enter_session():
     session = db_session()
