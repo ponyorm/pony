@@ -4,7 +4,7 @@ from pony.py23compat import cmp, unicode, buffer, int_types
 import builtins, json, re, sys, types, datetime, logging, itertools, warnings, inspect, ast
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
-from time import time
+from time import time, sleep
 from decimal import Decimal
 from random import shuffle, randint, random
 from threading import Lock, RLock, current_thread, _MainThread
@@ -407,16 +407,20 @@ def rollback():
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
-    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', \
+    __slots__ = 'retry', 'retry_delay', 'retry_exceptions', 'allowed_exceptions', \
                 'immediate', 'ddl', 'serializable', 'strict', 'optimistic', \
                 'sql_debug', 'show_values'
-    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False, optimistic=True,
+    def __init__(db_session, retry:int=0, retry_delay:int=0, immediate:bool=False, ddl:bool=False, serializable:bool=False, strict:bool=False, optimistic:bool=True,
                  retry_exceptions=(TransactionError,), allowed_exceptions=(), sql_debug=None, show_values=None):
         if retry != 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
+            if type(retry_delay) is not int: throw(TypeError,
+                "'retry_delay' parameter of db_session must be of integer type. Got: %s" % type(retry))
             if retry < 0: throw(TypeError,
                 "'retry' parameter of db_session must not be negative. Got: %d" % retry)
+            if retry_delay < 0: throw(TypeError,
+                "'retry_delay' parameter of db_session must not be negative. Got: %d" % retry)
             if ddl: throw(TypeError, "'ddl' and 'retry' parameters of db_session cannot be used together")
         if not callable(allowed_exceptions) and not callable(retry_exceptions):
             for e in allowed_exceptions:
@@ -424,6 +428,7 @@ class DBSessionContextManager(object):
                     'The same exception %s cannot be specified in both '
                     'allowed and retry exception lists simultaneously' % e.__name__)
         db_session.retry = retry
+        db_session.retry_delay = retry_delay
         db_session.ddl = ddl
         db_session.serializable = serializable
         db_session.immediate = immediate or ddl or serializable or not optimistic
@@ -533,6 +538,7 @@ class DBSessionContextManager(object):
                         if not do_retry:
                             raise
                         rollback()
+                        sleep(db_session.retry_delay)
                     finally:
                         db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
