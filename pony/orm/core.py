@@ -5945,6 +5945,18 @@ class Query(object):
         objects = query.without_distinct()[:1]
         if not objects: return None
         return objects[0]
+    def last(query):
+        translator = query._translator
+        if translator.order:
+            pass
+        elif type(translator.expr_type) is tuple:
+            query = query.order_by(*[-i-1 for i in range(len(query._translator.expr_type))])
+        else:
+            query = query.order_by(-1)
+        objects = query.without_distinct()[:1]
+        if not objects:
+            return None
+        return objects[0]
     @cut_traceback
     def without_distinct(query):
         return query._clone(_distinct=False)
