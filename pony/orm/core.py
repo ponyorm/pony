@@ -5945,6 +5945,7 @@ class Query(object):
         objects = query.without_distinct()[:1]
         if not objects: return None
         return objects[0]
+    @cut_traceback
     def last(query):
         translator = query._translator
         if translator.order:
