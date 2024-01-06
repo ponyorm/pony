@@ -3676,7 +3676,6 @@ class EntityIter(object):
 entity_id_counter = itertools.count(1)
 new_instance_id_counter = itertools.count(1)
 
-select_re = re.compile(r'select\b', re.IGNORECASE)
 lambda_re = re.compile(r'lambda\b')
 
 class EntityMeta(type):
