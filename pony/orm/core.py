@@ -404,7 +404,7 @@ def rollback():
     finally:
         del exceptions
 
-select_re = re.compile(r'\s*select\b', re.IGNORECASE)
+select_re = re.compile(r'\s*(select|with)\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
     __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', \
