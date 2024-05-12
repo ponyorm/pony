@@ -7,6 +7,7 @@ PY38 = sys.version_info[:2] >= (3, 8)
 PY39 = sys.version_info[:2] >= (3, 9)
 PY310 = sys.version_info[:2] >= (3, 10)
 PY311 = sys.version_info[:2] >= (3, 11)
+PY312 = sys.version_info[:2] >= (3, 12)
 
 unicode = str
 buffer = bytes
