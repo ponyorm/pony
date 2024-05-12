@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PYPY
+from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PY312, PYPY
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -205,6 +205,12 @@ class Decompiler(object):
                             push_null = oparg & 1
                             oparg >>= 1
                         arg = [code.co_names[oparg], push_null]
+                    elif opname == "LOAD_ATTR":
+                        push_null = False
+                        if PY312:
+                            push_null = oparg & 1
+                            oparg >>= 1
+                        arg = [code.co_names[oparg], push_null]
                     else:
                         arg = [code.co_names[oparg]]
                 elif op in hasjrel:
@@ -213,6 +219,8 @@ class Decompiler(object):
                 elif op in haslocal:
                     arg = [code.co_varnames[oparg]]
                 elif op in hascompare:
+                    if PY312:
+                        oparg >>= 4
                     arg = [cmp_op[oparg]]
                 elif op in hasfree:
                     if PY311:
@@ -230,13 +238,45 @@ class Decompiler(object):
                 decompiler.abs_jump_to_top = decompiler.pos
 
             if before_yield:
-                if 'JUMP' in opname:
+                merge = False
+                if opname == 'JUMP_BACKWARD':
+                    # in py 3.12 we have jump_if_true forward for yield
+                    # and unconditional jump_backward for loop, so we
+                    # fixup previous instruction to match pre-3.12,
+                    # which is conditional jump backward for loop
+                    # and fall through for yield
+                    prev = list(decompiler.instructions[-1])
                     endpos = arg[0]
-                    if endpos < decompiler.pos:
-                        decompiler.conditions_end = i
-                    decompiler.jump_map[endpos].append(decompiler.pos)
-                decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
-                decompiler.instructions.append((decompiler.pos, i, opname, arg))
+                    merge = True
+                    if prev[2] == 'POP_JUMP_IF_TRUE':
+                        prev[2] = 'POP_JUMP_BACKWARD_IF_FALSE'
+                    elif prev[2] == 'POP_JUMP_IF_FALSE':
+                        prev[2] = 'POP_JUMP_BACKWARD_IF_TRUE'
+                    elif prev[2] == 'POP_JUMP_IF_NOT_NONE':
+                        prev[2] = 'POP_JUMP_BACKWARD_IF_NONE'
+                    elif prev[2] == 'POP_JUMP_IF_NONE':
+                        prev[2] = 'POP_JUMP_BACKWARD_IF_NOT_NONE'
+                    elif prev[2] == 'LIST_APPEND':
+                        merge = False
+                    else:
+                        raise DecompileError(f"Unsupported instruction combination: {prev[2]} + {opname}")
+                    if merge:
+                        old_endpos = prev[3][0]
+                        prev[1] = i
+                        prev[3] = arg
+                        decompiler.instructions[-1] = tuple(prev)
+                        if endpos < decompiler.pos:
+                            decompiler.conditions_end = i
+                        decompiler.jump_map[old_endpos].remove(prev[0])
+                        decompiler.jump_map[endpos].append(prev[0])
+                if not merge:
+                    if 'JUMP' in opname:
+                        endpos = arg[0]
+                        if endpos < decompiler.pos:
+                            decompiler.conditions_end = i
+                        decompiler.jump_map[endpos].append(decompiler.pos)
+                    decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
+                    decompiler.instructions.append((decompiler.pos, i, opname, arg))
             if opname == 'YIELD_VALUE':
                 before_yield = False
             decompiler.pos = i
@@ -344,6 +384,14 @@ class Decompiler(object):
         if inplace:
             r = ast.Name(oper1, r)
         return r
+
+    def BINARY_SLICE(decompiler):
+        # 3.12 optimized BUILD_SLICE + BINARY_SUBSCR
+        end = decompiler.stack.pop()
+        start = decompiler.stack.pop()
+        node1 = decompiler.stack.pop()
+        node2 = ast.Slice(start, end, ctx=ast.Load())
+        return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
     def BINARY_SUBSCR(decompiler):
         node2 = decompiler.stack.pop()
@@ -523,6 +571,10 @@ class Decompiler(object):
         oper1 = decompiler.stack.pop()
         op = operator_mapping[op]()
         return ast.Compare(oper1, [op], [oper2])
+
+    def COPY(decompiler, _):
+        pass  # this is not great, but stack is not the same as during runtime
+        # actual queries are hopefully covered by tests
 
     def COPY_FREE_VARS(decompiler, n):
         pass
@@ -737,8 +789,11 @@ class Decompiler(object):
             throw(InvalidQuery, "Translation error, please contact developers: list expected, got: %r" % tos)
         return ast.Tuple(tos.elts, ast.Load())
 
-    def LOAD_ATTR(decompiler, attr_name):
-        return ast.Attribute(decompiler.stack.pop(), attr_name, ast.Load())
+    def LOAD_ATTR(decompiler, attr_name, push_null):
+        res = ast.Attribute(decompiler.stack.pop(), attr_name, ast.Load())
+        if push_null:
+            decompiler.stack.append(None)
+        return res
 
     def LOAD_CLOSURE(decompiler, freevar):
         decompiler.names.add(freevar)
@@ -755,6 +810,8 @@ class Decompiler(object):
         decompiler.names.add(varname)
         return ast.Name(varname, ast.Load())
 
+    LOAD_FAST_AND_CLEAR = LOAD_FAST
+
     def LOAD_GLOBAL(decompiler, varname, push_null):
         if push_null:
             decompiler.stack.append(None)
@@ -762,10 +819,7 @@ class Decompiler(object):
         return ast.Name(varname, ast.Load())
 
     def LOAD_METHOD(decompiler, methname):
-        result = decompiler.LOAD_ATTR(methname)
-        if PY311:
-            decompiler.stack.append(None)
-        return result
+        return decompiler.LOAD_ATTR(methname, PY311)
 
     LOOKUP_METHOD = LOAD_METHOD  # For PyPy
 
@@ -846,6 +900,9 @@ class Decompiler(object):
         expr = decompiler.stack.pop()
         return simplify(expr)
 
+    def RETURN_CONST(decompiler, val):
+        return make_const(val)
+
     def RETURN_GENERATOR(decompiler):
         pass
 
@@ -903,6 +960,10 @@ class Decompiler(object):
             tos1.items = []
         tos1.items.append((tos, tos2))
 
+    def SWAP(decompiler, _):
+        pass  # this is not great, but stack is not the same as during runtime
+        # actual queries are hopefully covered by tests
+
     def UNARY_POSITIVE(decompiler):
         return ast.UnaryOp(op=ast.UAdd(), operand=decompiler.stack.pop())
 
@@ -920,7 +981,7 @@ class Decompiler(object):
         ass_tuple.count = count
         return ass_tuple
 
-    def YIELD_VALUE(decompiler):
+    def YIELD_VALUE(decompiler, _=None):
         expr = decompiler.stack.pop()
         generators = []
         while decompiler.stack:
