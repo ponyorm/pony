@@ -171,7 +171,7 @@ class SQLiteBuilder(SQLBuilder):
     def JSON_QUERY(builder, expr, path):
         fname = 'json_extract' if builder.json1_available else 'py_json_extract'
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
-        return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', path_sql, '))'
+        return 'py_json_unwrap(', fname, '(', builder(expr), ", '$.__non_existent_json_attr_name__', ", path_sql, '))'
     json_value_type_mapping = {str: 'text', bool: 'integer', int: 'integer', float: 'real'}
     def JSON_VALUE(builder, expr, path, type):
         func_name = 'json_extract' if builder.json1_available else 'py_json_extract'
@@ -520,11 +520,10 @@ py_upper = make_string_function('py_upper', str.upper)
 py_lower = make_string_function('py_lower', str.lower)
 
 def py_json_unwrap(value):
-    # [null,some-value] -> some-value
-    if value is None:
-        return None
-    assert value.startswith('[null,'), value
-    return value[6:-1]
+    # "[null,some_json]" -> "some_json"
+    if isinstance(value, str) and value.startswith('[null,'):
+        return value[6:-1]
+    return None
 
 path_cache = {}
 
