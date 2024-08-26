@@ -1,3 +1,14 @@
+# PonyORM release 0.7.18 (2024-08-26)
+
+## Features
+
+* Add Python 3.12 support
+
+## Bugfixes
+
+* Fix #704 JSON handling in SQLite >= 3.45
+
+
 # PonyORM release 0.7.17 (2023-09-25)
 
 ## Features
