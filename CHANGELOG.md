@@ -1,3 +1,10 @@
+# PonyORM release 0.7.19 (2024-08-27)
+
+## Bugfixes
+
+* Add missed Python 3.12 classifier
+
+
 # PonyORM release 0.7.18 (2024-08-26)
 
 ## Features
