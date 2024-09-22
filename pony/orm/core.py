@@ -404,7 +404,7 @@ def rollback():
     finally:
         del exceptions
 
-select_re = re.compile(r'\s*select\b', re.IGNORECASE)
+select_re = re.compile(r'\s*(select|with)\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
     __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', \
@@ -3676,7 +3676,6 @@ class EntityIter(object):
 entity_id_counter = itertools.count(1)
 new_instance_id_counter = itertools.count(1)
 
-select_re = re.compile(r'select\b', re.IGNORECASE)
 lambda_re = re.compile(r'lambda\b')
 
 class EntityMeta(type):
