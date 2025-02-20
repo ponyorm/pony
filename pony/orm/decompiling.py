@@ -694,6 +694,12 @@ class Decompiler(object):
     def jump_if_not_none(decompiler, endpos):
         return decompiler.conditional_jump_none_impl(endpos, True)
 
+    def POP_JUMP_IF_NONE(decompiler, endpos):
+        return decompiler.jump_if_none(endpos)
+
+    def POP_JUMP_IF_NOT_NONE(decompiler, endpos):
+        return decompiler.jump_if_not_none(endpos)
+
     def process_target(decompiler, pos, partial=False):
         if pos is None:
             limit = None
