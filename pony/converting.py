@@ -1,5 +1,3 @@
-# coding: cp1251
-
 from __future__ import absolute_import, print_function
 
 import re
@@ -107,7 +105,7 @@ date_str_list = [
     r'\D*(?P<year>\d{4})\D+(?P<day>\d{1,2})\D*',
     r'\D*(?P<day>\d{1,2})\D+(?P<year>\d{4})\D*'
     ]
-date_re_list = [ re.compile('^%s$'%s, re.UNICODE) for s in date_str_list ]
+date_re_list = [ re.compile(r'^%s$'%s, re.UNICODE) for s in date_str_list ]
 
 time_str = r'''
     (?P<hh>\d{1,2})  # hours
@@ -127,14 +125,14 @@ time_str = r'''
         \s* (?: (?P<am> a\.?m\.? ) | (?P<pm> p\.?m\.? ) )
     )?
 '''
-time_re = re.compile('^%s$'%time_str, re.VERBOSE)
+time_re = re.compile(r'^%s$'%time_str, re.VERBOSE)
 
-datetime_re_list = [ re.compile('^%s(?:[t ]%s)?$' % (date_str, time_str), re.UNICODE | re.VERBOSE)
+datetime_re_list = [ re.compile(r'^%s(?:[t ]%s)?$' % (date_str, time_str), re.UNICODE | re.VERBOSE)
                      for date_str in date_str_list ]
 
 month_lists = [
     "jan feb mar apr may jun jul aug sep oct nov dec".split(),
-    u"янв фев мар апр май июн июл авг сен окт ноя дек".split(),  # Russian
+    u"СЏРЅРІ С„РµРІ РјР°СЂ Р°РїСЂ РјР°Р№ РёСЋРЅ РёСЋР» Р°РІРі СЃРµРЅ РѕРєС‚ РЅРѕСЏ РґРµРє".split(),  # Russian
     ]
 month_dict = {}
 
@@ -142,7 +140,7 @@ for month_list in month_lists:
     for i, month in enumerate(month_list):
         month_dict[month] = i + 1
 
-month_dict[u'мая'] = 5  # Russian
+month_dict[u'РјР°СЏ'] = 5  # Russian
 
 def str2date(s):
     s = s.strip().lower()
