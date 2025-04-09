@@ -2,6 +2,7 @@ import textwrap
 import unittest
 import ast
 import sys
+import re
 
 from pony.orm.decompiling import Decompiler
 from pony.orm.asttranslation import ast2src
@@ -175,6 +176,149 @@ class TestDecompiler(unittest.TestCase):
                         Name(id='j', ctx=Load())])],
                   is_async=0)])
             """)
+
+    def test_ast_none(self):
+        self.assertDecompilesTo(
+            '(m for m in [] if (x is None or y))',
+            """
+            GeneratorExp(
+              elt=Name(id='m', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='m', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=Or(),
+                      values=[
+                        Compare(
+                          left=Name(id='x', ctx=Load()),
+                          ops=[
+                            Is()],
+                          comparators=[
+                            Constant(value=None)]),
+                        Name(id='y', ctx=Load())])],
+                  is_async=0)])
+
+            """
+            )
+
+
+    def test_ast_not_none(self):
+        self.assertDecompilesTo(
+            '(m for m in [] if (x is not None or y))',
+            """
+            GeneratorExp(
+              elt=Name(id='m', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='m', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=Or(),
+                      values=[
+                        Compare(
+                          left=Name(id='x', ctx=Load()),
+                          ops=[
+                            IsNot()],
+                          comparators=[
+                            Constant(value=None)]),
+                        Name(id='y', ctx=Load())])],
+                  is_async=0)])
+
+            """
+            )
+
+    def test_ast_multiline(self):
+        expr = """(m
+                for m in []
+                if (x is None or y))"""
+        expected_result = """
+            GeneratorExp(
+              elt=Name(id='m', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='m', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=Or(),
+                      values=[
+                        Compare(
+                          left=Name(id='x', ctx=Load()),
+                          ops=[
+                            Is()],
+                          comparators=[
+                            Constant(value=None)]),
+                        Name(id='y', ctx=Load())])],
+                  is_async=0)])
+            """
+        self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
+        self.assertDecompilesTo(expr, expected_result)
+
+    def test_ast_copy(self):
+        expr = """( s
+                for s in DirectorySyncSettings
+                if s.enabled and s.company == self.company and (not self.id or s.id != self.id)
+            )"""
+
+        expected_result = """
+            GeneratorExp(
+              elt=Name(id='s', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='s', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=And(),
+                      values=[
+                        Attribute(
+                          value=Name(id='s', ctx=Load()),
+                          attr='enabled',
+                          ctx=Load()),
+                        Compare(
+                          left=Attribute(
+                            value=Name(id='s', ctx=Load()),
+                            attr='company',
+                            ctx=Load()),
+                          ops=[
+                            Eq()],
+                          comparators=[
+                            Attribute(
+                              value=Name(id='self', ctx=Load()),
+                              attr='company',
+                              ctx=Load())]),
+                        BoolOp(
+                          op=Or(),
+                          values=[
+                            UnaryOp(
+                              op=Not(),
+                              operand=Attribute(
+                                value=Name(id='self', ctx=Load()),
+                                attr='id',
+                                ctx=Load())),
+                            Compare(
+                              left=Attribute(
+                                value=Name(id='s', ctx=Load()),
+                                attr='id',
+                                ctx=Load()),
+                              ops=[
+                                NotEq()],
+                              comparators=[
+                                Attribute(
+                                  value=Name(id='self', ctx=Load()),
+                                  attr='id',
+                                  ctx=Load())])])])],
+                  is_async=0)])
+
+        """
+
+        self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
+        self.assertDecompilesTo( expr, expected_result)
+
+
 
 
 for i, gen in enumerate(generate_gens()):
