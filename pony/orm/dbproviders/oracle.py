@@ -282,7 +282,7 @@ class OraBuilder(SQLBuilder):
             result = result, ", ','"
         return result, ') WITHIN GROUP(ORDER BY 1)'
 
-json_item_re = re.compile('[\w\s]*')
+json_item_re = re.compile(r'[\w\s]*')
 
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
