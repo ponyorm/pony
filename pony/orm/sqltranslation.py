@@ -10,7 +10,7 @@ from functools import update_wrapper
 from uuid import UUID
 
 from pony import options, utils
-from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce
+from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce, HashableDict
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors, get_child_nodes
 from pony.orm.decompiling import decompile, DecompileError, operator_mapping
 from pony.orm.ormtypes import \
@@ -2665,7 +2665,7 @@ class HybridFuncMonad(Monad):
                 name_mapping[name] = value
 
         func = monad.func
-        func_id = id(func)
+        func_id = HashableDict(code=id(func.__code__), func=id(func))
         try:
             func_ast, external_names, cells = decompile(func)
         except DecompileError:
