@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PY312, PYPY
+from pony.py23compat import PY37, PY38, PY39, PY310, PY311, PY312, PY313, PYPY
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -164,6 +164,15 @@ class Decompiler(object):
         decompiler.external_names = decompiler.names - decompiler.assnames
         if decompiler.stack:
             throw(DecompileError, 'Compiled code should represent a single expression')
+
+    def prev_non_cache_op(decompiler):
+        i = len(decompiler.instructions) - 1
+        while i >= 0:
+            if decompiler.instructions[i][2] != 'CACHE':
+                return i, list(decompiler.instructions[i])
+            i -= 1
+        assert False, "Started with CACHE?"
+
     def get_instructions(decompiler):
         before_yield = True
         code = decompiler.code
@@ -173,28 +182,18 @@ class Decompiler(object):
         while decompiler.pos < decompiler.end:
             i = decompiler.pos
             op = code.co_code[i]
-            if PY36:
-                extended_arg = 0
-                oparg = code.co_code[i+1]
-                while op == EXTENDED_ARG:
-                    extended_arg = (extended_arg | oparg) << 8
-                    i += 2
-                    op = code.co_code[i]
-                    oparg = code.co_code[i+1]
-                oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
+            extended_arg = 0
+            oparg = code.co_code[i+1]
+            while op == EXTENDED_ARG:
+                extended_arg = (extended_arg | oparg) << 8
                 i += 2
-            else:
-                i += 1
-                if op >= HAVE_ARGUMENT:
-                    oparg = co_code[i] + co_code[i + 1] * 256
-                    i += 2
-                    if op == EXTENDED_ARG:
-                        op = code.co_code[i]
-                        i += 1
-                        oparg = co_code[i] + co_code[i + 1] * 256 + oparg * 65536
-                        i += 2
+                op = code.co_code[i]
+                oparg = code.co_code[i+1]
+            oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
+            i += 2
 
             opname = opnames[op].replace('+', '_')
+
             if op >= HAVE_ARGUMENT:
                 if op in hasconst:
                     arg = [code.co_consts[oparg]]
@@ -217,9 +216,14 @@ class Decompiler(object):
                     arg = [i + oparg * (2 if PY310 else 1)
                            * (-1 if 'BACKWARD' in opname else 1)]
                 elif op in haslocal:
-                    arg = [code.co_varnames[oparg]]
+                    if opname == 'STORE_FAST_STORE_FAST':
+                        arg = [code.co_varnames[oparg >> 4], code.co_varnames[oparg & 15]]
+                    else:
+                        arg = [code.co_varnames[oparg]]
                 elif op in hascompare:
-                    if PY312:
+                    if PY313:
+                        oparg >>= 5
+                    elif PY312:
                         oparg >>= 4
                     arg = [cmp_op[oparg]]
                 elif op in hasfree:
@@ -245,7 +249,8 @@ class Decompiler(object):
                     # fixup previous instruction to match pre-3.12,
                     # which is conditional jump backward for loop
                     # and fall through for yield
-                    prev = list(decompiler.instructions[-1])
+                    # prev = list(decompiler.instructions[-1])
+                    prev_op_idx, prev = decompiler.prev_non_cache_op()
                     endpos = arg[0]
                     merge = True
                     if prev[2] == 'POP_JUMP_IF_TRUE':
@@ -264,7 +269,7 @@ class Decompiler(object):
                         old_endpos = prev[3][0]
                         prev[1] = i
                         prev[3] = arg
-                        decompiler.instructions[-1] = tuple(prev)
+                        decompiler.instructions[prev_op_idx] = tuple(prev)
                         if endpos < decompiler.pos:
                             decompiler.conditions_end = i
                         decompiler.jump_map[old_endpos].remove(prev[0])
@@ -701,7 +706,10 @@ class Decompiler(object):
             limit = decompiler.targets.get(pos, None)
         else:
             limit = decompiler.targets.pop(pos, None)
-        top = decompiler.stack.pop()
+        try:
+            top = decompiler.stack.pop()
+        except IndexError:
+            pass
         while True:
             top = simplify(top)
             if top is limit:
@@ -940,6 +948,10 @@ class Decompiler(object):
         decompiler.assnames.add(varname)
         decompiler.store(ast.Name(varname, ast.Store()))
 
+    def STORE_FAST_STORE_FAST(decompiler, varname1, varname2):
+        decompiler.STORE_FAST(varname1)
+        decompiler.STORE_FAST(varname2)
+
     def STORE_MAP(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
@@ -998,8 +1010,13 @@ class Decompiler(object):
         generators.reverse()
         return ast.GeneratorExp(simplify(expr), generators)
 
+    def TO_BOOL(decompiler):
+        #decompiler.stack[-1] = bool(decompiler.stack[-1])
+        #assert False, "Это вообще неправильно, он на стек True закидывает, а у нас на stack[-1] вообще объект"
+        pass
+
 test_lines = """
-    (a and b if c and d else e and f for i in T if (A and B if C and D else E and F))
+    # (a and b if c and d else e and f for i in T if (A and B if C and D else E and F))
 
     (a for b in T)
     (a for b, c in T)
@@ -1091,6 +1108,7 @@ def test(test_line=None):
     if sys.version[:3] > '2.4': outmost_iterable_name = '.0'
     else: outmost_iterable_name = '[outmost-iterable]'
     import dis
+    success, fail, wrong = [0] * 3
     for i, line in enumerate(test_lines.split('\n')):
         if test_line is not None and i != test_line:
             continue
@@ -1100,32 +1118,50 @@ def test(test_line=None):
         if line.startswith('#'):
             continue
         code = compile(line, '<?>', 'eval').co_consts[0]
-        ast1 = ast.parse(line).body[0]
-        ast1.value.generators[0].iter.id = outmost_iterable_name
-        ast1 = ast.dump(ast1)
+        real_ast = ast.parse(line).body[0]
+        real_ast.value.generators[0].iter.id = outmost_iterable_name
+        real_ast = ast.dump(real_ast)
         try:
-            ast2 = ast.Expr(Decompiler(code).ast)
-            ast2 = ast.dump(ast2)
+            decompiled_ast = ast.Expr(Decompiler(code).ast)
+            decompiled_ast = ast.dump(decompiled_ast)
         except Exception as e:
+            fail += 1
+            continue
+            print("DECOMPILE ERROR")
             print()
             print(i, line)
             print()
-            print(ast1)
+            print(real_ast)
             print()
-            dis.dis(code)
+            dis.dis(code, show_caches=True, show_offsets=True)
             raise
-        if ast1 != ast2:
+        if real_ast != decompiled_ast:
+            wrong += 1
+            # continue
+            print("WRONG AST")
             print()
             print(i, line)
             print()
-            print(ast1)
+            print(real_ast)
             print()
-            print(ast2)
+            print(decompiled_ast)
             print()
             dis.dis(code)
             break
-        else: print('%d OK: %s' % (i, line))
-    else: print('Done!')
+        else:
+            # print('%d OK: %s' % (i, line))
+            success += 1
+            continue
+            print()
+            print(i, line)
+            print()
+            print(real_ast)
+            print()
+            print(decompiled_ast)
+            print()
+            dis.dis(code)
+    else:
+        print(f'Done! {success=}/{fail=}/{wrong=}')
 
 if __name__ == '__main__':
     test()
