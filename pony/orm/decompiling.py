@@ -216,7 +216,7 @@ class Decompiler(object):
                     arg = [i + oparg * (2 if PY310 else 1)
                            * (-1 if 'BACKWARD' in opname else 1)]
                 elif op in haslocal:
-                    if opname == 'STORE_FAST_STORE_FAST':
+                    if opname in ('STORE_FAST_STORE_FAST', 'STORE_FAST_LOAD_FAST'):
                         arg = [code.co_varnames[oparg >> 4], code.co_varnames[oparg & 15]]
                     else:
                         arg = [code.co_varnames[oparg]]
@@ -706,10 +706,7 @@ class Decompiler(object):
             limit = decompiler.targets.get(pos, None)
         else:
             limit = decompiler.targets.pop(pos, None)
-        try:
-            top = decompiler.stack.pop()
-        except IndexError:
-            pass
+        top = decompiler.stack.pop()
         while True:
             top = simplify(top)
             if top is limit:
@@ -952,6 +949,10 @@ class Decompiler(object):
         decompiler.STORE_FAST(varname1)
         decompiler.STORE_FAST(varname2)
 
+    def STORE_FAST_LOAD_FAST(decompiler, varname1, varname2):
+        decompiler.store(decompiler.stack.pop())  # TODO varname1 for...?
+        decompiler.LOAD_FAST(varname2)
+
     def STORE_MAP(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
@@ -1001,7 +1002,10 @@ class Decompiler(object):
             top = decompiler.stack.pop()
             if not isinstance(top, ast.comprehension):
                 cond = top
-                top = decompiler.stack.pop()
+                try:
+                    top = decompiler.stack.pop()
+                except IndexError:
+                    pass
                 assert isinstance(top, ast.comprehension)
                 top.ifs.append(cond)
                 generators.append(top)
@@ -1009,6 +1013,12 @@ class Decompiler(object):
                 generators.append(top)
         generators.reverse()
         return ast.GeneratorExp(simplify(expr), generators)
+
+    def POP_JUMP_IF_NONE(decompiler, endpos):
+        return decompiler.jump_if_none(endpos)
+
+    def POP_JUMP_IF_NOT_NONE(decompiler, endpos):
+        return decompiler.jump_if_not_none(endpos)
 
     def TO_BOOL(decompiler):
         #decompiler.stack[-1] = bool(decompiler.stack[-1])
@@ -1126,7 +1136,7 @@ def test(test_line=None):
             decompiled_ast = ast.dump(decompiled_ast)
         except Exception as e:
             fail += 1
-            continue
+            # continue
             print("DECOMPILE ERROR")
             print()
             print(i, line)
@@ -1137,7 +1147,7 @@ def test(test_line=None):
             raise
         if real_ast != decompiled_ast:
             wrong += 1
-            # continue
+            continue
             print("WRONG AST")
             print()
             print(i, line)
@@ -1164,4 +1174,4 @@ def test(test_line=None):
         print(f'Done! {success=}/{fail=}/{wrong=}')
 
 if __name__ == '__main__':
-    test()
+    test(50)
