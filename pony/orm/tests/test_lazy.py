@@ -49,6 +49,7 @@ class TestLazy(unittest.TestCase):
     def test_lazy_3(self):  # coverage of https://github.com/ponyorm/pony/issues/49
         X = self.X
         x1 = X.get(b="first")
+        assert x1 is not None
         self.assertTrue(X._bits_[X.b] & x1._rbits_)
         self.assertTrue(X.b, x1._vals_)
 

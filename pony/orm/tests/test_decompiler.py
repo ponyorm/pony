@@ -124,7 +124,7 @@ class TestDecompiler(unittest.TestCase):
 
     def assertDecompilesTo(self, src, expected):
         # skip test due to ast.dump has no indent parameter
-        if sys.version_info[:2] <= (3, 8):
+        if sys.version_info[:2] <= (3, 8):  # noqa: UP036
             return
 
         code = compile(src, "<?>", "eval").co_consts[0]
@@ -358,14 +358,14 @@ class TestDecompiler(unittest.TestCase):
 
 
 for i, gen in enumerate(generate_gens()):
-    test_method = create_test(gen)
-    test_method.__name__ = "test_decompiler_%d" % i
-    setattr(TestDecompiler, test_method.__name__, test_method)
+    generated_test = create_test(gen)
+    generated_test.__name__ = "test_decompiler_%d" % i
+    setattr(TestDecompiler, generated_test.__name__, generated_test)
 
 
 for line_number, source in enumerate(test_lines.split("\n")):
     source = source.strip()
     if not source or source.startswith("#"):
         continue
-    test_method = create_test_line_test(line_number, source)
-    setattr(TestDecompiler, test_method.__name__, test_method)
+    generated_test = create_test_line_test(line_number, source)
+    setattr(TestDecompiler, generated_test.__name__, generated_test)

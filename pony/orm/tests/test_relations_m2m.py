@@ -46,16 +46,19 @@ class TestManyToManyNonComposite(unittest.TestCase):
         m2m_table = schema.tables[m2m_table_name]
         if pony.__version__ >= "0.9":
             fkeys = m2m_table.foreign_keys
+            for fk in fkeys.values():
+                self.assertEqual(fk.on_delete, "CASCADE")
         else:
             fkeys = set(m2m_table.foreign_keys.values())
+            for fk in fkeys:
+                self.assertEqual(fk.on_delete, "CASCADE")
         self.assertEqual(len(fkeys), 2)
-        for fk in fkeys:
-            self.assertEqual(fk.on_delete, "CASCADE")
 
     def test_2(self):
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name="Subj1")
+            assert g is not None and s is not None
             g.subjects.add(s)
 
         with db_session:
@@ -66,6 +69,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name="Subj3")
+            assert g is not None and s is not None
             g.subjects.add(s)
 
         with db_session:
@@ -76,6 +80,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name="Subj3")
+            assert g is not None and s is not None
             g.subjects.remove(s)
 
         with db_session:
@@ -86,6 +91,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name="Subj2")
+            assert g is not None and s is not None
             g.subjects.remove(s)
 
         with db_session:
@@ -96,6 +102,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
+            assert g is not None
             g.subjects.remove([s1, s2])
             g.subjects.add([s3, s4])
 
@@ -108,6 +115,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name="Subj3")
+            assert g is not None and s is not None
             g.subjects.add(s)
             g.subjects.remove(s)
             last_sql = db.last_sql
@@ -123,6 +131,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s = Subject.get(name="Subj1")
+            assert g is not None and s is not None
             g.subjects.remove(s)
             g.subjects.add(s)
             last_sql = db.last_sql
@@ -139,6 +148,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
             g = Group.get(number=101)
             s1 = Subject.get(name="Subj1")
             s2 = Subject.get(name="Subj2")
+            assert g is not None and s1 is not None and s2 is not None
             g.subjects.clear()
             g.subjects.add([s1, s2])
             last_sql = db.last_sql
@@ -154,6 +164,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g2 = Group.get(number=102)
             s1 = Subject.get(name="Subj1")
+            assert g2 is not None and s1 is not None
             g2.subjects.add(s1)
             g2.subjects.clear()
             last_sql = db.last_sql
@@ -169,6 +180,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
+            assert g is not None
             g.subjects = [s2, s3]
 
         with db_session:
@@ -179,6 +191,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
+            assert g is not None
             g.subjects.remove(s2)
             g.subjects = [s1, s2]
             last_sql = db.last_sql
@@ -194,6 +207,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
+            assert g is not None
             g.subjects.add(s3)
             g.subjects = [s1, s2]
             last_sql = db.last_sql
@@ -209,6 +223,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
     def test_14(self):
         g1 = Group[101]
         s1 = Subject["Subj1"]
+        assert g1._vals_ is not None and s1._vals_ is not None
         self.assertTrue(s1 in g1.subjects)
 
         group_setdata = g1._vals_[Group.subjects]

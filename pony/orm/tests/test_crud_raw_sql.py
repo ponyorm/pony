@@ -95,7 +95,9 @@ class TestCrudRawSQL(unittest.TestCase):
         x = 1
         y = 30
         cursor = db.execute("select name from Student where id = $x and age = $y")
-        self.assertEqual(cursor.fetchone()[0], "A")
+        row = cursor.fetchone()
+        assert row is not None
+        self.assertEqual(row[0], "A")
 
     def test6(self):
         x = 1

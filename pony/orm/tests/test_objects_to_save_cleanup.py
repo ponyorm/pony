@@ -1,10 +1,18 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
 
+if TYPE_CHECKING:
+    _MixinBase = unittest.TestCase
+else:
+    # A plain mixin at runtime, so that unittest doesn't collect and
+    # instantiate this class directly
+    _MixinBase = object
 
-class EntityStatusTestCase:
+
+class EntityStatusTestCase(_MixinBase):
     @classmethod
     def setUpClass(cls):
         db = cls.db = Database()
@@ -58,6 +66,7 @@ class EntityStatusTestCase:
 
 class EntityStatusTestCase_ObjectFlush(EntityStatusTestCase, unittest.TestCase):
     def make_flush(self, obj=None):
+        assert obj is not None
         obj.flush()
 
 

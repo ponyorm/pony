@@ -399,7 +399,9 @@ class TestSQLTranslator(unittest.TestCase):
     def test_composite_key4(self):
         result = set(
             select(
-                s for s in Student if len(c for c in Course if c not in s.courses) == 2
+                s
+                for s in Student
+                if len(c for c in Course if c not in s.courses) == 2  # pyright: ignore[reportArgumentType]
             )
         )
         self.assertEqual(result, {Student[1]})
@@ -444,7 +446,7 @@ class TestSQLTranslator(unittest.TestCase):
 
     @raises_exception(TypeError, "string argument without an encoding")
     def test_buffer_monad1(self):
-        select(s for s in Student if s.picture == buffer("abc"))
+        select(s for s in Student if s.picture == buffer("abc"))  # pyright: ignore[reportArgumentType]
 
     def test_buffer_monad2(self):
         select(s for s in Student if s.picture == buffer("abc", "ascii"))

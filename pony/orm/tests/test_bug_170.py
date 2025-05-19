@@ -23,6 +23,7 @@ class Test(unittest.TestCase):
 
     def test_1(self):
         table = db.schema.tables[Person._table_]
+        assert Person.id.column is not None
         pk_column = table.column_dict[Person.id.column]
         self.assertTrue(pk_column.is_pk)
 

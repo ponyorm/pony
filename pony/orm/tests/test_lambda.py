@@ -19,8 +19,7 @@ class TestLambda(unittest.TestCase):
     def setUpClass(cls) -> None:
         setup_database(db)
 
-    @classmethod
-    def setUp(cls) -> None:
+    def setUp(self) -> None:
         with db_session:
             User(
                 id=1,
@@ -40,8 +39,7 @@ class TestLambda(unittest.TestCase):
     def tearDownClass(cls) -> None:
         teardown_database(db)
 
-    @classmethod
-    def tearDown(cls) -> None:
+    def tearDown(self) -> None:
         with db_session:
             User.select().delete()
 

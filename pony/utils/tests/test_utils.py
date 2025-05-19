@@ -15,7 +15,7 @@ class PickleTest(unittest.TestCase):
 
     def test_simple_ast(self):
         src = ast.parse("(x for x in [])")
-        res = unpickle_ast(pickle_ast(src))
+        res = unpickle_ast(pickle_ast(src))  # pyright: ignore[reportArgumentType]
         self.assertEqual(ast.dump(res), ast.dump(src))
 
 

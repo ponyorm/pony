@@ -18,11 +18,13 @@ class TestCollections(unittest.TestCase):
     @db_session
     def test_setwrapper_len(self):
         g = Group.get(number="4145")
+        assert g is not None
         self.assertTrue(len(g.students) == 3)
 
     @db_session
     def test_setwrapper_nonzero(self):
         g = Group.get(number="4145")
+        assert g is not None
         self.assertTrue(bool(g.students) == True)
         self.assertTrue(len(g.students) == 3)
 

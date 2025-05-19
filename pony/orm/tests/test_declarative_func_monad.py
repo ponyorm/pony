@@ -134,7 +134,7 @@ class TestFuncMonad(unittest.TestCase):
         "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'str'",
     )
     def test_date_func2(self):
-        result = set(select(s for s in Student if s.dob >= date(1983, "three", 3)))
+        result = set(select(s for s in Student if s.dob >= date(1983, "three", 3)))  # pyright: ignore[reportArgumentType]
 
     # @raises_exception(NotImplementedError)
     # def test_date_func3(self):
@@ -163,7 +163,7 @@ class TestFuncMonad(unittest.TestCase):
     )
     def test_datetime_func4(self):
         result = set(
-            select(s for s in Student if s.last_visit >= datetime(1983, "three", 3))
+            select(s for s in Student if s.last_visit >= datetime(1983, "three", 3))  # pyright: ignore[reportArgumentType]
         )
 
     # @raises_exception(NotImplementedError)
@@ -186,7 +186,7 @@ class TestFuncMonad(unittest.TestCase):
         ),
     )
     def test_datetime_now2(self):
-        select(s for s in Student if 1 < datetime.now())
+        select(s for s in Student if 1 < datetime.now())  # type: ignore # error expected
 
     def test_datetime_now3(self):
         result = set(select(s for s in Student if s.dob < datetime.today()))

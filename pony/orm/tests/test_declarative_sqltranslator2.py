@@ -198,7 +198,7 @@ class TestSQLTranslator2(unittest.TestCase):
         q = select(
             d
             for d in Department
-            if len(s for c in d.courses for s in c.students) > len(s for s in Student)
+            if len(s for c in d.courses for s in c.students) > len(s for s in Student)  # pyright: ignore[reportArgumentType]
         )
         self.assertEqual(q[:], [])
         self.assertTrue("DISTINCT" in db.last_sql)

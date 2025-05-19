@@ -57,6 +57,7 @@ class TestValidate(unittest.TestCase):
             warnings.simplefilter("ignore", DatabaseContainsIncorrectEmptyValue)
             db.insert(table_name, id=1, name="", tel="111")
             p = Person.get(id=1)
+            assert p is not None
             self.assertEqual(p.name, "")
 
     @raises_exception(
@@ -76,6 +77,7 @@ class TestValidate(unittest.TestCase):
             warnings.simplefilter("ignore", DatabaseContainsIncorrectEmptyValue)
             db.insert(table_name, id=1, name=None, tel="111")
             p = Person.get(id=1)
+            assert p is not None
             self.assertEqual(p.name, None)
 
     @raises_exception(

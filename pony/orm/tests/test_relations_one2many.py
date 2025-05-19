@@ -76,7 +76,7 @@ class TestOneToManyRequired(unittest.TestCase):
     def test_5(self):
         Group, Student = self.Group, self.Student
         g = Group[101]
-        g.students.add(None)
+        g.students.add(None)  # pyright: ignore[reportArgumentType]
 
     @raises_exception(
         ValueError,
@@ -85,7 +85,7 @@ class TestOneToManyRequired(unittest.TestCase):
     def test_6(self):
         Group, Student = self.Group, self.Student
         g = Group[101]
-        g.students.remove(None)
+        g.students.remove(None)  # pyright: ignore[reportArgumentType]
 
     @raises_exception(
         ValueError,
@@ -266,7 +266,7 @@ class TestOneToManyOptional(unittest.TestCase):
     def test_5(self):
         Group, Student = self.Group, self.Student
         g = Group[101]
-        g.students.add(None)
+        g.students.add(None)  # pyright: ignore[reportArgumentType]
 
     @raises_exception(
         ValueError,
@@ -275,7 +275,7 @@ class TestOneToManyOptional(unittest.TestCase):
     def test_6(self):
         Group, Student = self.Group, self.Student
         g = Group[101]
-        g.students.remove(None)
+        g.students.remove(None)  # pyright: ignore[reportArgumentType]
 
     @raises_exception(
         ValueError,

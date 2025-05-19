@@ -141,7 +141,7 @@ class TestSelectFromSelect(unittest.TestCase):
     )
     def test_7(self):  # test access to original query var name from the new query
         q = select(s.first_name for s in Student if s.scholarship < 500)
-        q2 = select(x for x in q if s.scholarship > 0)
+        q2 = select(x for x in q if s.scholarship > 0)  # type: ignore # error expected
 
     @db_session
     def test_8(

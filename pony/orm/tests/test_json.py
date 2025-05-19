@@ -545,7 +545,7 @@ class TestJson(unittest.TestCase):
     @db_session
     def test_wildcard_path_4(self):
         if db.provider.dialect == "Oracle":
-            raise unittest.SkipTest
+            raise unittest.SkipTest("Oracle doesn't allow parameters in JSON paths")
         with raises_if(
             self,
             db.provider.dialect != "MySQL",
@@ -587,6 +587,7 @@ class TestJson(unittest.TestCase):
             "PostgreSQL": "...does not support wildcards in JSON path...",
         }
         dialect = db.provider.dialect
+        assert dialect is not None
         with raises_if(self, dialect in errors, TranslationError, errors.get(dialect)):
             p = get(p for p in Product if "16GB" in p.info["models"][:]["capacity"])
             self.assertTrue(p)
@@ -726,7 +727,7 @@ class TestJson(unittest.TestCase):
     def test_int_cast(self):
         p = get(coalesce(int(p.info["os"]["version"]), 0) for p in Product)
         last_sql = db.last_sql
-        if db.provider.dialect == "PostgreSQL":
+        if db.provider and db.provider.dialect == "PostgreSQL":
             self.assertTrue(")::int" in last_sql)
         else:
             self.assertTrue("as integer" in last_sql)

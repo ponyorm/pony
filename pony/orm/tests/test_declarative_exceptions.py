@@ -97,7 +97,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         else "`1 in 2` raises TypeError: 'int' object is not iterable",
     )
     def test6(self):
-        select(s for s in Student if 1 in 2)
+        select(s for s in Student if 1 in 2)  # type: ignore # error expected
 
     @raises_exception(NotImplementedError, "Group[s.group.number]")
     def test7(self):
@@ -244,7 +244,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'str'",
     )
     def test29(self):
-        select(s for s in Student if s.dob < date("2011", 1, 1))
+        select(s for s in Student if s.dob < date("2011", 1, 1))  # pyright: ignore[reportArgumentType]
 
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
     def test30(self):
@@ -321,7 +321,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         else "`len(1, 2) == 3` raises TypeError: len() takes exactly one argument (2 given)",
     )
     def test40(self):
-        select(s for s in Student if len(1, 2) == 3)
+        select(s for s in Student if len(1, 2) == 3)  # type: ignore # error expected
 
     @raises_exception(
         TypeError,

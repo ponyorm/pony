@@ -298,7 +298,7 @@ class TestAttribute(unittest.TestCase):
     @raises_exception(
         ERDiagramError, "Inconsistent reverse attributes Entity1.a and Entity2.b"
     )
-    def test_attribute23(self):
+    def test_attribute23a(self):
         db = self.db
 
         class Entity1(db.Entity):
@@ -818,6 +818,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
+        assert table is not None
         sql_type = table.column_list[1].sql_type
         self.assertEqual(sql_type, "SOME_TYPE")
 
@@ -835,6 +836,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
+        assert table is not None
         sql_type = table.column_list[1].sql_type
         self.assertEqual(sql_type, "ANOTHER_TYPE")
 
@@ -852,6 +854,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
+        assert table is not None
         sql_type = table.column_list[1].sql_type
         self.assertEqual(sql_type, "ANOTHER_TYPE")
 
@@ -868,6 +871,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
+        assert table is not None
         sql_type = table.column_list[1].sql_type
         required_type = "INT8" if db.provider_name == "cockroach" else "INTEGER"
         self.assertEqual(required_type, sql_type)
@@ -885,6 +889,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(check_tables=False)
 
         table = db.schema.tables.get(Bar._table_)
+        assert table is not None
         sql_type = table.column_list[1].sql_type
         required_type = "int8" if db.provider_name == "cockroach" else "integer"
         self.assertEqual(required_type, sql_type)
@@ -946,7 +951,7 @@ class TestAttribute(unittest.TestCase):
         db = self.db
 
         class Foo(db.Entity):
-            x = Required(type(None))
+            x = Required(type(None))  # pyright: ignore[reportArgumentType]
 
         db.generate_mapping(check_tables=False)
 
@@ -956,7 +961,7 @@ class TestAttribute(unittest.TestCase):
         "because it should be valid SQL literal or expression. "
         "Try to use \"''\", or just specify default='' instead.",
     )
-    def test_none_type(self):
+    def test_none_type_2(self):
         db = self.db
 
         class Foo(db.Entity):

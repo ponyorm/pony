@@ -1,11 +1,12 @@
 import unittest
+from typing import Any
 
 from pony.orm.ormtypes import TrackedDict, TrackedList, TrackedValue
 
 
 class Object:
     def __init__(self):
-        self.on_attr_changed = None
+        self.on_attr_changed: Any = None
 
     def _attr_changed_(self, attr):
         if self.on_attr_changed is not None:

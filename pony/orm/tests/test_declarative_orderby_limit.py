@@ -104,7 +104,7 @@ class TestOrderbyLimit(unittest.TestCase):
         TypeError, "If you want apply index to a query, convert it to list first"
     )
     def test13(self):
-        students = select(s for s in Student).order_by(Student.id)[3]
+        students = select(s for s in Student).order_by(Student.id)[3]  # pyright: ignore[reportArgumentType]
         self.assertEqual(students, Student[4])
 
     # @raises_exception(TypeError, 'If you want apply index to query, convert it to list first')

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import unittest
 
 from pony.orm.core import *
@@ -11,7 +13,7 @@ class TestDiag(unittest.TestCase):
     def test_entity_duplicate(self):
         db = Database()
 
-        class Entity1(db.Entity):
+        class Entity1(db.Entity):  # type: ignore # error expected
             id = PrimaryKey(int)
 
         class Entity1(db.Entity):
@@ -130,7 +132,7 @@ class TestDiag(unittest.TestCase):
 
         class Entity1(db.Entity):
             id = PrimaryKey(int)
-            attr1 = Set("Entity2")
+            attr1: Set[Entity2] = Set("Entity2")
 
         class Entity2(db.Entity):
             id = PrimaryKey(int)
@@ -140,9 +142,12 @@ class TestDiag(unittest.TestCase):
         db.generate_mapping(create_tables=True)
         if pony.__version__ >= "0.9":
             m2m_table = db.schema.tables["entity1_attr1"]
-            col_names = set(m2m_table.columns)
+            col_names = set(m2m_table.columns)  # pyright: ignore[reportAttributeAccessIssue]
             self.assertEqual(col_names, {"entity1_id", "entity2_id"})
-            m2m_columns = [c.name for c in Entity1.attr1.meta.m2m_columns]
+            m2m_columns = [
+                c.name
+                for c in Entity1.attr1.meta.m2m_columns  # pyright: ignore[reportAttributeAccessIssue]
+            ]
             self.assertEqual(m2m_columns, ["entity1_id"])
         else:
             table_name = (
@@ -173,7 +178,7 @@ class TestDiag(unittest.TestCase):
         db.generate_mapping(create_tables=True)
         if pony.__version__ >= "0.9":
             m2m_table = db.schema.tables["entity1_attr1"]
-            col_names = {col for col in m2m_table.columns}
+            col_names = {col for col in m2m_table.columns}  # pyright: ignore[reportAttributeAccessIssue]
             self.assertEqual(col_names, {"entity1_a", "entity1_b", "entity2_id"})
         else:
             table_name = (

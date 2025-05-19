@@ -30,12 +30,14 @@ class TestDeduplication(unittest.TestCase):
     def test_1(self):
         a2 = A.get(id=2)
         a1 = A.get(id=1)
+        assert a1 is not None
         self.assertIs(a1.id, 1)
 
     @db_session
     def test_2(self):
         a3 = A.get(id=3)
         a1 = A.get(id=1)
+        assert a1 is not None
         self.assertIs(a1.id, 1)
 
     @db_session

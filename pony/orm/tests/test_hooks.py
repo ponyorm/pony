@@ -3,7 +3,7 @@ import unittest
 from pony.orm.core import *
 from pony.orm.tests import db_params, setup_database, teardown_database
 
-logged_events = []
+logged_events: list[str] = []
 
 db = Database()
 

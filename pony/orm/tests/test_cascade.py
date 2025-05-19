@@ -20,7 +20,7 @@ class TestCascade(unittest.TestCase):
         fkeys = table.foreign_keys
         self.assertEqual(1, len(fkeys))
         if pony.__version__ >= "0.9":
-            self.assertEqual(fkeys[0].on_delete, value)
+            self.assertEqual(fkeys[0].on_delete, value)  # pyright: ignore[reportArgumentType]
         elif db.provider.dialect == "SQLite":
             self.assertIn("ON DELETE %s" % value, table.get_create_command())
         else:

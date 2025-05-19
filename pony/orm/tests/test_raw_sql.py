@@ -94,14 +94,14 @@ class TestRawSQL(unittest.TestCase):
     @db_session
     def test_10(self):
         # raw_sql does not know result type and cannot apply correct type converter automatically
-        dates = select(raw_sql("(p.dob)") for p in Person).order_by(lambda: p.id)[:]
+        dates = select(raw_sql("(p.dob)") for p in Person).order_by(lambda: p.id)[:]  # type: ignore # deprecated syntax
         self.assertEqual(dates, ["1985-01-01", "1983-05-20", "1995-02-15"])
 
     @db_session
     def test_11(self):
         # it is possible to specify raw_sql type manually
         dates = select(raw_sql("(p.dob)", result_type=date) for p in Person).order_by(
-            lambda: p.id
+            lambda: p.id  # type: ignore # deprecated syntax
         )[:]
         self.assertEqual(
             dates, [date(1985, 1, 1), date(1983, 5, 20), date(1995, 2, 15)]
