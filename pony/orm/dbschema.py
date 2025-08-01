@@ -237,12 +237,21 @@ class Column(object):
                 append(case('DEFAULT'))
                 append(column.sql_default)
 
+        def add_comment():
+            comment = column.converter.attr.comment
+            if comment != None:
+                append(case('COMMENT'))
+                append('\'%s\''%comment)            
+
         if column.is_pk == 'auto' and column.auto_template and column.converter.py_type in int_types:
             append(case(column.auto_template % dict(type=column.sql_type)))
             add_default()
+            add_comment()
         else:
             append(case(column.sql_type))
             add_default()
+            add_comment()
+
             if column.is_pk:
                 if schema.dialect == 'SQLite': append(case('NOT NULL'))
                 append(case('PRIMARY KEY'))
