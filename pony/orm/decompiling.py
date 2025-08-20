@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PY312, PYPY
+from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PY312, PY313, PYPY
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -194,6 +194,10 @@ class Decompiler(object):
                         oparg = co_code[i] + co_code[i + 1] * 256 + oparg * 65536
                         i += 2
 
+            # CACHE bytes have inconvenient placement in py3.13, so we need to skip them
+            while i < len(code.co_code) and opnames[code.co_code[i]] == 'CACHE':
+                i += 2
+
             opname = opnames[op].replace('+', '_')
             if op >= HAVE_ARGUMENT:
                 if op in hasconst:
@@ -217,9 +221,18 @@ class Decompiler(object):
                     arg = [i + oparg * (2 if PY310 else 1)
                            * (-1 if 'BACKWARD' in opname else 1)]
                 elif op in haslocal:
-                    arg = [code.co_varnames[oparg]]
+                    if opname in {'LOAD_FAST_LOAD_FAST', 'STORE_FAST_LOAD_FAST', 'STORE_FAST_STORE_FAST'}:
+                        # py3.13: 2 4bit args
+                        arg = [code._varname_from_oparg(oparg >> 4), code._varname_from_oparg(oparg & 0x0f)]
+                    elif PY313:
+                        # co_varnames is incomplete now
+                        arg = [code._varname_from_oparg(oparg)]
+                    else:
+                        arg = [code.co_varnames[oparg]]
                 elif op in hascompare:
-                    if PY312:
+                    if PY313:
+                        oparg >>= 5
+                    elif PY312:
                         oparg >>= 4
                     arg = [cmp_op[oparg]]
                 elif op in hasfree:
@@ -230,6 +243,10 @@ class Decompiler(object):
                     arg = [oparg * (2 if PY310 else 1)]
                 else:
                     arg = [oparg]
+            elif PY313 and opname == 'MAKE_FUNCTION' and opnames[code.co_code[i]] == 'SET_FUNCTION_ATTRIBUTE':
+                # pull attributes from next instruction
+                arg = [code.co_code[i+1]]
+                i += 2
             else: arg = []
             if opname == 'FOR_ITER':
                 decompiler.for_iter_pos = decompiler.pos
@@ -502,12 +519,19 @@ class Decompiler(object):
             args = values[:-len(keys)]
             keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys):])]
 
-        self = decompiler.stack.pop()
-        callable_ = decompiler.stack.pop()
-        if callable_ is None:
-            callable_ = self
+        if PY313:
+            # self/NULL and callable are swapped
+            self_ = decompiler.stack.pop()
+            callable_ = decompiler.stack.pop()
+            if self_ is not None:
+                args.insert(0, self_)
         else:
-            args.insert(0, self)
+            self_ = decompiler.stack.pop()
+            callable_ = decompiler.stack.pop()
+            if callable_ is None:
+                callable_ = self_
+            else:
+                args.insert(0, self_)
         decompiler.stack.append(callable_)
         return decompiler._call_function(args, keywords)
 
@@ -545,6 +569,12 @@ class Decompiler(object):
         star = decompiler.stack.pop()
         args = [ast.Starred(value=star)] if star else None
         keywords = [ast.keyword(value=star2)] if star2 else None
+        if PY313:
+            # self/NULL and callable are swapped; FIXME: this leaves NULL on the stack?
+            self_ = decompiler.stack.pop()
+            callable_ = decompiler.stack.pop()
+            decompiler.stack.append(self_)
+            decompiler.stack.append(callable_)
         return decompiler._call_function(args, keywords)
 
     def CALL_METHOD(decompiler, argc):
@@ -566,11 +596,23 @@ class Decompiler(object):
         method = pop()
         return ast.Call(method, args, keywords)
 
+    def CALL_KW(decompiler, argc):
+        names = decompiler.stack.pop()
+        if isinstance(names, ast.Constant):
+            decompiler.kw_names = names.value
+        else:
+            raise NotImplementedError(f"CALL_KW for {names.__class__.__name__} not implemented")
+        return decompiler.CALL(argc)
+
     def COMPARE_OP(decompiler, op):
         oper2 = decompiler.stack.pop()
         oper1 = decompiler.stack.pop()
         op = operator_mapping[op]()
         return ast.Compare(oper1, [op], [oper2])
+
+    def CONVERT_VALUE(decompiler, conversion):
+        value = decompiler.stack.pop()
+        return value, [-1, ord('s'), ord('r'), ord('a')][conversion]
 
     def COPY(decompiler, _):
         pass  # this is not great, but stack is not the same as during runtime
@@ -608,6 +650,25 @@ class Decompiler(object):
             format_spec = decompiler.stack.pop()
             value = decompiler.stack.pop()
         return ast.FormattedValue(value=value, conversion=conversion, format_spec=format_spec)
+
+    def FORMAT_SIMPLE(decompiler):
+        # see CONVERT_VALUE
+        args = decompiler.stack.pop()
+        if isinstance(args, tuple):
+            value, conversion = args
+        else:
+            value, conversion = args, -1
+        return ast.FormattedValue(value=value, conversion=conversion)
+
+    def FORMAT_WITH_SPEC(decompiler):
+        spec = decompiler.stack.pop()
+        args = decompiler.stack.pop()
+        if isinstance(args, tuple):
+            # FIXME: is this correct here? should we look for ast.FormattedValue instead?
+            value, conversion = args
+        else:
+            value, conversion = args, -1
+        return ast.FormattedValue(value=value, conversion=conversion, format_spec=spec)
 
     def GEN_START(decompiler, kind):
         assert kind == 0  # only support sync
@@ -797,7 +858,12 @@ class Decompiler(object):
 
     def LOAD_ATTR(decompiler, attr_name, push_null):
         res = ast.Attribute(decompiler.stack.pop(), attr_name, ast.Load())
-        if push_null:
+        if push_null and PY313:
+            # NULL and attr swapped
+            decompiler.stack.append(res)
+            decompiler.stack.append(None)
+            return None
+        elif push_null:
             decompiler.stack.append(None)
         return res
 
@@ -818,11 +884,22 @@ class Decompiler(object):
 
     LOAD_FAST_AND_CLEAR = LOAD_FAST
 
+    def LOAD_FAST_LOAD_FAST(decompiler, varname1, varname2):
+        decompiler.names.add(varname1)
+        decompiler.stack.append(ast.Name(varname1, ast.Load()))
+        return decompiler.LOAD_FAST(varname2)
+
     def LOAD_GLOBAL(decompiler, varname, push_null):
-        if push_null:
-            decompiler.stack.append(None)
+        res = ast.Name(varname, ast.Load())
         decompiler.names.add(varname)
-        return ast.Name(varname, ast.Load())
+        if push_null and PY313:
+            # NULL and global swapped
+            decompiler.stack.append(res)
+            decompiler.stack.append(None)
+            return None
+        elif push_null and not PY313:
+            decompiler.stack.append(None)
+        return res
 
     def LOAD_METHOD(decompiler, methname):
         return decompiler.LOAD_ATTR(methname, PY311)
@@ -840,7 +917,7 @@ class Decompiler(object):
         decompiler.stack[-3:-2] = []  # ignore freevars
         return decompiler.MAKE_FUNCTION(argc)
 
-    def MAKE_FUNCTION(decompiler, argc):
+    def MAKE_FUNCTION(decompiler, argc=0):
         defaults = []
         if sys.version_info >= (3, 6):
             if not PY311:
@@ -929,6 +1006,12 @@ class Decompiler(object):
         decompiler.stack.append(tos2)
         decompiler.stack.append(tos1)
 
+    def SET_FUNCTION_ATTRIBUTE(decompiler, flag):
+        """This replaces the argument to MAKE_FUNCTION in py 3.13"""
+        # This actually needs special handling in get_instructions because
+        # the func will not be at the top of the stack when we get here.
+        throw(NotImplementedError)
+
     def SETUP_LOOP(decompiler, endpos):
         pass
 
@@ -945,6 +1028,14 @@ class Decompiler(object):
                                'instead of list comprehension [... for ... in ...] inside query'))
         decompiler.assnames.add(varname)
         decompiler.store(ast.Name(varname, ast.Store()))
+
+    def STORE_FAST_STORE_FAST(decompiler, varname1, varname2):
+        decompiler.STORE_FAST(varname1)
+        decompiler.STORE_FAST(varname2)
+
+    def STORE_FAST_LOAD_FAST(decompiler, varname1, varname2):
+        decompiler.STORE_FAST(varname1)
+        return decompiler.LOAD_FAST(varname2)
 
     def STORE_MAP(decompiler):
         tos = decompiler.stack.pop()
@@ -969,6 +1060,9 @@ class Decompiler(object):
     def SWAP(decompiler, _):
         pass  # this is not great, but stack is not the same as during runtime
         # actual queries are hopefully covered by tests
+
+    def TO_BOOL(decompiler):
+        pass
 
     def UNARY_POSITIVE(decompiler):
         return ast.UnaryOp(op=ast.UAdd(), operand=decompiler.stack.pop())
