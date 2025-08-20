@@ -6282,6 +6282,8 @@ class QueryResultIterator(object):
         self._position += 1
         return item
     __next__ = next
+    def __iter__(self):
+        return self
     def __length_hint__(self):
         return len(self._query_result) - self._position
 
