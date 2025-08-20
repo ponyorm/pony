@@ -368,26 +368,30 @@ def between(x, a, b):
 def is_utf8(encoding):
     return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')
 
-def _persistent_id(obj):
-    if obj is Ellipsis:
-        return "Ellipsis"
 
-def _persistent_load(persid):
-    if persid == "Ellipsis":
-        return Ellipsis
-    raise pickle.UnpicklingError("unsupported persistent object")
+class PersistentPickler(pickle.Pickler):
+    def persistent_id(self, obj):
+        if obj is Ellipsis:
+            return "Ellipsis"
+        return None
+
+
+class PersistentUnpickler(pickle.Unpickler):
+    def persistent_load(self, persid):
+        if persid == "Ellipsis":
+            return Ellipsis
+        raise pickle.UnpicklingError("unsupported persistent object")
+
 
 def pickle_ast(val):
     pickled = io.BytesIO()
-    pickler = pickle.Pickler(pickled)
-    pickler.persistent_id = _persistent_id
+    pickler = PersistentPickler(pickled)
     pickler.dump(val)
     return pickled
 
 def unpickle_ast(pickled):
     pickled.seek(0)
-    unpickler = pickle.Unpickler(pickled)
-    unpickler.persistent_load = _persistent_load
+    unpickler = PersistentUnpickler(pickled)
     return unpickler.load()
 
 def copy_ast(tree):
