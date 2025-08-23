@@ -10,7 +10,7 @@ from functools import update_wrapper
 from uuid import UUID
 
 from pony import options, utils
-from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce
+from pony.utils import localbase, is_ident, throw, reraise, copy_ast, between, concat, coalesce, IntegerGenerator
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError, create_extractors, get_child_nodes
 from pony.orm.decompiling import decompile, DecompileError, operator_mapping
 from pony.orm.ormtypes import \
@@ -1241,7 +1241,7 @@ class SqlQuery(object):
         sqlquery.tablerefs = {}
         if parent_sqlquery is None:
             sqlquery.alias_counters = {}
-            sqlquery.expr_counter = itertools.count(1)
+            sqlquery.expr_counter = IntegerGenerator(1)
         else:
             sqlquery.alias_counters = parent_sqlquery.alias_counters.copy()
             sqlquery.expr_counter = parent_sqlquery.expr_counter

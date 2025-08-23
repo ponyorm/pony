@@ -445,3 +445,17 @@ def deduplicate(value, deduplication_cache):
         return deduplication_cache[t].setdefault(value, value)
     except:
         return value
+
+
+class IntegerGenerator:
+    """pickleable version of itertools.count() with fixed step=1"""
+    def __init__(self, firstval=0):
+        self.val = firstval
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        res = self.val
+        self.val += 1
+        return res
