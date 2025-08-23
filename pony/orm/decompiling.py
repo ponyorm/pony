@@ -412,7 +412,7 @@ class Decompiler(object):
                 end = None
             if isinstance(start, ast.Constant) and start.value is None:
                 start = None
-        node2 = ast.Slice(start, end, ctx=ast.Load())
+        node2 = ast.Slice(start, end)
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
     def BINARY_SUBSCR(decompiler):
