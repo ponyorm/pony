@@ -1,3 +1,333 @@
+# PonyORM release 0.7.13 (2020-03-03)
+
+This release contains no new features or bugfixes. The only reason for this release is to test our CI/CD process.
+
+# PonyORM release 0.7.12 (2020-02-04)
+
+## Features
+
+* CockroachDB support added
+* CI testing for SQLite, PostgreSQL & CockroachDB
+
+## Bugfixes
+
+* Fix translation of getting array items with negative indexes
+* Fix string getitem translation for slices and negative indexes
+* PostgreSQL DISTINCT bug fixed for queries with ORDER BY clause
+* Fix date difference syntax in PostgreSQL
+* Fix casting json to dobule in PostgreSQL
+* Fix count by several columns in PostgreSQL
+* Fix PostgreSQL MIN and MAX expressions on boolean columns
+* Fix determination of interactive mode in PyCharm
+* Fix column definition when `sql_default` is specified: DEFAULT should be before NOT NULL
+* Relax checks on updating in-memory cache indexes (don't throw CacheIndexError on valid cases)
+* Fix deduplication logic for attribute values
+
+
+# PonyORM release 0.7.11 (2019-10-23)
+
+## Features
+
+* #472: Python 3.8 support
+* Support of hybrid functions (inlining simple Python functions into query)
+* #438: support datetime-datetime, datetime-timedelta, datetime+timedelta in queries
+
+## Bugfixes
+
+* #430: add ON DELETE CASCADE for many-to-many relationships
+* #465: Should reconnect to MySQL on OperationalError 2013 'Lost connection to MySQL server during query'
+* #468: Tuple-value comparisons generate incorrect queries
+* #470 fix PendingDeprecationWarning of imp module
+* Fix incorrect unpickling of objects with Json attributes
+* Check value of discriminator column on object creation if set explicitly
+* Correctly handle Flask current_user proxy when adding new items to collections
+* Some bugs in syntax of aggregated queries were fixed
+* Fix syntax of bulk delete queries
+* Bulk delete queries should clear query results cache so next select will get correct result from the database
+* Fix error message when hybrid method is too complex to decompile
+
+
+# PonyORM release 0.7.10 (2019-04-20)
+
+## Bugfixes
+
+* Python3.7 and PyPy decompiling fixes
+* Fix reading NULL from Optional nullable array column
+* Fix handling of empty arrays in queries
+* #415: error message typo
+* #432: PonyFlask - request object can trigger teardown_request without real request
+* Fix GROUP CONCAT separator for MySQL
+
+
+# PonyORM release 0.7.9 (2019-01-21)
+
+## Bugfixes
+
+* Fix handling of empty arrays and empty lists in queries
+* Fix reading optional nullable array columns from database
+
+
+# PonyORM release 0.7.8 (2019-01-19)
+
+## Bugfixes
+
+* #414: prefetching Optional relationships fails on 0.7.7
+* Fix a bug caused by incorrect deduplication of column values
+
+
+# PonyORM release 0.7.7 (2019-01-17)
+
+## Major features
+
+* Array type support for PostgreSQL and SQLite
+* isinstance() support in queries
+* Support of queries based on collections: select(x for x in y.items)
+
+## Other features
+
+* Support of Entity.select(**kwargs)
+* Support of SKIP LOCKED option in 'SELECT ... FOR UPDATE'
+* New function make_proxy(obj) to make cros-db_session proxy objects
+* Specify ON DELETE CASCADE/SET NULL in foreign keys
+* Support of LIMIT in `SELECT FROM (SELECT ...)` type of queries
+* Support for negative JSON array indexes in SQLite
+
+## Improvements
+
+* Improved query prefetching: use fewer number of SQL queries
+* Memory optimization: deduplication of values recieved from the database in the same session
+* increase DBAPIProvider.max_params_count value
+
+## Bugfixes
+
+* #405: breaking change with cx_Oracle 7.0: DML RETURNING now returns a list
+* #380: db_session should work with async functions
+* #385: test fails with python3.6
+* #386: release unlocked lock error in SQLite
+* #390: TypeError: writable buffers are not hashable
+* #398: add auto coversion of numpy numeric types
+* #404: GAE local run detection
+* Fix Flask compatibility: add support of LocalProxy object
+* db_session(sql_debug=True) should log SQL commands also during db_session.__exit__()
+* Fix duplicated table join in FROM clause
+* Fix accessing global variables from hybrid methods and properties
+* Fix m2m collection loading bug
+* Fix composite index bug: stackoverflow.com/questions/53147694
+* Fix MyEntity[obj.get_pk()] if pk is composite
+* MySQL group_concat_max_len option set to max of 32bit platforms to avoid truncation
+* Show all attribute options in show(Entity) call
+* For nested db_session retry option should be ignored
+* Fix py_json_unwrap
+* Other minor fixes
+
+
+# Pony ORM Release 0.7.6 (2018-08-10)
+
+## Bugfixes
+
+* Fixed a bug with hybrid properties that use external functions
+
+
+# Pony ORM Release 0.7.6rc1 (2018-08-08)
+
+## New features
+
+* f-strings support in queries: `select(f'{s.name} - {s.age}' for s in Student)`
+* #344: It is now possible to specify offset without limit: `query.limit(offset=10)`
+* #371: Support of explicit casting of JSON expressions to `str`, `int` or `float`
+* `@db.on_connect` decorator added
+
+## Bugfixes
+
+* Fix bulk delete bug introduced in 0.7.4
+* #370 Fix memory leak introduced in 0.7.4
+* Now `exists()` in query does not throw away condition in generator expression: `exists(s.gpa > 3 for s in Student)`
+* #373: 0.7.4/0.7.5 breaks queries using the `in` operator to test membership of another query result
+* #374: `auto=True` can be used with all PrimaryKey types, not only `int`
+* #369: Make QueryResult looks like a list object again: add concatenation with lists, `.shuffle()` and `.to_list()` methods
+* #355: Fix binary primary keys `PrimaryKey(buffer)` in Python2
+* Interactive mode support for PyCharm console
+* Fix wrong table aliases in complex queries
+* Fix query optimization code for complex queries
+
+
+# Pony ORM Release 0.7.5 (2018-07-24)
+
+## Bugfixes
+
+* `query.where` and `query.filter` method bug introduced in 0.7.4 was fixed
+
+
+# Pony ORM Release 0.7.4 (2018-07-23)
+
+## Major features
+
+* Hybrid methods and properties added: https://docs.ponyorm.com/entities.html#hybrid-methods-and-properties
+* Allow to base queries on another queries: `select(x.a for x in prev_query if x.b)`
+* Added support of Python 3.7
+* Added support of PyPy
+* `group_concat()` aggregate function added
+* pony.flask subpackage added for integration with Flask
+
+## Other features
+
+* `distinct` option added to aggregate functions
+* Support of explicit casting to `float` and `bool` in queries
+
+## Improvements
+
+* Apply @cut_traceback decorator only when pony.MODE is 'INTERACTIVE'
+
+## Bugfixes
+
+* In SQLite3 `LIKE` is case sensitive now
+* #249: Fix incorrect mixin used for Timedelta
+* #251: correct dealing with qualified table names
+* #301: Fix aggregation over JSON Column
+* #306: Support of frozenset constants added
+* #308: Fixed an error when assigning JSON attribute value to the same attribute: obj.json_attr = obj.json_attr
+* #313: Fix missed retry on exception raised during db_session.__exit__
+* #314: Fix AttributeError: 'NoneType' object has no attribute 'seeds'
+* #315: Fix attribute lifting for JSON attributes
+* #321: Fix KeyError on obj.delete()
+* #325: duplicating percentage sign in raw SQL queries without parameters
+* #331: Overriding __len__ in entity fails
+* #336: entity declaration serialization
+* #357: reconnect after PostgreSQL server closed the connection unexpectedly
+* Fix Python implementation of between() function and rename arguments: between(a, x, y) -> between(x, a, b)
+* Fix retry handling: in PostgreSQL and Oracle an error can be raised during commit
+* Fix optimistic update checks for composite foreign keys
+* Don't raise OptimisticCheckError if db_session is not optimistic
+* Handling incorrect datetime values in MySQL
+* Improved ImportError exception messages when MySQLdb, pymysql, psycopg2 or psycopg2cffi driver was not found
+* desc() function fixed to allow reverse its effect by calling desc(desc(x))
+* __contains__ method should check if objects belong to the same db_session
+* Fix pony.MODE detection; mod_wsgi detection according to official doc
+* A lot of inner fixes
+
+
+# Pony ORM Release 0.7.3 (2017-10-23)
+
+## New features
+
+* `where()` method added to query
+* `coalesce()` function added
+* `between(x, a, b)` function added
+* #295: Add `_table_options_` for entity class to specify engine, tablespace, etc.
+* Make debug flag thread-local
+* `sql_debugging` context manager added
+* `sql_debug` and show_values arguments to db_session added
+* `set_sql_debug` function added as alias to (to be deprecated) `sql_debug` function
+* Allow `db_session` to accept `ddl` parameter when used as context manager
+* Add `optimistic=True` option to db_session
+* Skip optimistic checks for queries in `db_session` with `serializable=True`
+* `fk_name` option added for attributes in order to specify foreign key name
+* #280: Now it's possible to specify `timeout` option, as well as pass other keyword arguments for `sqlite3.connect` function
+* Add support of explicit casting to int in queries using `int()` function
+* Added modulo division % native support in queries
+
+## Bugfixes
+
+* Fix bugs with composite table names
+* Fix invalid foreign key & index names for tables which names include schema name
+* For queries like `select(x for x in MyObject if not x.description)` add "OR x.info IS NULL" for nullable string columns
+* Add optimistic checking for `delete()` method
+* Show updated attributes when `OptimisticCheckError` is being raised
+* Fix incorrect aliases in nested queries
+* Correctly pass exception from user-defined functions in SQLite
+* More clear error messages for `UnrepeatableReadError`
+* Fix `db_session(strict=True)` which was broken in 2d3afb24
+* Fixes #170: Problem with a primary key column used as a part of another key
+* Fixes #223: incorrect result of `getattr(entity, attrname)` when the same lambda applies to different entities
+* Fixes #266: Add handler to `"pony.orm"` logger does not work
+* Fixes #278: Cascade delete error: FOREIGN KEY constraint failed, with complex entity relationships
+* Fixes #283: Lost Json update immediately after object creation
+* Fixes #284: `query.order_by()` orders Json numbers like strings
+* Fixes #288: Expression text parsing issue in Python 3
+* Fixes #293: translation of if-expressions in expression 
+* Fixes #294: Real stack traces swallowed within IPython shell
+* `Collection.count()` method should check if session is alive
+* Set `obj._session_cache_` to None after exiting from db session for better garbage collection
+* Unload collections which are not fully loaded after exiting from db session for better garbage collection
+* Raise on unknown options for attributes that are part of relationship
+
+
+# Pony ORM Release 0.7.2 (2017-07-17)
+
+## New features
+
+* All arguments of db.bind() can be specified as keyword arguments. Previously Pony required the first positional argument which specified the database provider. Now you can pass all the database parameters using the dict: db.bind(**db_params). See https://docs.ponyorm.com/api_reference.html#Database.bind
+* The `optimistic` attribute option is added https://docs.ponyorm.com/api_reference.html#cmdoption-arg-optimistic
+
+## Bugfixes
+
+* Fixes #219: when a database driver raises an error, sometimes this error was masked by the 'RollbackException: InterfaceError: connection already closed' exception. This happened because on error, Pony tried to rollback transaction, but the connection to the database was already closed and it masked the initial error. Now Pony displays the original error which helps to understand the cause of the problem.
+* Fixes #276: Memory leak
+* Fixes the __all__ declaration. Previously IDEs, such as PyCharm, could not understand what is going to be imported by 'from pony.orm import *'. Now it works fine.
+* Fixes #232: negate check for numeric expressions now checks if value is zero or NULL
+* Fixes #238, fixes #133: raise TransactionIntegrityError exception instead of AssertionError if obj.collection.create(**kwargs) creates a duplicate object
+* Fixes #221: issue with unicode json path keys
+* Fixes bug when discriminator column is used as a part of a primary key
+* Handle situation when SQLite blob column contains non-binary value
+
+
+# Pony ORM Release 0.7.1 (2017-01-10)
+
+## New features
+
+* New warning DatabaseContainsIncorrectEmptyValue added, it is raised when the required attribute is empty during loading an entity from the database
+
+## Bugfixes
+
+* Fixes #216: Added Python 3.6 support
+* Fixes #203: subtranslator should use argnames from parent translator
+* Change a way aliases in SQL query are generated in order to fix a problem when a subquery alias masks a base query alias
+* Volatile attribute bug fixed
+* Fix creation of self-referenced foreign keys - before this Pony didn't create the foreign key for self-referenced attributes
+* Bug fixed: when required attribute is empty the loading from the database shouldn't raise the validation error. Now Pony raises the warning DatabaseContainsIncorrectEmptyValue
+* Throw an error with more clear explanation when a list comprehension is used inside a query instead of a generator expression: "Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query"
+
+
+# Pony ORM Release 0.7 (2016-10-11)
+
+Starting with this release Pony ORM is release under the Apache License, Version 2.0.
+
+## New features
+
+* Added getattr() support in queries: https://docs.ponyorm.com/api_reference.html#getattr
+
+## Backward incompatible changes
+
+* #159: exceptions happened during flush() should not be wrapped with CommitException
+
+Before this release an exception that happened in a hook(https://docs.ponyorm.com/api_reference.html#entity-hooks), could be raised in two ways - either wrapped into the CommitException or without wrapping. It depended if the exception happened during the execution of flush() or commit() function on the db_session exit. Now the exception happened inside the hook never will be wrapped into the CommitException.
+
+## Bugfixes
+
+* #190: Timedelta is not supported when using pymysql
+
+
+# Pony ORM Release 0.6.6 (2016-08-22)
+
+## New features
+
+* Added native JSON data type support in all supported databases: https://docs.ponyorm.com/json.html
+
+## Backward incompatible changes
+
+* Dropped Python 2.6 support
+
+## Improvements
+
+* #179 Added the compatibility with PYPY using psycopg2cffi
+* Added an experimental @db_session `strict` parameter: https://docs.ponyorm.com/transactions.html#strict
+
+## Bugfixes
+
+* #182 - LEFT JOIN doesn't work as expected for inherited entities when foreign key is None
+* Some small bugs were fixed
+
+
 # Pony ORM Release 0.6.5 (2016-04-04)
 
 ## Improvements

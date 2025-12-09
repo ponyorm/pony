@@ -6,23 +6,32 @@ from hashlib import md5
 
 from pony.orm.tests.testutils import raises_exception
 from pony.orm import *
+from pony.orm.tests import setup_database, teardown_database
+
+db = Database()
+
+
+class User(db.Entity):
+    name = Required(str)
+    password = Required(str)
+    created_at = Required(datetime)
+
+    def __init__(self, name, password):
+        password = md5(password.encode('utf8')).hexdigest()
+        super(User, self).__init__(name=name, password=password, created_at=datetime.now())
+        self.uppercase_name = name.upper()
+
 
 class TestCustomInit(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(self):
+        teardown_database(db)
+
     def test1(self):
-        db = Database('sqlite', ':memory:')
-
-        class User(db.Entity):
-            name = Required(str)
-            password = Required(str)
-            created_at = Required(datetime)
-
-            def __init__(self, name, password):
-                password = md5(password.encode('utf8')).hexdigest()
-                super(User, self).__init__(name=name, password=password, created_at=datetime.now())
-                self.uppercase_name = name.upper()
-
-        db.generate_mapping(create_tables=True)
-
         with db_session:
             u1 = User('John', '123')
             u2 = User('Mike', '456')

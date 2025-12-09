@@ -5,8 +5,9 @@ from datetime import date
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Department(db.Entity):
     name = Required(str)
@@ -37,9 +38,13 @@ class Student(db.Entity):
     courses = Set(Course)
 
 
-db.generate_mapping(create_tables=True)
-
 class TestM2MOptimization(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -61,15 +66,24 @@ class TestM2MOptimization(unittest.TestCase):
         self.assertEqual(Group._table_ not in flatten(q._translator.conditions), True)
     def test5(self):
         q = select(s for s in Student if s.group.number == 1 or s.group.major == '1')
-        self.assertEqual(Group._table_ in flatten(q._translator.subquery.from_ast), True)
+        self.assertEqual(Group._table_ in flatten(q._translator.sqlquery.from_ast), True)
     # def test6(self): ###  Broken with ExprEvalError: Group[101] raises ObjectNotFound: Group[101]
     #    q = select(s for s in Student if s.group == Group[101])
-    #    self.assertEqual(Group._table_ not in flatten(q._translator.subquery.from_ast), True)
+    #    self.assertEqual(Group._table_ not in flatten(q._translator.sqlquery.from_ast), True)
     def test7(self):
         q = select(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
         objects = q[:]
-        self.assertEqual(str(q._translator.subquery.from_ast),
-            "['FROM', ['s', 'TABLE', 'Student'], ['group-1', 'TABLE', 'Group', ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group-1', 'number']]]]")
+        student_table_name = 'Student'
+        group_table_name = 'Group'
+        if not (db.provider.dialect == 'SQLite' and pony.__version__ < '0.9'):
+            student_table_name = student_table_name.lower()
+            group_table_name = group_table_name.lower()
+        self.assertEqual(q._translator.sqlquery.from_ast, [
+            'FROM', ['s', 'TABLE', student_table_name],
+                    ['group', 'TABLE', group_table_name,
+                           ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group', 'number']]
+                    ]
+        ])
 
 
 if __name__ == '__main__':

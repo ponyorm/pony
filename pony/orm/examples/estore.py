@@ -229,7 +229,7 @@ def test_queries():
     print('Three most valuable customers')
     print()
     result = select(c for c in Customer).order_by(lambda c: desc(sum(c.orders.total_price)))[:3]
-    
+
     print(result)
     print()
 
@@ -276,7 +276,7 @@ def test_queries():
                     for customer in Customer
                     for product in customer.orders.items.product
                     for category in product.categories
-                    if count(product) > 1)[:]    
+                    if count(product) > 1)[:]
 
     print(result)
     print()

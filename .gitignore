@@ -6,3 +6,4 @@ pony/orm/tests/coverage.bat
 pony/orm/tests/htmlcov/*.*
 MANIFEST
 docs/_build/
+pony.egg-info/

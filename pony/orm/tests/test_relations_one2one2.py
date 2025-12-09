@@ -4,20 +4,30 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import teardown_database, setup_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Male(db.Entity):
     name = Required(unicode)
     wife = Optional('Female', column='wife')
 
+
 class Female(db.Entity):
     name = Required(unicode)
     husband = Optional('Male', column='husband')
 
-db.generate_mapping(create_tables=True)
 
 class TestOneToOne2(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             db.execute('update female set husband=null')
@@ -121,7 +131,8 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([2, None, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 1, None], husbands)
-    @raises_exception(UnrepeatableReadError, 'Value of Male.wife for Male[1] was updated outside of current transaction')
+    @raises_exception(UnrepeatableReadError, 'Multiple Male objects linked with the same Female[1] object. '
+                                             'Maybe Female.husband attribute should be Set instead of Optional')
     def test_9(self):
         db.execute('update female set husband = 3 where id = 1')
         m1 = Male[1]

@@ -4,8 +4,9 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import setup_database, teardown_database, only_for
 
-db = Database('sqlite', ':memory:')
+db = Database()
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -25,9 +26,17 @@ class Bio(db.Entity):
     desc = Required(unicode)
     Student = Required(Student)
 
-db.generate_mapping(create_tables=True)
 
+@only_for('sqlite')
 class TestCrudRawSQL(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             db.execute('delete from Student')
@@ -45,20 +54,37 @@ class TestCrudRawSQL(unittest.TestCase):
 
     def test1(self):
         students = set(Student.select_by_sql("select id, name, age, group_dept, group_grad_year from Student order by age"))
-        self.assertEqual(students, set([Student[3], Student[2], Student[1]]))
+        self.assertEqual(students, {Student[3], Student[2], Student[1]})
 
     def test2(self):
         students = set(Student.select_by_sql("select id, age, group_dept from Student order by age"))
-        self.assertEqual(students, set([Student[3], Student[2], Student[1]]))
+        self.assertEqual(students, {Student[3], Student[2], Student[1]})
 
     @raises_exception(NameError, "Column x does not belong to entity Student")
     def test3(self):
         students = set(Student.select_by_sql("select id, age, age*2 as x from Student order by age"))
-        self.assertEqual(students, set([Student[3], Student[2], Student[1]]))
+        self.assertEqual(students, {Student[3], Student[2], Student[1]})
 
     @raises_exception(TypeError, 'The first positional argument must be lambda function or its text source. Got: 123')
     def test4(self):
         students = Student.select(123)
+
+    def test5(self):
+        x = 1
+        y = 30
+        cursor = db.execute("select name from Student where id = $x and age = $y")
+        self.assertEqual(cursor.fetchone()[0], 'A')
+
+    def test6(self):
+        x = 1
+        y = 30
+        cursor = db.execute("select name, 'abc$$def%' from Student where id = $x and age = $y")
+        self.assertEqual(cursor.fetchone(), ('A', 'abc$def%'))
+
+    def test7(self):
+        cursor = db.execute("select name, 'abc$$def%' from Student where id = 1")
+        self.assertEqual(cursor.fetchone(), ('A', 'abc$def%'))
+
 
 if __name__ == '__main__':
     unittest.main()

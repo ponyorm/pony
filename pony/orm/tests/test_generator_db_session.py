@@ -5,14 +5,16 @@ import unittest
 from pony.orm.core import *
 from pony.orm.core import local
 from pony.orm.tests.testutils import *
+from pony.orm.tests import setup_database, teardown_database
+
 
 class TestGeneratorDbSession(unittest.TestCase):
     def setUp(self):
-        db = Database('sqlite', ':memory:')
+        db = Database()
         class Account(db.Entity):
             id = PrimaryKey(int)
             amount = Required(int)
-        db.generate_mapping(create_tables=True)
+        setup_database(db)
 
         self.db = db
         self.Account = Account
@@ -23,6 +25,7 @@ class TestGeneratorDbSession(unittest.TestCase):
             a3 = Account(id=3, amount=3000)
 
     def tearDown(self):
+        teardown_database(self.db)
         assert local.db_session is None
         self.db = self.Account = None
 
@@ -119,7 +122,7 @@ class TestGeneratorDbSession(unittest.TestCase):
             a2 = self.Account[2]
             self.assertEqual(a2.amount, 2100)
 
-    @raises_exception(TransactionError, 'You need to manually commit() changes before yielding from the generator')
+    @raises_exception(TransactionError, 'You need to manually commit() changes before suspending the generator')
     def test8(self):
         @db_session
         def f(id1):
@@ -141,7 +144,6 @@ class TestGeneratorDbSession(unittest.TestCase):
         for amount in f(1):
             pass
 
-    @raises_exception(TransactionError, 'You need to manually commit() changes before exiting from the generator')
     def test10(self):
         @db_session
         def f(id1):
@@ -149,19 +151,14 @@ class TestGeneratorDbSession(unittest.TestCase):
             yield a1.amount
             a1.amount += 100
 
+        with db_session:
+            a = self.Account[1].amount
         for amount in f(1):
             pass
+        with db_session:
+            b = self.Account[1].amount
 
-    def test11(self):
-        @db_session
-        def f(id1):
-            a1 = self.Account[id1]
-            yield a1.amount
-            a1.amount += 100
-            commit()
-
-        for amount in f(1):
-            pass
+        self.assertEqual(b, a + 100)
 
     def test12(self):
         @db_session

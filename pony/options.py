@@ -59,7 +59,6 @@ SOURCE_ENCODING = None
 CONSOLE_ENCODING = None
 
 # db options
-PREFETCHING = True
 MAX_FETCH_COUNT = None
 
 # used for select(...).show()

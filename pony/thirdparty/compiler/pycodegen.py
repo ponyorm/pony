@@ -1,7 +1,6 @@
 from __future__ import absolute_import, print_function
 from pony.py23compat import izip
 
-import imp
 import os
 import marshal
 import struct
@@ -123,7 +122,12 @@ class Module(AbstractCompileMode):
         f.write(self.getPycHeader())
         marshal.dump(self.code, f)
 
-    MAGIC = imp.get_magic()
+    if VERSION < 3:
+        import imp
+        MAGIC = imp.get_magic()
+    else:
+        import importlib.util
+        MAGIC = importlib.util.MAGIC_NUMBER
 
     def getPycHeader(self):
         # compile.c uses marshal to write a long directly, with

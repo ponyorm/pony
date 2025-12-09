@@ -4,16 +4,25 @@ import unittest
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests import setup_database, teardown_database, only_for
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Person(db.Entity):
     name = Required(unicode)
     spouse = Optional('Person', reverse='spouse')
 
-db.generate_mapping(create_tables=True)
 
 class TestSymmetricOne2One(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         with db_session:
             db.execute('update person set spouse=null')
@@ -63,8 +72,9 @@ class TestSymmetricOne2One(unittest.TestCase):
         self.assertEqual([3, None, 1, None, None], data)
     def test4(self):
         persons = set(select(p for p in Person if p.spouse.name in ('B', 'D')))
-        self.assertEqual(persons, set([Person[1], Person[3]]))
-    @raises_exception(UnrepeatableReadError, 'Value of Person.spouse for Person[1] was updated outside of current transaction')
+        self.assertEqual(persons, {Person[1], Person[3]})
+    @raises_exception(UnrepeatableReadError, 'Multiple Person objects linked with the same Person[2] object. '
+                                             'Maybe Person.spouse attribute should be Set instead of Optional')
     def test5(self):
         db.execute('update person set spouse = 3 where id = 2')
         p1 = Person[1]

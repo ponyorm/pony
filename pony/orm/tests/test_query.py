@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import PYPY2, pickle
 
 import unittest
 from datetime import date
@@ -6,8 +7,10 @@ from decimal import Decimal
 
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
+from pony.orm.tests import teardown_database, setup_database
 
-db = Database('sqlite', ':memory:')
+db = Database()
+
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -16,49 +19,57 @@ class Student(db.Entity):
     group = Required('Group')
     dob = Optional(date)
 
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set(Student)
 
-db.generate_mapping(create_tables=True)
-
-with db_session:
-    g1 = Group(number=1)
-    Student(id=1, name='S1', group=g1, gpa=3.1)
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2))
 
 class TestQuery(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        setup_database(db)
+        with db_session:
+            g1 = Group(number=1)
+            Student(id=1, name='S1', group=g1, gpa=3.1)
+            Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
+            Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2))
+
+    @classmethod
+    def tearDownClass(cls):
+        teardown_database(db)
+
     def setUp(self):
         rollback()
         db_session.__enter__()
     def tearDown(self):
         rollback()
         db_session.__exit__()
-    @raises_exception(TypeError, 'Cannot iterate over non-entity object')
+    @raises_exception(TypeError, "Query can only iterate over entity or another query (not a list of objects)")
     def test1(self):
         select(s for s in [])
-    @raises_exception(TypeError, 'Cannot iterate over non-entity object X')
+    @raises_exception(TypeError, "Cannot iterate over non-entity object X")
     def test2(self):
         X = [1, 2, 3]
         select('x for x in X')
-    @raises_exception(TypeError, "Cannot iterate over non-entity object")
     def test3(self):
         g = Group[1]
-        select(s for s in g.students)
-    @raises_exception(ExprEvalError, "a raises NameError: name 'a' is not defined")
+        students = select(s for s in g.students)
+        self.assertEqual(set(g.students), set(students))
+    @raises_exception(ExprEvalError, "`a` raises NameError: global name 'a' is not defined" if PYPY2 else
+                                     "`a` raises NameError: name 'a' is not defined")
     def test4(self):
         select(a for s in Student)
-    @raises_exception(TypeError, "Incomparable types '%s' and 'list' in expression: s.name == x" % unicode.__name__)
+    @raises_exception(TypeError, "Incomparable types '%s' and 'StrArray' in expression: s.name == x" % unicode.__name__)
     def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)
-    @raises_exception(TypeError, "f1(s.gpa)")
     def test6(self):
         def f1(x):
-            return x + 1
-        select(s for s in Student if f1(s.gpa) > 3)
-    @raises_exception(NotImplementedError, "m1(s.gpa, 1) > 3")
+            return float(x) + 1
+        students = select(s for s in Student if f1(s.gpa) > 4.25)[:]
+        self.assertEqual({s.id for s in students}, {3})
+    @raises_exception(NotImplementedError, "m1")
     def test7(self):
         class C1(object):
             def method1(self, a, b):
@@ -117,26 +128,21 @@ class TestQuery(unittest.TestCase):
     def test23(self):
         r = max(s.dob.year for s in Student)
         self.assertEqual(r, 2001)
-    @db_session
     def test_first1(self):
         q = select(s for s in Student).order_by(Student.gpa)
         self.assertEqual(q.first(), Student[1])
-    @db_session
     def test_first2(self):
         q = select((s.name, s.group) for s in Student)
         self.assertEqual(q.first(), ('S1', Group[1]))
-    @db_session
     def test_first3(self):
         q = select(s for s in Student)
         self.assertEqual(q.first(), Student[1])
-    @db_session
     def test_closures_1(self):
         def find_by_gpa(gpa):
             return lambda s: s.gpa > gpa
         fn = find_by_gpa(Decimal('3.1'))
         students = list(Student.select(fn))
         self.assertEqual(students, [ Student[2], Student[3] ])
-    @db_session
     def test_closures_2(self):
         def find_by_gpa(gpa):
             return lambda s: s.gpa > gpa
@@ -144,6 +150,30 @@ class TestQuery(unittest.TestCase):
         q = select(s for s in Student)
         q = q.filter(fn)
         self.assertEqual(list(q), [ Student[2], Student[3] ])
+    @raises_exception(NameError, 'Free variable `gpa` referenced before assignment in enclosing scope')
+    def test_closures_3(self):
+        def find_by_gpa():
+            if False:
+                gpa = Decimal('3.1')
+            return lambda s: s.gpa > gpa
+        fn = find_by_gpa()
+        students = list(Student.select(fn))
+    def test_pickle(self):
+        objects = select(s for s in Student if s.scholarship > 0).order_by(desc(Student.id))
+        data = pickle.dumps(objects)
+        rollback()
+        objects = pickle.loads(data)
+        self.assertEqual([obj.id for obj in objects], [3, 2])
+    def test_bulk_delete_clear_query_cache(self):
+        students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students1], [2, 3])
+        Student.select(lambda s: s.id < 3).delete(bulk=True)
+        students2 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students2], [3])
+        rollback()
+        students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
+        self.assertEqual([s.id for s in students1], [2, 3])
+
 
 if __name__ == '__main__':
     unittest.main()
