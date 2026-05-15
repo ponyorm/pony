@@ -5,4 +5,4 @@ WORKDIR /app
 COPY . .
 RUN pip install --no-cache-dir -e .
 
-CMD ["python", "-m", "unittest", "discover", "-v", "-s", "pony/orm/tests", "-p", "test_*.py"]
+CMD ["sh", "-c", "python -m unittest discover -v -s pony/orm/tests -p test_*.py && python pony/orm/examples/run_examples.py"]
