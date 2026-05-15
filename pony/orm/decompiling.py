@@ -295,6 +295,14 @@ class Decompiler(object):
                     decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
                     decompiler.instructions.append((decompiler.pos, i, opname, arg))
             if opname == 'YIELD_VALUE':
+                # In Python 3.12+, multiline generator expressions compile to a structure
+                # where the single JUMP_BACKWARD (shared between filter-failure and
+                # post-yield looping) appears *after* YIELD_VALUE, so the pre-yield
+                # backward-jump merge never fires and conditions_end stays 0. Seed it
+                # from the YIELD_VALUE position so analyze_jumps can walk back and
+                # correctly classify filter or-jumps vs. elt-level short-circuits.
+                if decompiler.conditions_end == 0:
+                    decompiler.conditions_end = decompiler.pos
                 before_yield = False
             decompiler.pos = i
     def analyze_jumps(decompiler):
@@ -309,6 +317,11 @@ class Decompiler(object):
                         decompiler.conditions_end = y
 
         i = decompiler.instructions_map[decompiler.conditions_end]
+        # If conditions_end points directly to YIELD_VALUE (multiline bytecode structure
+        # where no backward jump precedes yield), skip it — jumps targeting YIELD_VALUE
+        # directly are elt-level short-circuits, not filter or-conditions.
+        if i > 0 and decompiler.instructions[i][2] == 'YIELD_VALUE':
+            i -= 1
         while i > 0:
             pos, next_pos, opname, arg = decompiler.instructions[i]
             if pos in decompiler.jump_map:
