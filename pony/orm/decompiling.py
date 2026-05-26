@@ -218,17 +218,25 @@ class Decompiler(object):
                     else:
                         arg = [code.co_names[oparg]]
                 elif op in hasjrel:
-                    arg = [i + oparg * (2 if PY310 else 1)
+                    # In 3.13 (and where applicable in 3.11/3.12), relative jump
+                    # offsets are measured from after the full instruction including
+                    # any inline CACHE entries (opcode 0). Peek past them.
+                    peek = i
+                    while peek < len(co_code) and co_code[peek] == 0:
+                        peek += 2
+                    arg = [peek + oparg * (2 if PY310 else 1)
                            * (-1 if 'BACKWARD' in opname else 1)]
                 elif op in haslocal:
-                    if opname in {'LOAD_FAST_LOAD_FAST', 'STORE_FAST_LOAD_FAST', 'STORE_FAST_STORE_FAST'}:
-                        # py3.13: 2 4bit args
-                        arg = [code._varname_from_oparg(oparg >> 4), code._varname_from_oparg(oparg & 0x0f)]
-                    elif PY313:
-                        # co_varnames is incomplete now
-                        arg = [code._varname_from_oparg(oparg)]
+                    if PY313 and opname in ('LOAD_FAST_LOAD_FAST', 'STORE_FAST_LOAD_FAST', 'STORE_FAST_STORE_FAST'):
+                        arg = [oparg]  # raw oparg encoding two indices; split during emission
                     else:
-                        arg = [code.co_varnames[oparg]]
+                        # In Python 3.13, LOAD_FAST accesses a combined index space:
+                        # co_varnames + co_cellvars + co_freevars
+                        if PY313 and oparg >= len(code.co_varnames):
+                            combined = code.co_varnames + code.co_cellvars + code.co_freevars
+                            arg = [combined[oparg]]
+                        else:
+                            arg = [code.co_varnames[oparg]]
                 elif op in hascompare:
                     if PY313:
                         oparg >>= 5
@@ -261,8 +269,15 @@ class Decompiler(object):
                     # and unconditional jump_backward for loop, so we
                     # fixup previous instruction to match pre-3.12,
                     # which is conditional jump backward for loop
-                    # and fall through for yield
-                    prev = list(decompiler.instructions[-1])
+                    # and fall through for yield.
+                    # In py 3.13 CACHE entries appear after conditional jumps,
+                    # so we scan backward past any CACHE instructions.
+                    prev_idx = len(decompiler.instructions) - 1
+                    while prev_idx >= 0 and decompiler.instructions[prev_idx][2] == 'CACHE':
+                        prev_idx -= 1
+                    if prev_idx < 0:
+                        raise DecompileError(f"No non-CACHE instruction before JUMP_BACKWARD")
+                    prev = list(decompiler.instructions[prev_idx])
                     endpos = arg[0]
                     merge = True
                     if prev[2] == 'POP_JUMP_IF_TRUE':
@@ -281,19 +296,39 @@ class Decompiler(object):
                         old_endpos = prev[3][0]
                         prev[1] = i
                         prev[3] = arg
-                        decompiler.instructions[-1] = tuple(prev)
+                        decompiler.instructions[prev_idx] = tuple(prev)
                         if endpos < decompiler.pos:
-                            decompiler.conditions_end = i
+                            peek = i
+                            while peek < len(co_code) and co_code[peek] == 0:
+                                peek += 2
+                            decompiler.conditions_end = peek
                         decompiler.jump_map[old_endpos].remove(prev[0])
                         decompiler.jump_map[endpos].append(prev[0])
                 if not merge:
-                    if 'JUMP' in opname:
-                        endpos = arg[0]
-                        if endpos < decompiler.pos:
-                            decompiler.conditions_end = i
-                        decompiler.jump_map[endpos].append(decompiler.pos)
-                    decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
-                    decompiler.instructions.append((decompiler.pos, i, opname, arg))
+                    if PY313 and opname in ('LOAD_FAST_LOAD_FAST', 'STORE_FAST_LOAD_FAST', 'STORE_FAST_STORE_FAST'):
+                        # Split two-index superinstruction into two individual ops.
+                        # oparg encodes (first_idx << 4) | second_idx.
+                        idx1, idx2 = arg[0] >> 4, arg[0] & 0xF
+                        pairs = {
+                            'LOAD_FAST_LOAD_FAST':   (('LOAD_FAST',  idx1), ('LOAD_FAST',  idx2)),
+                            'STORE_FAST_LOAD_FAST':  (('STORE_FAST', idx1), ('LOAD_FAST',  idx2)),
+                            'STORE_FAST_STORE_FAST': (('STORE_FAST', idx1), ('STORE_FAST', idx2)),
+                        }[opname]
+                        combined = code.co_varnames + code.co_cellvars + code.co_freevars
+                        decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
+                        for sname, sidx in pairs:
+                            decompiler.instructions.append((decompiler.pos, i, sname, [combined[sidx]]))
+                    else:
+                        if 'JUMP' in opname:
+                            endpos = arg[0]
+                            if endpos < decompiler.pos:
+                                peek = i
+                                while peek < len(co_code) and co_code[peek] == 0:
+                                    peek += 2
+                                decompiler.conditions_end = peek
+                            decompiler.jump_map[endpos].append(decompiler.pos)
+                        decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
+                        decompiler.instructions.append((decompiler.pos, i, opname, arg))
             if opname == 'YIELD_VALUE':
                 # In Python 3.12+, multiline generator expressions compile to a structure
                 # where the single JUMP_BACKWARD (shared between filter-failure and
@@ -425,7 +460,7 @@ class Decompiler(object):
                 end = None
             if isinstance(start, ast.Constant) and start.value is None:
                 start = None
-        node2 = ast.Slice(start, end, ctx=ast.Load())
+        node2 = ast.Slice(start, end)
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
     def BINARY_SUBSCR(decompiler):
@@ -505,7 +540,7 @@ class Decompiler(object):
             args.append(pop())
         args.reverse()
         if star:
-            args.append(ast.Starred(value=star))
+            args.append(ast.Starred(value=star, ctx=ast.Load()))
         if star2:
             keywords.append(ast.keyword(value=star2))
         return decompiler._call_function(args, keywords)
@@ -537,21 +572,21 @@ class Decompiler(object):
             args = values[:-len(keys)]
             keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys):])]
 
-        if PY313:
-            # self/NULL and callable are swapped
-            self_ = decompiler.stack.pop()
-            callable_ = decompiler.stack.pop()
-            if self_ is not None:
-                args.insert(0, self_)
-        else:
-            self_ = decompiler.stack.pop()
-            callable_ = decompiler.stack.pop()
-            if callable_ is None:
-                callable_ = self_
-            else:
-                args.insert(0, self_)
+        self = decompiler.stack.pop()
+        callable_ = decompiler.stack.pop()
+        if callable_ is None:
+            callable_ = self
+        elif self is not None:
+            args.insert(0, self)
         decompiler.stack.append(callable_)
         return decompiler._call_function(args, keywords)
+
+    def CALL_KW(decompiler, argc):
+        # 3.13: replaces KW_NAMES + CALL; TOS is the keyword-names tuple
+        keys_node = decompiler.stack.pop()
+        assert isinstance(keys_node, ast.Constant) and isinstance(keys_node.value, tuple)
+        decompiler.kw_names = keys_node.value
+        return decompiler.CALL(argc)
 
     def CALL_FUNCTION_VAR(decompiler, argc):
         return decompiler.CALL_FUNCTION(argc, decompiler.stack.pop())
@@ -585,15 +620,15 @@ class Decompiler(object):
                 throw(DecompileError)
             star2 = decompiler.stack.pop()
         star = decompiler.stack.pop()
-        args = [ast.Starred(value=star)] if star else None
+        # PUSH_NULL sits between callable and star arg (call-result pattern: foo()(*args))
+        if decompiler.stack and decompiler.stack[-1] is None:
+            decompiler.stack.pop()
+        args = [ast.Starred(value=star, ctx=ast.Load())] if star else None
         keywords = [ast.keyword(value=star2)] if star2 else None
-        if PY313:
-            # self/NULL and callable are swapped; FIXME: this leaves NULL on the stack?
-            self_ = decompiler.stack.pop()
-            callable_ = decompiler.stack.pop()
-            decompiler.stack.append(self_)
-            decompiler.stack.append(callable_)
-        return decompiler._call_function(args, keywords)
+        result = decompiler._call_function(args, keywords)
+        if decompiler.stack and decompiler.stack[-1] is None:
+            decompiler.stack.pop()
+        return result
 
     def CALL_METHOD(decompiler, argc):
         pop = decompiler.stack.pop
@@ -614,13 +649,8 @@ class Decompiler(object):
         method = pop()
         return ast.Call(method, args, keywords)
 
-    def CALL_KW(decompiler, argc):
-        names = decompiler.stack.pop()
-        if isinstance(names, ast.Constant):
-            decompiler.kw_names = names.value
-        else:
-            raise NotImplementedError(f"CALL_KW for {names.__class__.__name__} not implemented")
-        return decompiler.CALL(argc)
+    def TO_BOOL(decompiler):
+        pass
 
     def COMPARE_OP(decompiler, op):
         oper2 = decompiler.stack.pop()
@@ -670,7 +700,6 @@ class Decompiler(object):
         return ast.FormattedValue(value=value, conversion=conversion, format_spec=format_spec)
 
     def FORMAT_SIMPLE(decompiler):
-        # see CONVERT_VALUE
         args = decompiler.stack.pop()
         if isinstance(args, tuple):
             value, conversion = args
@@ -682,7 +711,6 @@ class Decompiler(object):
         spec = decompiler.stack.pop()
         args = decompiler.stack.pop()
         if isinstance(args, tuple):
-            # FIXME: is this correct here? should we look for ast.FormattedValue instead?
             value, conversion = args
         else:
             value, conversion = args, -1
@@ -737,8 +765,15 @@ class Decompiler(object):
                 expr = ast.UnaryOp(op=ast.Not(), operand=expr)
         decompiler.stack.append(expr)
 
-        if decompiler.next_pos in decompiler.targets:
-            decompiler.process_target(decompiler.next_pos)
+        target_pos = decompiler.next_pos
+        if target_pos not in decompiler.targets:
+            co_code = decompiler.code.co_code
+            peek = target_pos
+            while peek < len(co_code) and co_code[peek] == 0:
+                peek += 2
+            target_pos = peek
+        if target_pos in decompiler.targets:
+            decompiler.process_target(target_pos)
 
         expr = decompiler.stack.pop()
         clause = ast.BoolOp(op=clausetype(), values=[expr])
@@ -758,8 +793,15 @@ class Decompiler(object):
         expr = ast.Compare(expr, [op()], [ast.Constant(None)])
         decompiler.stack.append(expr)
 
-        if decompiler.next_pos in decompiler.targets:
-            decompiler.process_target(decompiler.next_pos)
+        target_pos = decompiler.next_pos
+        if target_pos not in decompiler.targets:
+            co_code = decompiler.code.co_code
+            peek = target_pos
+            while peek < len(co_code) and co_code[peek] == 0:
+                peek += 2
+            target_pos = peek
+        if target_pos in decompiler.targets:
+            decompiler.process_target(target_pos)
 
         expr = decompiler.stack.pop()
         clause = ast.BoolOp(op=clausetype(), values=[expr])
@@ -901,6 +943,7 @@ class Decompiler(object):
         return ast.Name(varname, ast.Load())
 
     LOAD_FAST_AND_CLEAR = LOAD_FAST
+    LOAD_FAST_CHECK = LOAD_FAST
 
     def LOAD_FAST_LOAD_FAST(decompiler, varname1, varname2):
         decompiler.names.add(varname1)
@@ -930,6 +973,20 @@ class Decompiler(object):
 
     def MAKE_CELL(decompiler, freevar):
         pass
+
+    def SET_FUNCTION_ATTRIBUTE(decompiler, flag):
+        # Python 3.13+: MAKE_FUNCTION no longer takes flags; attributes are set separately.
+        # TOS = function/AST, TOS1 = attribute value (closure tuple, defaults tuple, etc.)
+        func = decompiler.stack.pop()
+        attr = decompiler.stack.pop()
+        if flag == 0x01 and isinstance(func, ast.Lambda):  # defaults
+            if isinstance(attr, ast.Tuple):
+                func.args.defaults = attr.elts
+            elif isinstance(attr, ast.Constant) and isinstance(attr.value, tuple):
+                # PY39+: LOAD_CONST (x, y) produces ast.Constant((x, y)), not ast.Tuple
+                func.args.defaults = [make_const(v) for v in attr.value]
+        # flag 0x08 (closure) and others: just discard the attribute
+        decompiler.stack.append(func)
 
     def MAKE_CLOSURE(decompiler, argc):
         decompiler.stack[-3:-2] = []  # ignore freevars

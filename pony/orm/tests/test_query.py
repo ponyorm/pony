@@ -200,6 +200,16 @@ class TestQuery(unittest.TestCase):
         students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
         self.assertEqual([s.id for s in students1], [2, 3])
 
+    def test_query_result_iterator(self):
+        # list() and list comprehensions call iter() on the query result iterator,
+        # which requires __iter__ to be defined
+        q = Student.select(lambda s: s.scholarship is not None).order_by(Student.id)
+        ids = [s.id for s in q]
+        self.assertEqual(ids, [2, 3])
+        # list() on a query also exercises the iterator path
+        ids2 = list(Student.select(lambda s: s.scholarship is not None).order_by(Student.id))
+        self.assertEqual([s.id for s in ids2], [2, 3])
+
 
 if __name__ == '__main__':
     unittest.main()

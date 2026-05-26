@@ -103,10 +103,11 @@ class TestDecompiler(unittest.TestCase):
             return
 
         code = compile(src, '<?>', 'eval').co_consts[0]
-        # import dis
-        # print(dis.dis(code))
         dc = Decompiler(code)
         expected = textwrap.dedent(expected).strip()
+        if sys.version_info[:2] >= (3, 13):
+            # Python 3.13+ ast.dump omits empty sequence fields (e.g. ifs=[], keywords=[])
+            expected = re.sub(r',?\n\s+\w+=\[\](?=[,)])', '', expected)
         self.maxDiff = None
         self.assertMultiLineEqual(expected, ast.dump(dc.ast, indent=2))
 
@@ -470,6 +471,229 @@ class TestDecompiler(unittest.TestCase):
             """
         self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
         self.assertDecompilesTo(expr, expected_result)
+
+    # ── Python 3.13 fixes ──────────────────────────────────────────────────
+
+    def test_ast_nested_gen_cellvar(self):
+        # x is a cell var in the outer generator (referenced in the inner one);
+        # Python 3.13 unified the LOAD_FAST index space to cover varnames + cellvars
+        self.assertDecompilesTo(
+            '(x*y for x in T for y in (z for z in x))',
+            """
+            GeneratorExp(
+              elt=BinOp(
+                left=Name(id='x', ctx=Load()),
+                op=Mult(),
+                right=Name(id='y', ctx=Load())),
+              generators=[
+                comprehension(
+                  target=Name(id='x', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0),
+                comprehension(
+                  target=Name(id='y', ctx=Store()),
+                  iter=GeneratorExp(
+                    elt=Name(id='z', ctx=Load()),
+                    generators=[
+                      comprehension(
+                        target=Name(id='z', ctx=Store()),
+                        iter=Name(id='x', ctx=Load()),
+                        ifs=[],
+                        is_async=0)]),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_fused_load_fast(self):
+        # Python 3.13 fuses adjacent loads into LOAD_FAST_LOAD_FAST;
+        # the lambda body uses a single instruction to load both x and y
+        self.assertDecompilesTo(
+            'lambda x, y: x + y',
+            """
+            BinOp(
+              left=Name(id='x', ctx=Load()),
+              op=Add(),
+              right=Name(id='y', ctx=Load()))
+            """)
+
+    def test_ast_lambda_with_default(self):
+        # Python 3.13 replaced MAKE_FUNCTION flags with SET_FUNCTION_ATTRIBUTE;
+        # flag=1 carries the default arg values tuple
+        if sys.version_info[:2] < (3, 13):
+            return
+        self.assertDecompilesTo(
+            '(a for a in T if (lambda x, y=10: x + y)(a))',
+            """
+            GeneratorExp(
+              elt=Name(id='a', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    Call(
+                      func=Lambda(
+                        args=arguments(
+                          args=[
+                            arg(arg='x'),
+                            arg(arg='y')],
+                          defaults=[
+                            Constant(value=10)]),
+                        body=BinOp(
+                          left=Name(id='x', ctx=Load()),
+                          op=Add(),
+                          right=Name(id='y', ctx=Load()))),
+                      args=[
+                        Name(id='a', ctx=Load())],
+                      keywords=[])],
+                  is_async=0)])
+            """)
+
+    def test_ast_fstring_simple(self):
+        # Python 3.13 replaced FORMAT_VALUE with FORMAT_SIMPLE for plain f-string slots
+        if sys.version_info[:2] < (3, 13):
+            return
+        self.assertDecompilesTo(
+            '(f"{x}" for a in T)',
+            """
+            GeneratorExp(
+              elt=FormattedValue(
+                value=Name(id='x', ctx=Load()),
+                conversion=-1),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_fstring_conversion_r(self):
+        # Python 3.13 uses CONVERT_VALUE for !r/!s/!a; !r maps to conversion=114
+        if sys.version_info[:2] < (3, 13):
+            return
+        self.assertDecompilesTo(
+            '(f"{x!r}" for a in T)',
+            """
+            GeneratorExp(
+              elt=FormattedValue(
+                value=Name(id='x', ctx=Load()),
+                conversion=114),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_fstring_conversion_a(self):
+        # CONVERT_VALUE with !a (ascii); maps to conversion=97
+        if sys.version_info[:2] < (3, 13):
+            return
+        self.assertDecompilesTo(
+            '(f"{x!a}" for a in T)',
+            """
+            GeneratorExp(
+              elt=FormattedValue(
+                value=Name(id='x', ctx=Load()),
+                conversion=97),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_fstring_with_spec(self):
+        # Python 3.13 uses FORMAT_WITH_SPEC when a format spec is present
+        if sys.version_info[:2] < (3, 13):
+            return
+        self.assertDecompilesTo(
+            '(f"{x:.2f}" for a in T)',
+            """
+            GeneratorExp(
+              elt=FormattedValue(
+                value=Name(id='x', ctx=Load()),
+                conversion=-1,
+                format_spec=Constant(value='.2f')),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_call_of_call_result(self):
+        # Python 3.11+ inserts PUSH_NULL after an expression result when it is
+        # used as a callable, allowing foo()(1)-style chained calls
+        self.assertDecompilesTo(
+            '(foo()(1) for a in T)',
+            """
+            GeneratorExp(
+              elt=Call(
+                func=Call(
+                  func=Name(id='foo', ctx=Load()),
+                  args=[],
+                  keywords=[]),
+                args=[
+                  Constant(value=1)],
+                keywords=[]),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_starargs_null_sentinel(self):
+        # LOAD_GLOBAL with push_null pushes a NULL sentinel below the callable;
+        # CALL_FUNCTION_EX must clean it up after popping the callable
+        if sys.version_info[:2] < (3, 11):
+            return
+        self.assertDecompilesTo(
+            '(foo(*args) for a in T)',
+            """
+            GeneratorExp(
+              elt=Call(
+                func=Name(id='foo', ctx=Load()),
+                args=[
+                  Starred(
+                    value=Name(id='args', ctx=Load()),
+                    ctx=Load())],
+                keywords=None),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_kwargs_in_element(self):
+        # keyword arguments in a generator element
+        self.assertDecompilesTo(
+            '(foo(x=1) for a in T)',
+            """
+            GeneratorExp(
+              elt=Call(
+                func=Name(id='foo', ctx=Load()),
+                args=[],
+                keywords=[
+                  keyword(
+                    arg='x',
+                    value=Constant(value=1))]),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
 
 
 for i, gen in enumerate(generate_gens()):

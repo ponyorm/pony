@@ -109,3 +109,12 @@ class TestFString(unittest.TestCase):
 
         q2 = select("""p.first_name + f"{' ' + x}" for p in Person if p.id == 1""")
         self.assertEqual(set(q2), {'Alexander Tischenko'})
+
+    @raises_exception(NotImplementedError, 'You cannot specify conversion type for f-string expression in query')
+    def test_9a(self):
+        # !a (ascii) conversion — same restriction as !r and !s
+        q = select(p.id for p in Person if f'{p.value!a}')[:]
+
+    @raises_exception(NotImplementedError, 'You cannot specify conversion type for f-string expression in query')
+    def test_9b(self):
+        q = select("""p.id for p in Person if f'{p.value!a}'""")[:]
