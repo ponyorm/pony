@@ -623,8 +623,8 @@ class Decompiler(object):
         # PUSH_NULL sits between callable and star arg (call-result pattern: foo()(*args))
         if decompiler.stack and decompiler.stack[-1] is None:
             decompiler.stack.pop()
-        args = [ast.Starred(value=star, ctx=ast.Load())] if star else None
-        keywords = [ast.keyword(value=star2)] if star2 else None
+        args = [ast.Starred(value=star, ctx=ast.Load())] if star else []
+        keywords = [ast.keyword(value=star2)] if star2 else []
         result = decompiler._call_function(args, keywords)
         if decompiler.stack and decompiler.stack[-1] is None:
             decompiler.stack.pop()
@@ -888,11 +888,9 @@ class Decompiler(object):
     def LIST_APPEND(decompiler, offset):
         tos = decompiler.stack.pop()
         list_node = decompiler.stack[-offset]
-        if isinstance(list_node, ast.comprehension):
+        if not isinstance(list_node, ast.List):
             throw(InvalidQuery('Use generator expression (... for ... in ...) '
                                'instead of list comprehension [... for ... in ...] inside query'))
-
-        assert isinstance(list_node, ast.List), list_node
         list_node.elts.append(tos)
 
     def LIST_EXTEND(decompiler, offset):
@@ -1149,7 +1147,7 @@ class Decompiler(object):
         return ast.UnaryOp(op=ast.Not(), operand=decompiler.stack.pop())
 
     def UNARY_INVERT(decompiler):
-        return ast.Invert(decompiler.stack.pop())
+        return ast.UnaryOp(op=ast.Invert(), operand=decompiler.stack.pop())
 
     def UNPACK_SEQUENCE(decompiler, count):
         ass_tuple = ast.Assign(targets=ast.Tuple([], ast.Store()))

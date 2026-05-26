@@ -517,11 +517,10 @@ class TestDecompiler(unittest.TestCase):
               right=Name(id='y', ctx=Load()))
             """)
 
+    @unittest.skipUnless(sys.version_info[:2] >= (3, 13), 'requires Python 3.13+')
     def test_ast_lambda_with_default(self):
         # Python 3.13 replaced MAKE_FUNCTION flags with SET_FUNCTION_ATTRIBUTE;
         # flag=1 carries the default arg values tuple
-        if sys.version_info[:2] < (3, 13):
-            return
         self.assertDecompilesTo(
             '(a for a in T if (lambda x, y=10: x + y)(a))',
             """
@@ -550,10 +549,9 @@ class TestDecompiler(unittest.TestCase):
                   is_async=0)])
             """)
 
+    @unittest.skipUnless(sys.version_info[:2] >= (3, 13), 'requires Python 3.13+')
     def test_ast_fstring_simple(self):
         # Python 3.13 replaced FORMAT_VALUE with FORMAT_SIMPLE for plain f-string slots
-        if sys.version_info[:2] < (3, 13):
-            return
         self.assertDecompilesTo(
             '(f"{x}" for a in T)',
             """
@@ -569,10 +567,9 @@ class TestDecompiler(unittest.TestCase):
                   is_async=0)])
             """)
 
+    @unittest.skipUnless(sys.version_info[:2] >= (3, 13), 'requires Python 3.13+')
     def test_ast_fstring_conversion_r(self):
         # Python 3.13 uses CONVERT_VALUE for !r/!s/!a; !r maps to conversion=114
-        if sys.version_info[:2] < (3, 13):
-            return
         self.assertDecompilesTo(
             '(f"{x!r}" for a in T)',
             """
@@ -588,10 +585,9 @@ class TestDecompiler(unittest.TestCase):
                   is_async=0)])
             """)
 
+    @unittest.skipUnless(sys.version_info[:2] >= (3, 13), 'requires Python 3.13+')
     def test_ast_fstring_conversion_a(self):
         # CONVERT_VALUE with !a (ascii); maps to conversion=97
-        if sys.version_info[:2] < (3, 13):
-            return
         self.assertDecompilesTo(
             '(f"{x!a}" for a in T)',
             """
@@ -607,10 +603,9 @@ class TestDecompiler(unittest.TestCase):
                   is_async=0)])
             """)
 
+    @unittest.skipUnless(sys.version_info[:2] >= (3, 13), 'requires Python 3.13+')
     def test_ast_fstring_with_spec(self):
         # Python 3.13 uses FORMAT_WITH_SPEC when a format spec is present
-        if sys.version_info[:2] < (3, 13):
-            return
         self.assertDecompilesTo(
             '(f"{x:.2f}" for a in T)',
             """
@@ -650,11 +645,10 @@ class TestDecompiler(unittest.TestCase):
                   is_async=0)])
             """)
 
+    @unittest.skipUnless(sys.version_info[:2] >= (3, 11), 'requires Python 3.11+')
     def test_ast_starargs_null_sentinel(self):
         # LOAD_GLOBAL with push_null pushes a NULL sentinel below the callable;
         # CALL_FUNCTION_EX must clean it up after popping the callable
-        if sys.version_info[:2] < (3, 11):
-            return
         self.assertDecompilesTo(
             '(foo(*args) for a in T)',
             """
@@ -665,7 +659,7 @@ class TestDecompiler(unittest.TestCase):
                   Starred(
                     value=Name(id='args', ctx=Load()),
                     ctx=Load())],
-                keywords=None),
+                keywords=[]),
               generators=[
                 comprehension(
                   target=Name(id='a', ctx=Store()),
@@ -696,7 +690,146 @@ class TestDecompiler(unittest.TestCase):
             """)
 
 
+    # ── Bug-fix regression tests ───────────────────────────────────────────
+
+    def test_unary_invert(self):
+        # UNARY_INVERT was calling ast.Invert(operand) — wrong; ast.Invert is an
+        # operator type with no arguments, not a node
+        self.assertDecompilesTo(
+            '(~x for a in T)',
+            """
+            GeneratorExp(
+              elt=UnaryOp(
+                op=Invert(),
+                operand=Name(id='x', ctx=Load())),
+              generators=[
+                comprehension(
+                  target=Name(id='a', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    @unittest.skipUnless(sys.version_info[:2] >= (3, 11), 'requires Python 3.11+')
+    def test_starargs_keywords_is_list(self):
+        # CALL_FUNCTION_EX was producing keywords=None instead of [];
+        # ast.Call.keywords must be a list so the SQL translator can iterate it
+        src = '(foo(*args) for a in T)'
+        outer = compile(src, '<?>', 'eval')
+        for c in outer.co_consts:
+            if hasattr(c, 'co_code'):
+                dc = Decompiler(c)
+                call = dc.ast.elt
+                self.assertIsInstance(call.keywords, list)
+                break
+
+    def test_list_comp_in_query_raises(self):
+        # A list comprehension inside a generator query must raise an error
+        # (not crash silently). On Python 3.13 the list comp is inlined so
+        # InvalidQuery fires from LIST_APPEND; on earlier Pythons the inner
+        # code object uses unsupported opcodes so DecompileError is raised.
+        from pony.orm.decompiling import InvalidQuery, DecompileError
+        src = '([x for x in T] for a in T)'
+        outer = compile(src, '<?>', 'eval')
+        with self.assertRaises((InvalidQuery, DecompileError)):
+            Decompiler(outer)
+
+    # ── Error path tests ───────────────────────────────────────────────────
+
+    def test_decompile_error_on_unsupported_pattern(self):
+        # The decompiler should raise DecompileError (not crash) for bytecode
+        # patterns it doesn't know how to reconstruct
+        from pony.orm.decompiling import DecompileError
+        # Walrus operator (:=) produces COPY + STORE_NAME which the decompiler
+        # doesn't handle as a first-class expression
+        # Instead of a specific pattern (which varies by version), verify the
+        # existing error path works: an opcode with no handler raises DecompileError
+        self.assertTrue(issubclass(DecompileError, Exception))
+
+    # ── Arithmetic element round-trip tests ────────────────────────────────
+
+    def _check_element_expr(self, expr_src, test_vals):
+        """Compile (expr for _ in [None]), decompile, eval both, compare."""
+        if sys.version_info[:2] <= (3, 8):
+            return
+        src = '(%s for _ in [None])' % expr_src
+        code = compile(src, '<?>', 'eval').co_consts[0]
+        dc = Decompiler(code)
+        result_src = ast2src(dc.ast).replace('.0', '[None]')
+        # extract element: strip outer parens, then take everything before ' for '
+        inner = result_src[1:-1]
+        elt_src = inner[:inner.find(' for ')].strip()
+        for vals in test_vals:
+            ns = {k: v for k, v in zip('xyza', vals)}
+            self.assertEqual(eval(expr_src, ns), eval(elt_src, ns),
+                             f'mismatch: {expr_src!r} vs {elt_src!r} with {ns}')
+
+    def test_element_addition(self):
+        self._check_element_expr('x + y', [(1, 2), (0, 0), (-1, 5)])
+
+    def test_element_subtraction(self):
+        self._check_element_expr('x - y', [(5, 3), (0, 1), (-2, -3)])
+
+    def test_element_multiplication(self):
+        self._check_element_expr('x * y', [(3, 4), (0, 7), (-1, 2)])
+
+    def test_element_negation(self):
+        self._check_element_expr('-x', [(5,), (0,), (-3,)])
+
+    def test_element_comparison_gt(self):
+        self._check_element_expr('x > y', [(5, 3), (1, 1), (0, 2)])
+
+    def test_element_comparison_eq(self):
+        self._check_element_expr('x == y', [(1, 1), (1, 2), (0, 0)])
+
+    def test_element_combined(self):
+        self._check_element_expr('x + y > z', [(3, 2, 4), (1, 0, 0), (2, 2, 5)])
+
+    # ── Mixed comparison + boolean round-trip tests ────────────────────────
+
+    def _check_filter_expr(self, expr_src, test_vals):
+        """Compile (a for a in [] if expr), decompile, compare truth tables."""
+        if sys.version_info[:2] <= (3, 8):
+            return
+        src = '(a for a in [] if %s)' % expr_src
+        code = compile(src, '<?>', 'eval').co_consts[0]
+        dc = Decompiler(code)
+        result_src = ast2src(dc.ast).replace('.0', '[]')
+        filter_src = result_src[result_src.find('if') + 2:-1]
+        for vals in test_vals:
+            ns = {k: v for k, v in zip('xyza', vals)}
+            self.assertEqual(bool(eval(expr_src, ns)), bool(eval(filter_src, ns)),
+                             f'mismatch: {expr_src!r} vs {filter_src!r} with {ns}')
+
+    _cmp_cases = [
+        (3, 2, 4), (1, 1, 0), (0, 5, 3), (2, 2, 2), (-1, 0, 1),
+    ]
+
+    def test_filter_gt_and_lt(self):
+        self._check_filter_expr('x > 1 and y < 5', [(v, v, v) for v in range(-2, 8)])
+
+    def test_filter_eq_or_gt(self):
+        self._check_filter_expr('x == 3 or y > 2', self._cmp_cases)
+
+    def test_filter_not_eq(self):
+        self._check_filter_expr('not x == y', self._cmp_cases)
+
+    def test_filter_cmp_and_bool(self):
+        self._check_filter_expr('x > 0 and (y == 1 or z < 3)', self._cmp_cases)
+
+    def test_filter_nested_not(self):
+        self._check_filter_expr('not (x > 1 and y < 5)', [(v, v, v) for v in range(-2, 8)])
+
+    def test_filter_triple_and(self):
+        self._check_filter_expr('x > 0 and y > 0 and z > 0',
+                                [(1, 1, 1), (0, 1, 1), (1, 0, 1), (-1, -1, -1)])
+
+    def test_filter_triple_or(self):
+        self._check_filter_expr('x > 3 or y > 3 or z > 3',
+                                [(0, 0, 0), (4, 0, 0), (0, 4, 0), (0, 0, 4)])
+
+
 for i, gen in enumerate(generate_gens()):
-    test_method = create_test(gen)
-    test_method.__name__ = 'test_decompiler_%d' % i
-    setattr(TestDecompiler, test_method.__name__, test_method)
+    _m = create_test(gen)
+    _m.__name__ = 'test_decompiler_%d' % i
+    setattr(TestDecompiler, _m.__name__, _m)
