@@ -619,8 +619,10 @@ class TestJson(unittest.TestCase):
         last_sql = db.last_sql
         if db.provider.dialect == 'PostgreSQL':
             self.assertTrue(')::text' in last_sql)
+        elif db.provider.dialect == 'MySQL':
+            self.assertTrue('AS CHAR' in last_sql)
         else:
-            self.assertTrue('AS text' in db.last_sql)
+            self.assertTrue('AS text' in last_sql)
 
     @db_session
     def test_int_cast(self):
@@ -628,6 +630,8 @@ class TestJson(unittest.TestCase):
         last_sql = db.last_sql
         if db.provider.dialect == 'PostgreSQL':
             self.assertTrue(')::int' in last_sql)
+        elif db.provider.dialect == 'MySQL':
+            self.assertTrue('AS SIGNED' in last_sql)
         else:
             self.assertTrue('as integer' in last_sql)
 
