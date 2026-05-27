@@ -251,10 +251,6 @@ class Decompiler(object):
                     arg = [oparg * (2 if PY310 else 1)]
                 else:
                     arg = [oparg]
-            elif PY313 and opname == 'MAKE_FUNCTION' and opnames[code.co_code[i]] == 'SET_FUNCTION_ATTRIBUTE':
-                # pull attributes from next instruction
-                arg = [code.co_code[i+1]]
-                i += 2
             else: arg = []
             if opname == 'FOR_ITER':
                 decompiler.for_iter_pos = decompiler.pos
@@ -1079,11 +1075,6 @@ class Decompiler(object):
         decompiler.stack.append(tos2)
         decompiler.stack.append(tos1)
 
-    def SET_FUNCTION_ATTRIBUTE(decompiler, flag):
-        """This replaces the argument to MAKE_FUNCTION in py 3.13"""
-        # This actually needs special handling in get_instructions because
-        # the func will not be at the top of the stack when we get here.
-        throw(NotImplementedError)
 
     def SETUP_LOOP(decompiler, endpos):
         pass
