@@ -407,6 +407,11 @@ class Decompiler(object):
         end = decompiler.stack.pop()
         start = decompiler.stack.pop()
         node1 = decompiler.stack.pop()
+        if PY313:
+            if end.value is None:
+                end = None
+            if start.value is None:
+                start = None
         node2 = ast.Slice(start, end, ctx=ast.Load())
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
