@@ -107,10 +107,7 @@ def make_const(value):
         return value
     if PY314:
         if isinstance(value, slice):
-            start = ast.Constant(value.start) if value.start is not None else None
-            stop = ast.Constant(value.stop) if value.stop is not None else None
-            step = ast.Constant(value.step) if value.step is not None else None
-            return ast.Slice(start, stop, step)
+            return slice_to_ast(value)
     if PY39:
         return ast.Constant(value)
     elif PY38:
@@ -150,6 +147,13 @@ def unwrap_str(key):
         return key
     assert isinstance(key, ast.Str)
     return key.s
+
+
+def slice_to_ast(value):
+    start = ast.Constant(value.start) if value.start is not None else None
+    stop = ast.Constant(value.stop) if value.stop is not None else None
+    step = ast.Constant(value.step) if value.step is not None else None
+    return ast.Slice(start, stop, step)
 
 
 class Decompiler(object):
@@ -442,6 +446,13 @@ class Decompiler(object):
                 node2.lower = None
             if isinstance(node2.upper, ast.Constant) and node2.upper.value is None:
                 node2.upper = None
+        elif (
+            isinstance(node2, ast.Constant)
+            and isinstance(node2.value, tuple)
+            and any(isinstance(value, slice) for value in node2.value)
+        ):
+            # py3.14 has a different format for constant tuple of slices
+            node2 = ast.Tuple(elts=[slice_to_ast(value) for value in node2.value])
         elif not PY38:
             if isinstance(node2, ast.Tuple) and any(isinstance(item, ast.Slice) for item in node2.elts):
                 node2 = ast.ExtSlice(node2.elts)
