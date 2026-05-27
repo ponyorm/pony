@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PYPY
+from pony.py23compat import PY314, PYPY
 
 import sys, unittest
 from datetime import date
@@ -77,7 +77,8 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         def test5(self):
             select(s for s in Student if s.name.upper(**{'a':'b', 'c':'d'}))
 
-    @raises_exception(ExprEvalError, "`1 in 2` raises TypeError: argument of type 'int' is not iterable" if not PYPY else
+    @raises_exception(ExprEvalError, "`1 in 2` raises TypeError: argument of type 'int' is not a container or iterable" if PY314 else
+                                     "`1 in 2` raises TypeError: argument of type 'int' is not iterable" if not PYPY else
                                      "`1 in 2` raises TypeError: 'int' object is not iterable")
     def test6(self):
         select(s for s in Student if 1 in 2)

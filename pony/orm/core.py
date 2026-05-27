@@ -3871,7 +3871,8 @@ class EntityMeta(type):
         comprehension = ast.comprehension(
             target=ast.Name(iter_name, ast.Store()),
             iter=ast.Name('.0', ast.Load()),
-            ifs=[]
+            ifs=[],
+            is_async=False
         )
         entity._default_genexpr_ = ast.GeneratorExp(ast.Name(iter_name, ast.Load()), [comprehension])
 
@@ -4393,7 +4394,11 @@ class EntityMeta(type):
         name = names[0]
 
         for_expr = ast.comprehension(
-            target=ast.Name(name, ast.Store()), iter=ast.Name('.0', ast.Load()), ifs=[cond_expr])
+            target=ast.Name(name, ast.Store()),
+            iter=ast.Name('.0', ast.Load()),
+            ifs=[cond_expr],
+            is_async = False
+        )
         inner_expr = ast.GeneratorExp(elt=ast.Name(name, ast.Load()), generators=[for_expr])
 
         locals = locals.copy() if locals is not None else {}

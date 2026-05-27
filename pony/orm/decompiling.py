@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PY312, PY313, PYPY
+from pony.py23compat import PY36, PY37, PY38, PY39, PY310, PY311, PY312, PY313, PY314, PYPY
 
 import sys, types, inspect
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -89,6 +89,12 @@ operator_mapping = {
     'not in': ast.NotIn
 }
 
+double_load_store_ops = {
+    'LOAD_FAST_LOAD_FAST',
+    'STORE_FAST_LOAD_FAST',
+    'STORE_FAST_STORE_FAST',
+    'LOAD_FAST_BORROW_LOAD_FAST_BORROW',
+}
 
 def clean_assign(node):
     if isinstance(node, ast.Assign):
@@ -99,6 +105,9 @@ def clean_assign(node):
 def make_const(value):
     if is_const(value):
         return value
+    if PY314:
+        if isinstance(value, slice):
+            return slice_to_ast(value)
     if PY39:
         return ast.Constant(value)
     elif PY38:
@@ -138,6 +147,13 @@ def unwrap_str(key):
         return key
     assert isinstance(key, ast.Str)
     return key.s
+
+
+def slice_to_ast(value):
+    start = ast.Constant(value.start) if value.start is not None else None
+    stop = ast.Constant(value.stop) if value.stop is not None else None
+    step = ast.Constant(value.step) if value.step is not None else None
+    return ast.Slice(start, stop, step)
 
 
 class Decompiler(object):
@@ -221,7 +237,7 @@ class Decompiler(object):
                     arg = [i + oparg * (2 if PY310 else 1)
                            * (-1 if 'BACKWARD' in opname else 1)]
                 elif op in haslocal:
-                    if opname in {'LOAD_FAST_LOAD_FAST', 'STORE_FAST_LOAD_FAST', 'STORE_FAST_STORE_FAST'}:
+                    if opname in double_load_store_ops:
                         # py3.13: 2 4bit args
                         arg = [code._varname_from_oparg(oparg >> 4), code._varname_from_oparg(oparg & 0x0f)]
                     elif PY313:
@@ -253,6 +269,10 @@ class Decompiler(object):
             if (opname in ('JUMP_ABSOLUTE', 'JUMP_NO_INTERRUPT')
                     and arg[0] == decompiler.for_iter_pos):
                 decompiler.abs_jump_to_top = decompiler.pos
+
+            # NOT_TAKEN has a similar problem as CACHE, but does not change rel jump addresses, so needs to be here
+            while i < len(code.co_code) and opnames[code.co_code[i]] == 'NOT_TAKEN':
+                i += 2
 
             if before_yield:
                 merge = False
@@ -379,6 +399,9 @@ class Decompiler(object):
         inplace = opname.startswith('NB_INPLACE_')
         opname = opname.split('_', 2 if inplace else 1)[-1]
 
+        if opname == "SUBSCR":
+            return decompiler.BINARY_SUBSCR()
+
         op = {
             "ADD": ast.Add,
             "AND": ast.BitAnd,
@@ -412,7 +435,7 @@ class Decompiler(object):
                 end = None
             if isinstance(start, ast.Constant) and start.value is None:
                 start = None
-        node2 = ast.Slice(start, end, ctx=ast.Load())
+        node2 = ast.Slice(start, end)
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
     def BINARY_SUBSCR(decompiler):
@@ -423,6 +446,13 @@ class Decompiler(object):
                 node2.lower = None
             if isinstance(node2.upper, ast.Constant) and node2.upper.value is None:
                 node2.upper = None
+        elif (
+            isinstance(node2, ast.Constant)
+            and isinstance(node2.value, tuple)
+            and any(isinstance(value, slice) for value in node2.value)
+        ):
+            # py3.14 has a different format for constant tuple of slices
+            node2 = ast.Tuple(elts=[slice_to_ast(value) for value in node2.value])
         elif not PY38:
             if isinstance(node2, ast.Tuple) and any(isinstance(item, ast.Slice) for item in node2.elts):
                 node2 = ast.ExtSlice(node2.elts)
@@ -565,7 +595,7 @@ class Decompiler(object):
         star = decompiler.stack.pop()
         return decompiler.CALL_FUNCTION(argc, star, star2)
 
-    def CALL_FUNCTION_EX(decompiler, argc):
+    def CALL_FUNCTION_EX(decompiler, argc=1):
         star2 = None
         if argc:
             if argc != 1:
@@ -888,11 +918,14 @@ class Decompiler(object):
         return ast.Name(varname, ast.Load())
 
     LOAD_FAST_AND_CLEAR = LOAD_FAST
+    LOAD_FAST_BORROW = LOAD_FAST
 
     def LOAD_FAST_LOAD_FAST(decompiler, varname1, varname2):
         decompiler.names.add(varname1)
         decompiler.stack.append(ast.Name(varname1, ast.Load()))
         return decompiler.LOAD_FAST(varname2)
+
+    LOAD_FAST_BORROW_LOAD_FAST_BORROW = LOAD_FAST_LOAD_FAST
 
     def LOAD_GLOBAL(decompiler, varname, push_null):
         res = ast.Name(varname, ast.Load())
@@ -914,6 +947,9 @@ class Decompiler(object):
     def LOAD_NAME(decompiler, varname):
         decompiler.names.add(varname)
         return ast.Name(varname, ast.Load())
+
+    def LOAD_SMALL_INT(decompiler, value):
+        return make_const(value)
 
     def MAKE_CELL(decompiler, freevar):
         pass

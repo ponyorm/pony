@@ -71,6 +71,7 @@ classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
     'Programming Language :: Python :: Implementation :: PyPy',
     'Topic :: Software Development :: Libraries',
     'Topic :: Database'
@@ -111,8 +112,8 @@ download_url = "http://pypi.python.org/pypi/pony/"
 
 if __name__ == "__main__":
     pv = sys.version_info[:2]
-    if pv < (3, 8) or pv > (3, 13):
-        s = "Sorry, but %s %s requires Python of one of the following versions: 3.8-3.13." \
+    if pv < (3, 8) or pv > (3, 14):
+        s = "Sorry, but %s %s requires Python of one of the following versions: 3.8-3.14." \
             " You have version %s"
         print(s % (name, version, sys.version.split(' ', 1)[0]))
         sys.exit(1)
