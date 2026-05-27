@@ -70,6 +70,8 @@ class TestIndexes(unittest.TestCase):
         if pony.__version__ < '0.9':
             if dialect == 'SQLite':
                 index_sql = 'CREATE INDEX "idx_person__name_age" ON "Person" ("name", "age")'
+            elif dialect == 'MySQL':
+                index_sql = 'CREATE INDEX `idx_person__name_age` ON `person` (`name`, `age`)'
             else:
                 index_sql = 'CREATE INDEX "idx_person__name_age" ON "person" ("name", "age")'
         elif dialect == 'MySQL' or dialect == 'SQLite':

@@ -86,7 +86,6 @@ class TestDiag(unittest.TestCase):
         db.bind(**db_params)
         db.generate_mapping()
 
-    @raises_exception(MappingError, 'Table name "Table1" is already in use')
     def test_diagram7(self):
         db = Database()
         class Entity1(db.Entity):
@@ -97,7 +96,12 @@ class TestDiag(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, table='Table1')
         db.bind(**db_params)
-        db.generate_mapping()
+        try:
+            db.generate_mapping()
+            self.fail("Expected MappingError wasn't raised")
+        except MappingError as e:
+            self.assertIn('Table1', str(e))
+            self.assertIn('is already in use', str(e))
 
     def test_diagram8(self):
         db = Database()

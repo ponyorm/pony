@@ -1,0 +1,40 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: pony_test
+      MYSQL_USER: ponytest
+      MYSQL_PASSWORD: ponytest
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "ponytest", "-pponytest"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: pony_test
+      POSTGRES_USER: ponytest
+      POSTGRES_PASSWORD: ponytest
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ponytest -d pony_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  cockroach:
+    image: cockroachdb/cockroach:latest
+    command: start-single-node --insecure
+    ports:
+      - "26257:26257"
+    healthcheck:
+      test: ["CMD", "cockroach", "sql", "--insecure", "--execute=SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12

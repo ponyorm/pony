@@ -27,7 +27,8 @@ class TestVolatile1(unittest.TestCase):
     def test_1(self):
         db = self.db
         Item = db.Item
-        db.execute('update "item" set "index" = "index" + 1')
+        q = db.provider.quote_name
+        db.execute('update %s set %s = %s + 1' % (q('item'), q('index'), q('index')))
         items = Item.select(lambda item: item.index > 0).order_by(Item.id)[:]
         a, b, c = items
         self.assertEqual(a.index, 2)
