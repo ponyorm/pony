@@ -303,7 +303,7 @@ class Decompiler(object):
         # If conditions_end points directly to YIELD_VALUE (multiline bytecode structure
         # where no backward jump precedes yield), skip it - jumps targeting YIELD_VALUE
         # directly are elt-level short-circuits, not filter or-conditions.
-        if i > 0 and decompiler.instructions[i][2] == 'YIELD_VALUE':
+        if decompiler.instructions[i][2] == 'YIELD_VALUE':
             i -= 1
         while i > 0:
             pos, next_pos, opname, arg = decompiler.instructions[i]
