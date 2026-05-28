@@ -295,6 +295,8 @@ class Decompiler(object):
                     decompiler.instructions_map[decompiler.pos] = len(decompiler.instructions)
                     decompiler.instructions.append((decompiler.pos, i, opname, arg))
             if opname == 'YIELD_VALUE':
+                if decompiler.conditions_end == 0:
+                    decompiler.conditions_end = decompiler.pos
                 before_yield = False
             decompiler.pos = i
     def analyze_jumps(decompiler):
@@ -309,6 +311,8 @@ class Decompiler(object):
                         decompiler.conditions_end = y
 
         i = decompiler.instructions_map[decompiler.conditions_end]
+        if decompiler.instructions[i][2] == 'YIELD_VALUE':
+            i -= 1
         while i > 0:
             pos, next_pos, opname, arg = decompiler.instructions[i]
             if pos in decompiler.jump_map:

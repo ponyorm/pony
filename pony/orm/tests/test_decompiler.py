@@ -318,7 +318,158 @@ class TestDecompiler(unittest.TestCase):
         self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
         self.assertDecompilesTo( expr, expected_result)
 
+    def test_ast_elt_and(self):
+        self.assertDecompilesTo(
+            '(x and y for z in T)',
+            """
+            GeneratorExp(
+              elt=BoolOp(
+                op=And(),
+                values=[
+                  Name(id='x', ctx=Load()),
+                  Name(id='y', ctx=Load())]),
+              generators=[
+                comprehension(
+                  target=Name(id='z', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
 
+    def test_ast_elt_or(self):
+        self.assertDecompilesTo(
+            '(x or y for z in T)',
+            """
+            GeneratorExp(
+              elt=BoolOp(
+                op=And(),
+                values=[
+                  UnaryOp(
+                    op=Not(),
+                    operand=Name(id='x', ctx=Load())),
+                  Name(id='y', ctx=Load())]),
+              generators=[
+                comprehension(
+                  target=Name(id='z', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_elt_and_compare(self):
+        self.assertDecompilesTo(
+            '(len(a) == len(b) and a != b for x in T)',
+            """
+            GeneratorExp(
+              elt=BoolOp(
+                op=And(),
+                values=[
+                  Compare(
+                    left=Call(
+                      func=Name(id='len', ctx=Load()),
+                      args=[
+                        Name(id='a', ctx=Load())],
+                      keywords=[]),
+                    ops=[
+                      Eq()],
+                    comparators=[
+                      Call(
+                        func=Name(id='len', ctx=Load()),
+                        args=[
+                          Name(id='b', ctx=Load())],
+                        keywords=[])]),
+                  Compare(
+                    left=Name(id='a', ctx=Load()),
+                    ops=[
+                      NotEq()],
+                    comparators=[
+                      Name(id='b', ctx=Load())])]),
+              generators=[
+                comprehension(
+                  target=Name(id='x', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_no_filter(self):
+        self.assertDecompilesTo(
+            '(x for x in T)',
+            """
+            GeneratorExp(
+              elt=Name(id='x', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='x', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[],
+                  is_async=0)])
+            """)
+
+    def test_ast_multiline_not_none(self):
+        expr = """(m
+                for m in []
+                if (x is not None or y))"""
+        expected_result = """
+            GeneratorExp(
+              elt=Name(id='m', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='m', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=Or(),
+                      values=[
+                        Compare(
+                          left=Name(id='x', ctx=Load()),
+                          ops=[
+                            IsNot()],
+                          comparators=[
+                            Constant(value=None)]),
+                        Name(id='y', ctx=Load())])],
+                  is_async=0)])
+            """
+        self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
+        self.assertDecompilesTo(expr, expected_result)
+
+    def test_ast_multiline_multi_for(self):
+        expr = """(m
+                for m in []
+                if x and y and z and j
+                for n in []
+                if x and y and z and j)"""
+        expected_result = """
+            GeneratorExp(
+              elt=Name(id='m', ctx=Load()),
+              generators=[
+                comprehension(
+                  target=Name(id='m', ctx=Store()),
+                  iter=Name(id='.0', ctx=Load()),
+                  ifs=[
+                    BoolOp(
+                      op=And(),
+                      values=[
+                        Name(id='x', ctx=Load()),
+                        Name(id='y', ctx=Load()),
+                        Name(id='z', ctx=Load()),
+                        Name(id='j', ctx=Load())])],
+                  is_async=0),
+                comprehension(
+                  target=Name(id='n', ctx=Store()),
+                  iter=Constant(value=()),
+                  ifs=[
+                    BoolOp(
+                      op=And(),
+                      values=[
+                        Name(id='x', ctx=Load()),
+                        Name(id='y', ctx=Load()),
+                        Name(id='z', ctx=Load()),
+                        Name(id='j', ctx=Load())])],
+                  is_async=0)])
+            """
+        self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
+        self.assertDecompilesTo(expr, expected_result)
 
 
 for i, gen in enumerate(generate_gens()):
