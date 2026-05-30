@@ -9,7 +9,7 @@ from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-import cx_Oracle
+import oracledb
 
 from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
@@ -300,7 +300,7 @@ class OraStrConverter(dbapiprovider.StrConverter):
         if val == '': return None
         return dbapiprovider.StrConverter.validate(converter, val)
     def sql2py(converter, val):
-        if isinstance(val, cx_Oracle.LOB):
+        if isinstance(val, oracledb.LOB):
             val = val.read()
         return val
     def sql_type(converter):
@@ -392,7 +392,7 @@ class OraProvider(DBAPIProvider):
     varchar_default_max_len = 1000
     uint64_support = True
 
-    dbapi_module = cx_Oracle
+    dbapi_module = oracledb
     dbschema_cls = OraSchema
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
@@ -429,7 +429,7 @@ class OraProvider(DBAPIProvider):
             3113,  # ORA-03113: end-of-file on communication channel
             3114,  # ORA-03114: not connected to ORACLE
             )
-        return isinstance(exc, cx_Oracle.OperationalError) \
+        return isinstance(exc, oracledb.OperationalError) \
                and exc.args[0].code in reconnect_error_codes
 
     def normalize_name(provider, name):
@@ -464,7 +464,7 @@ class OraProvider(DBAPIProvider):
         else:
             if arguments is not None: set_input_sizes(cursor, arguments)
             if returning_id:
-                var = cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
+                var = cursor.var(oracledb.STRING, 40, cursor.arraysize, outconverter=int)
                 arguments['new_id'] = var
                 if arguments is None: cursor.execute(sql)
                 else: cursor.execute(sql, arguments)
@@ -559,13 +559,13 @@ def to_decimal(val):
     return Decimal(val.replace(',', '.'))
 
 def output_type_handler(cursor, name, defaultType, size, precision, scale):
-    if defaultType == cx_Oracle.NUMBER:
+    if defaultType == oracledb.NUMBER:
         if scale == 0:
-            if precision: return cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
-            return cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=to_int_or_decimal)
+            if precision: return cursor.var(oracledb.STRING, 40, cursor.arraysize, outconverter=int)
+            return cursor.var(oracledb.STRING, 40, cursor.arraysize, outconverter=to_int_or_decimal)
         if scale != -127:
-            return cursor.var(cx_Oracle.STRING, 100, cursor.arraysize, outconverter=to_decimal)
-    elif defaultType in (cx_Oracle.STRING, cx_Oracle.FIXED_CHAR):
+            return cursor.var(oracledb.STRING, 100, cursor.arraysize, outconverter=to_decimal)
+    elif defaultType in (oracledb.STRING, oracledb.FIXED_CHAR):
         return cursor.var(str, size, cursor.arraysize)  # from cx_Oracle example
     return None
 
@@ -573,13 +573,13 @@ class OraPool(object):
     forked_pools = []
     def __init__(pool, **kwargs):
         pool.kwargs = kwargs
-        pool.cx_pool = cx_Oracle.SessionPool(**kwargs)
+        pool.cx_pool = oracledb.SessionPool(**kwargs)
         pool.pid = os.getpid()
     def connect(pool):
         pid = os.getpid()
         if pool.pid != pid:
             pool.forked_pools.append((pool.cx_pool, pool.pid))
-            pool.cx_pool = cx_Oracle.SessionPool(**pool.kwargs)
+            pool.cx_pool = oracledb.SessionPool(**pool.kwargs)
             pool.pid = os.getpid()
         if core.local.debug: log_orm('GET CONNECTION')
         con = pool.cx_pool.acquire()
@@ -594,7 +594,7 @@ class OraPool(object):
 
 def get_inputsize(arg):
     if isinstance(arg, datetime):
-        return cx_Oracle.TIMESTAMP
+        return oracledb.TIMESTAMP
     return None
 
 def set_input_sizes(cursor, arguments):
