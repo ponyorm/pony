@@ -234,14 +234,10 @@ def current_timestamp():
     return datetime2timestamp(datetime.now())
 
 def datetime2timestamp(d):
-    result = d.isoformat(' ')
-    if len(result) == 19: return result + '.000000'
-    return result
+    return d.timestamp()
 
 def timestamp2datetime(t):
-    time_tuple = strptime(t[:19], '%Y-%m-%d %H:%M:%S')
-    microseconds = int((t[20:26] + '000000')[:6])
-    return datetime(*(time_tuple[:6] + (microseconds,)))
+    return datetime.fromtimestamp(t)
 
 expr1_re = re.compile(r'''
         ([A-Za-z_]\w*)  # identifier (group 1)
