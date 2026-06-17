@@ -6272,6 +6272,9 @@ class QueryResultIterator(object):
     def _normalize_var(self, query_type):
         if self._position != 0: throw(NotImplementedError)
         return self._query_result._normalize_var(query_type)
+    def iter(self):
+        return self
+    __iter__ = iter
     def next(self):
         qr = self._query_result
         if qr._items is None:
