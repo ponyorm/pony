@@ -2015,7 +2015,7 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'reverse_index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic', 'fk_name', 'type_has_empty_value', 'interleave'
+                'optimistic', 'fk_name', 'type_has_empty_value', 'interleave', 'comment'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -2046,6 +2046,7 @@ class Attribute(object):
         attr.is_relation = isinstance(attr.py_type, (EntityMeta, str, types.FunctionType))
         attr.is_basic = not attr.is_collection and not attr.is_relation
         attr.sql_type = kwargs.pop('sql_type', None)
+        attr.comment = kwargs.pop('comment', None)
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = kwargs.pop('auto', False)
