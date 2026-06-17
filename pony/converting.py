@@ -192,7 +192,7 @@ def _extract_time_parts(groupdict):
 
     if isinstance(ss, str) and '.' in ss:
         ss, mcs = ss.split('.', 1)
-        if len('mcs') < 6: mcs = (mcs + '000000')[:6]
+        if len(mcs) < 6: mcs = (mcs + '000000')[:6]
     else: mcs = 0
 
     return int(hh), int(mm or 0), int(ss or 0), int(mcs)
