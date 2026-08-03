@@ -1,3 +1,5 @@
+import ast
+import os
 import sys
 import unittest
 
@@ -10,8 +12,19 @@ def test_suite():
     return test_suite
 
 
+def get_version():
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "pony", "__init__.py"
+    )
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("__version__"):
+                return ast.literal_eval(line.split("=", 1)[1].strip())
+    raise RuntimeError("Cannot find Pony version")
+
+
 name = "pony"
-version = __import__("pony").__version__
+version = get_version()
 description = "Pony Object-Relational Mapper"
 long_description = """
 About
@@ -97,6 +110,7 @@ packages = [
     "pony.flask",
     "pony.flask.example",
     "pony.orm",
+    "pony.orm.asyncio",
     "pony.orm.dbproviders",
     "pony.orm.examples",
     "pony.orm.integration",
@@ -104,6 +118,15 @@ packages = [
     "pony.thirdparty",
     "pony.utils",
 ]
+
+extras_require = {
+    "async-sqlite": ["aiosqlite>=0.19; python_version >= '3.10'"],
+    "async-postgres": ["asyncpg>=0.29; python_version >= '3.10'"],
+    "async": [
+        "aiosqlite>=0.19; python_version >= '3.10'",
+        "asyncpg>=0.29; python_version >= '3.10'",
+    ],
+}
 
 package_data = {
     "pony.flask.example": ["templates/*.html"],
@@ -135,6 +158,8 @@ if __name__ == "__main__":
         license=licence,
         packages=packages,
         package_data=package_data,
+        extras_require=extras_require,
         download_url=download_url,
+        python_requires=">=3.8,<3.15",
         test_suite="setup.test_suite",
     )
