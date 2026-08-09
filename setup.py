@@ -1,30 +1,20 @@
-import ast
-import os
+import re
 import sys
-import unittest
+from pathlib import Path
 
 from setuptools import setup
 
 
-def test_suite():
-    test_loader = unittest.TestLoader()
-    test_suite = test_loader.discover("pony.orm.tests", pattern="test_*.py")
-    return test_suite
-
-
-def get_version():
-    path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "pony", "__init__.py"
-    )
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("__version__"):
-                return ast.literal_eval(line.split("=", 1)[1].strip())
-    raise RuntimeError("Cannot find Pony version")
-
-
 name = "pony"
-version = get_version()
+version_file = Path(__file__).parent / "pony" / "__init__.py"
+version_match = re.search(
+    r'^__version__ = ["\']([^"\']+)["\']',
+    version_file.read_text(encoding="utf-8"),
+    re.MULTILINE,
+)
+if version_match is None:
+    raise RuntimeError("Cannot find Pony version")
+version = version_match.group(1)
 description = "Pony Object-Relational Mapper"
 long_description = """
 About
@@ -78,8 +68,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -103,8 +91,6 @@ project_urls = {
     "Documentation": "https://docs.ponyorm.org",
     "Source": "https://github.com/ponyorm/pony",
 }
-licence = "Apache License Version 2.0"
-
 packages = [
     "pony",
     "pony.flask",
@@ -137,9 +123,9 @@ download_url = "http://pypi.python.org/pypi/pony/"
 
 if __name__ == "__main__":
     pv = sys.version_info[:2]
-    if pv < (3, 8) or pv > (3, 14):
+    if pv < (3, 10) or pv > (3, 14):
         s = (
-            "Sorry, but %s %s requires Python of one of the following versions: 3.8-3.14."
+            "Sorry, but %s %s requires Python of one of the following versions: 3.10-3.14."
             " You have version %s"
         )
         print(s % (name, version, sys.version.split(" ", 1)[0]))
@@ -155,11 +141,9 @@ if __name__ == "__main__":
         author_email=author_email,
         url=url,
         project_urls=project_urls,
-        license=licence,
         packages=packages,
         package_data=package_data,
         extras_require=extras_require,
         download_url=download_url,
-        python_requires=">=3.8,<3.15",
-        test_suite="setup.test_suite",
+        python_requires=">=3.10,<3.15",
     )

@@ -1,3 +1,19 @@
+# PonyORM release 0.7.20 (2026-08-09)
+
+## Features
+
+* Added Python 3.13 and Python 3.14 support
+* Improve code style
+
+## Bugfixes
+
+* Fix Python 3.12 decompilation of open-ended slices and multiline generator conditions
+
+## Breaking changes
+
+* Minimal Python supported version is now 3.10
+
+
 # PonyORM release 0.7.19 (2024-08-27)
 
 ## Bugfixes

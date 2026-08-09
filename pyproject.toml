@@ -1,5 +1,77 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pony"
+dynamic = ["version"]
+description = "Pony Object-Relational Mapper"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.10,<3.15"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Alexander Kozlovsky", email = "alexander.kozlovsky@gmail.com" },
+    { name = "Alexey Malashkevich", email = "alexey@ponyorm.org" },
+    { name = "Alexander Tischenko", email = "sashaaero@yandex.ru" },
+]
+maintainers = [
+    { name = "Pony ORM Team", email = "team@ponyorm.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Database",
+]
+
+[project.optional-dependencies]
+async-sqlite = ["aiosqlite>=0.19; python_version >= '3.10'"]
+async-postgres = ["asyncpg>=0.29; python_version >= '3.10'"]
+async = [
+    "aiosqlite>=0.19; python_version >= '3.10'",
+    "asyncpg>=0.29; python_version >= '3.10'",
+]
+
+[project.urls]
+Homepage = "https://ponyorm.com"
+Documentation = "https://docs.ponyorm.org"
+Source = "https://github.com/ponyorm/pony"
+
+[tool.setuptools]
+include-package-data = false
+packages = [
+    "pony",
+    "pony.flask",
+    "pony.flask.example",
+    "pony.orm",
+    "pony.orm.asyncio",
+    "pony.orm.dbproviders",
+    "pony.orm.examples",
+    "pony.orm.integration",
+    "pony.orm.tests",
+    "pony.thirdparty",
+    "pony.utils",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "pony.__version__" }
+
+[tool.setuptools.package-data]
+"pony.flask.example" = ["templates/*.html"]
+"pony.orm.tests" = ["queries.txt"]
+
 [tool.ruff]
-target-version = "py38"
+target-version = "py310"
 line-length = 88
 include = ["pony/**/*.py", "setup.py"]
 extend-exclude = ["pony/thirdparty"]
