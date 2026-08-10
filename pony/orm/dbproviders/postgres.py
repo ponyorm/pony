@@ -4,25 +4,26 @@ from uuid import UUID
 
 from pony.py23compat import buffer, int_types
 
+_psycopg_import_error = None
 try:
     import psycopg2
-except ImportError:
+except ImportError as exc:
     try:
         from psycopg2cffi import compat
     except ImportError:
-        raise ImportError(
-            "In order to use PonyORM with PostgreSQL please install psycopg2 or psycopg2cffi"
-        )
+        psycopg2 = None
+        _psycopg_import_error = exc
     else:
         compat.register()
+        import psycopg2
 
 
-import psycopg2.extras
+if psycopg2 is not None:
+    import psycopg2.extras
 
-psycopg2.extras.register_uuid()
-
-psycopg2.extras.register_default_json(loads=lambda x: x)
-psycopg2.extras.register_default_jsonb(loads=lambda x: x)
+    psycopg2.extras.register_uuid()
+    psycopg2.extras.register_default_json(loads=lambda x: x)
+    psycopg2.extras.register_default_jsonb(loads=lambda x: x)
 
 from pony.orm import core, dbapiprovider, dbschema, ormtypes
 from pony.orm.core import log_orm
@@ -303,6 +304,11 @@ class PGProvider(DBAPIProvider):
         )
 
     def get_pool(self, *args, **kwargs):
+        if psycopg2 is None:
+            raise ImportError(
+                "In order to use PonyORM with PostgreSQL please install "
+                "psycopg2 or psycopg2cffi"
+            ) from _psycopg_import_error
         return PGPool(self.dbapi_module, *args, **kwargs)
 
     @wrap_dbapi_exceptions

@@ -3306,6 +3306,12 @@ class Attribute:
         return dbval
 
     def load(self, obj):
+        database = obj.__class__._database_
+        if (
+            getattr(database, "_is_async_", False)
+            and not database._async_io_is_allowed()
+        ):
+            database._raise_implicit_lazy_load(self)
         cache = obj._session_cache_
         if cache is None or not cache.is_alive:
             throw_db_session_is_over("load attribute", obj, self)
@@ -3382,6 +3388,12 @@ class Attribute:
         ):
             cache = obj._session_cache_
             if cache is not None and val in cache.seeds[val._pk_attrs_]:
+                database = obj.__class__._database_
+                if (
+                    getattr(database, "_is_async_", False)
+                    and not database._async_io_is_allowed()
+                ):
+                    database._raise_implicit_lazy_load(self)
                 val._load_()
         return val
 
@@ -4301,6 +4313,12 @@ class Set(Collection):
         return result
 
     def load(self, obj, items=None):
+        database = obj.__class__._database_
+        if (
+            getattr(database, "_is_async_", False)
+            and not database._async_io_is_allowed()
+        ):
+            database._raise_implicit_lazy_load(self)
         cache = obj._session_cache_
         if cache is None or not cache.is_alive:
             throw_db_session_is_over("load collection", obj, self)
@@ -8259,6 +8277,8 @@ def extract_vars(code_key, filter_num, extractors, globals, locals, cells=None):
 
         if isinstance(value, (Query, QueryResult, SetIterator)):
             query = value._get_query()
+            if getattr(query, "_is_async_query_wrapper_", False):
+                query = query._get_query()
             vars.update(query._vars)
             vartypes.update(query._translator.vartypes)
 
@@ -8313,7 +8333,9 @@ class Query:
         node = tree.generators[0].iter
         varkey = filter_num, node.src, code_key
         origin = vars[varkey]
-        if isinstance(origin, Query):
+        if getattr(origin, "_is_async_query_wrapper_", False):
+            prev_query = origin._get_query()
+        elif isinstance(origin, Query):
             prev_query = origin
         elif isinstance(origin, QueryResult):
             prev_query = origin._query

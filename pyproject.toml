@@ -8,6 +8,9 @@ dynamic = ["version"]
 description = "Pony Object-Relational Mapper"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10,<3.15"
+dependencies = [
+    "greenlet>=3.5.4,<4",
+]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
@@ -34,6 +37,26 @@ classifiers = [
     "Topic :: Database",
 ]
 
+[project.optional-dependencies]
+mysql = [
+    "PyMySQL[rsa]>=1.2,<2",
+]
+postgres = [
+    "psycopg2>=2.9.11,<3",
+]
+oracle = [
+    "oracledb>=4.0.2,<5",
+]
+cockroach = [
+    "psycopg2>=2.9.11,<3",
+]
+async-sqlite = [
+    "aiosqlite>=0.22.1,<1",
+]
+async-postgres = [
+    "asyncpg>=0.31,<1",
+]
+
 [project.urls]
 Homepage = "https://ponyorm.com"
 Documentation = "https://docs.ponyorm.org"
@@ -46,6 +69,7 @@ packages = [
     "pony.flask",
     "pony.flask.example",
     "pony.orm",
+    "pony.orm.asyncio",
     "pony.orm.dbproviders",
     "pony.orm.examples",
     "pony.orm.integration",

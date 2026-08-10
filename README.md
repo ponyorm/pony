@@ -13,7 +13,23 @@ Here is an example query in Pony:
 select(p for p in Product if p.name.startswith('A') and p.cost <= 1000)
 ```
 
-Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
+Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL, Oracle and CockroachDB databases.
+
+Installation
+------------
+
+Install Pony directly for synchronous SQLite, or select the extra matching the
+database provider:
+
+```console
+python -m pip install pony
+python -m pip install "pony[mysql]"
+python -m pip install "pony[postgres]"
+python -m pip install "pony[oracle]"
+python -m pip install "pony[cockroach]"
+python -m pip install "pony[async-sqlite]"
+python -m pip install "pony[async-postgres]"
+```
 
 By providing a Pythonic API, Pony facilitates fast app development. Pony is an easy-to-learn and easy-to-use library. It makes your work more productive and helps to save resources. Pony achieves this ease of use through the following:
 

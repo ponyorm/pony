@@ -34,7 +34,7 @@ Such approach simplify the code and allows a programmer to concentrate
 on the business logic of the application.
 
 Pony translates queries to SQL using a specific database dialect.
-Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
+Currently Pony works with SQLite, MySQL, PostgreSQL, Oracle and CockroachDB databases.
 
 The package `pony.orm.examples <https://github.com/ponyorm/pony/tree/orm/pony/orm/examples>`_
 contains several examples.
@@ -44,6 +44,12 @@ Installation
 ::
 
     pip install pony
+    pip install "pony[mysql]"
+    pip install "pony[postgres]"
+    pip install "pony[oracle]"
+    pip install "pony[cockroach]"
+    pip install "pony[async-sqlite]"
+    pip install "pony[async-postgres]"
 
 Entity-Relationship Diagram Editor
 =============================================
@@ -96,6 +102,7 @@ packages = [
     "pony.flask",
     "pony.flask.example",
     "pony.orm",
+    "pony.orm.asyncio",
     "pony.orm.dbproviders",
     "pony.orm.examples",
     "pony.orm.integration",
@@ -103,6 +110,31 @@ packages = [
     "pony.thirdparty",
     "pony.utils",
 ]
+
+install_requires = [
+    "greenlet>=3.5.4,<4",
+]
+
+extras_require = {
+    "mysql": [
+        "PyMySQL[rsa]>=1.2,<2",
+    ],
+    "postgres": [
+        "psycopg2>=2.9.11,<3",
+    ],
+    "oracle": [
+        "oracledb>=4.0.2,<5",
+    ],
+    "cockroach": [
+        "psycopg2>=2.9.11,<3",
+    ],
+    "async-sqlite": [
+        "aiosqlite>=0.22.1,<1",
+    ],
+    "async-postgres": [
+        "asyncpg>=0.31,<1",
+    ],
+}
 
 package_data = {
     "pony.flask.example": ["templates/*.html"],
@@ -133,6 +165,8 @@ if __name__ == "__main__":
         project_urls=project_urls,
         packages=packages,
         package_data=package_data,
+        install_requires=install_requires,
+        extras_require=extras_require,
         download_url=download_url,
         python_requires=">=3.10,<3.15",
     )
