@@ -35,22 +35,40 @@ class Person(db.Entity):
 
 
 async def main():
-    await db.bind(provider="sqlite", filename=":memory:")
+    await db.bind(provider="sqlite", filename=":memory:")  # application startup
     await db.generate_mapping(create_tables=True)
 
     async with db_session:
-        Person(name="Ada")                  # no I/O yet
+        Person(name="Ada")  # staged in the Unit of Work; no SQL yet
+    # Normal exit sends the INSERT and commits the transaction.
 
     async with db_session:
         people = await select(p for p in Person).fetch()
         ada = await Person.get(name="Ada")
         print(people, ada)
 
-    await db.disconnect()
+    await db.disconnect()  # application shutdown
 
 
 asyncio.run(main())
 ```
+
+Entity construction only records the new object in the current Unit of Work. If
+you do not flush explicitly, normal exit from the outermost `db_session` first
+flushes pending changes (executing the `INSERT`) and then commits the
+transaction. Both have completed by the time execution continues after the
+`async with` block. Use `await flush()` inside the block when the SQL must run
+earlier, for example to obtain a database-generated value; flushing does not
+commit, so the transaction can still be rolled back.
+
+In this standalone example, `main()` owns the whole application lifecycle:
+`bind()` and mapping initialization correspond to application startup, while
+`disconnect()` corresponds to shutdown. In a long-running web application, call
+them once from the framework's startup/shutdown or lifespan hooks, not from each
+request handler. Each task that accesses the database should use its own
+`db_session`; leaving the outermost session completes the transaction and
+returns its connection to the shared pool. `disconnect()` closes that pool and
+cannot be called from inside an active `db_session`.
 
 For PostgreSQL, pass normal `asyncpg.create_pool()` connection options:
 
@@ -115,9 +133,9 @@ are awaitable:
 ```python
 from pony.orm.asyncio import commit, flush, rollback
 
-await flush()
+await flush()   # send pending INSERT/UPDATE/DELETE statements; do not commit
 values = await db.select("name FROM Person")
-await commit()
+await commit()  # flush any new changes, then commit the transaction
 ```
 
 ## Sessions, retries, and cancellation
