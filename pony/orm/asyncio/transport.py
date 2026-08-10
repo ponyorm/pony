@@ -1,18 +1,23 @@
-"""Transport primitives used by Pony's native asyncio providers.
+"""Async transport primitives shared by Pony's native asyncio providers.
 
-The ORM core consumes rows synchronously after an operation has completed.  Async
-drivers, on the other hand, expose driver-specific cursor and result objects.  This
-module is the small boundary between the two: providers materialize an
-``AsyncResult`` and the shared hydration code consumes a ``MaterializedCursor``.
-No driver cursor escapes this module.
+The ORM compiler, identity map and hydration machinery are deliberately kept
+synchronous.  ``run_sync`` executes that CPU-only code in the event-loop thread
+and suspends its complete call stack whenever a provider reaches ``await_io``.
+Unlike the old implementation, no executor thread waits for database I/O and no
+coroutine is synchronously submitted back to the event loop.
 """
 
+import contextvars
+import inspect
+import sys
 from dataclasses import dataclass
+
+from greenlet import getcurrent, greenlet
 
 
 @dataclass(frozen=True)
 class AsyncResult:
-    """Driver-neutral result of one database operation."""
+    """Driver-neutral, fully materialized result of one database operation."""
 
     rows: tuple = ()
     description: tuple = ()
@@ -21,51 +26,48 @@ class AsyncResult:
 
 
 class MaterializedCursor:
-    """Read-only cursor-shaped view over :class:`AsyncResult`.
+    """Read-only cursor view consumed by Pony's synchronous hydration code."""
 
-    This is an internal compatibility boundary for Pony's existing pure hydration
-    routines.  Database drivers themselves are never presented as DB-API cursors.
-    """
-
-    __slots__ = ("_connection", "_position", "description", "lastrowid", "rowcount")
+    __slots__ = (
+        "connection",
+        "description",
+        "lastrowid",
+        "rowcount",
+        "_position",
+        "_result",
+    )
 
     def __init__(self, connection):
-        self._connection = connection
-        self._position = 0
+        self.connection = connection
         self.description = ()
         self.lastrowid = None
         self.rowcount = -1
-
-    def _set_result(self, result):
         self._position = 0
+        self._result = AsyncResult()
+
+    def set_result(self, result):
         self._result = result
+        self._position = 0
         self.description = result.description
         self.lastrowid = result.generated_id
         self.rowcount = result.rowcount
+        return self
 
-    # _result cannot be declared as a class attribute when slots are used on all
-    # supported Python versions, so keep it in the connection until first execute.
-    @property
-    def _result(self):
-        return self._connection._cursor_results.get(id(self), AsyncResult())
-
-    @_result.setter
-    def _result(self, value):
-        self._connection._cursor_results[id(self)] = value
-
+    # A few schema/introspection routines still issue SQL through a cursor.  The
+    # operation nevertheless awaits the provider directly through the same
+    # stack-switching runtime; no DB-API driver cursor is exposed here.
     def execute(self, sql, arguments=None):
-        self._set_result(self._connection._execute(sql, arguments))
+        self.connection.provider.execute_cursor(self, sql, arguments)
         return self
 
     def executemany(self, sql, arguments):
-        self._set_result(self._connection._execute_many(sql, arguments))
+        self.connection.provider.executemany_cursor(self, sql, arguments)
         return self
 
     def fetchone(self):
-        rows = self._result.rows
-        if self._position >= len(rows):
+        if self._position >= len(self._result.rows):
             return None
-        row = rows[self._position]
+        row = self._result.rows[self._position]
         self._position += 1
         return row
 
@@ -83,56 +85,97 @@ class MaterializedCursor:
         return list(rows)
 
     def close(self):
-        self._connection._cursor_results.pop(id(self), None)
+        self._result = AsyncResult()
 
 
-class BridgedConnection:
-    """Synchronous entry point used only inside Pony's ORM worker context."""
+class AsyncConnection:
+    """Connection token used by the ORM core; ``raw`` stays provider-private."""
 
-    __slots__ = ("_cursor_results", "_pool", "_raw", "server_version")
+    __slots__ = (
+        "provider",
+        "raw",
+        "server_version",
+        "transaction",
+        "released",
+        "invalidated",
+        "readonly",
+    )
 
-    def __init__(self, pool, raw, server_version=None):
-        self._pool = pool
-        self._raw = raw
-        self._cursor_results = {}
+    def __init__(self, provider, raw, server_version=None):
+        self.provider = provider
+        self.raw = raw
         self.server_version = server_version
+        self.transaction = None
+        self.released = False
+        self.invalidated = False
+        self.readonly = False
 
     def cursor(self):
         return MaterializedCursor(self)
 
-    def _execute(self, sql, arguments=None):
-        return self._pool._bridge(self._pool.execute(self._raw, sql, arguments))
-
-    def _execute_many(self, sql, arguments):
-        return self._pool._bridge(self._pool.executemany(self._raw, sql, arguments))
-
     def commit(self):
-        return self._pool._bridge(self._pool.commit(self._raw))
+        return await_io(self.provider.commit_async(self))
 
     def rollback(self):
-        return self._pool._bridge(self._pool.rollback(self._raw))
+        return await_io(self.provider.rollback_async(self))
 
     def close(self):
-        return self._pool._bridge(self._pool.drop(self._raw))
+        self.invalidated = True
+        return await_io(self.provider.drop_async(self))
 
 
-class BridgedPool:
-    """Pool facade consumed by the existing provider/session machinery."""
+class _AsyncIoGreenlet(greenlet):
+    pony_async_runtime = True
 
-    def __init__(self, async_pool, bridge):
-        self.async_pool = async_pool
-        self._bridge = bridge
+    def __init__(self, function, parent, before_await=None, after_await=None):
+        super().__init__(function, parent=parent)
+        self.before_await = before_await
+        self.after_await = after_await
+        # greenlet context propagation is explicit.  Sharing the driver's
+        # context lets Pony's ContextVars retain task/session identity.
+        if hasattr(parent, "gr_context"):
+            self.gr_context = contextvars.copy_context()
 
-    def connect(self):
-        raw = self._bridge(self.async_pool.acquire())
-        version = getattr(self.async_pool, "server_version", None)
-        return BridgedConnection(self.async_pool, raw, version), False
 
-    def release(self, connection):
-        return self._bridge(self.async_pool.release(connection._raw))
+def await_io(awaitable):
+    """Suspend synchronous ORM code until *awaitable* completes.
 
-    def drop(self, connection):
-        return self._bridge(self.async_pool.drop(connection._raw))
+    This function is valid only inside :func:`run_sync`.  It restores Pony's
+    thread-local compatibility state before returning control to the event loop,
+    then reapplies the owning session state when the operation resumes.
+    """
 
-    def disconnect(self):
-        return self._bridge(self.async_pool.close())
+    current = getcurrent()
+    if not getattr(current, "pony_async_runtime", False):
+        if inspect.iscoroutine(awaitable):
+            awaitable.close()
+        raise RuntimeError("Async database I/O was attempted outside Pony async runtime")
+    before_await = current.before_await
+    after_await = current.after_await
+    if before_await is not None:
+        before_await()
+    try:
+        return current.parent.switch(awaitable)
+    finally:
+        if after_await is not None:
+            after_await()
+
+
+async def run_sync(function, *args, before_await=None, after_await=None, **kwargs):
+    """Run synchronous ORM machinery while natively awaiting provider I/O."""
+
+    def invoke():
+        return function(*args, **kwargs)
+
+    child = _AsyncIoGreenlet(
+        invoke, getcurrent(), before_await=before_await, after_await=after_await
+    )
+    result = child.switch()
+    while not child.dead:
+        try:
+            value = await result
+        except BaseException:
+            result = child.throw(*sys.exc_info())
+        else:
+            result = child.switch(value)
+    return result

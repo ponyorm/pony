@@ -112,7 +112,7 @@ def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
             raise IntegrityError(e)
         except dbapi_module.OperationalError as e:
             sqlstate = getattr(e, "pgcode", getattr(e, "sqlstate", None))
-            if provider.dialect == "PostgreSQL" and sqlstate == "40001":
+            if provider.dialect == "PostgreSQL" and sqlstate in ("40001", "40P01"):
                 should_retry = True
             if provider.dialect == "SQLite":
                 provider.restore_exception()

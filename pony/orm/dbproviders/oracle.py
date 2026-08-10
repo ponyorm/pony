@@ -9,7 +9,10 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-import cx_Oracle
+try:
+    import cx_Oracle
+except ImportError:
+    import oracledb as cx_Oracle
 
 from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import TranslationError, log_orm
@@ -703,7 +706,10 @@ class OraProvider(DBAPIProvider):
         setdefault(kwargs, "password", password)
         setdefault(kwargs, "dsn", dsn)
 
-        kwargs.setdefault("threaded", True)
+        if cx_Oracle.__name__ == "cx_Oracle":
+            kwargs.setdefault("threaded", True)
+        else:
+            kwargs.pop("threaded", None)
         kwargs.setdefault("min", 1)
         kwargs.setdefault("max", 10)
         kwargs.setdefault("increment", 1)

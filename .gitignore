@@ -1,9 +1,42 @@
-*.pyc
-*.sqlite
-.idea
-pony/orm/tests/.coverage
-pony/orm/tests/coverage.bat
-pony/orm/tests/htmlcov/*.*
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test and tooling caches
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Packaging and release artifacts
 MANIFEST
+build/
+dist/
+.eggs/
+*.egg-info/
+wheels/
+.release-check/
+
+# Documentation builds
 docs/_build/
-pony.egg-info/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Project-local test artifacts
+*.sqlite
+pony/orm/tests/coverage.bat

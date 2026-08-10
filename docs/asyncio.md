@@ -4,12 +4,16 @@ Pony's opt-in asyncio API supports Python 3.10–3.14 and uses `aiosqlite` for
 SQLite or `asyncpg` for PostgreSQL. Importing the regular `pony.orm` API does not
 import or require either driver.
 
-Install one or both transports:
+The ORM compiler, identity map, Unit of Work and hydration run as synchronous
+CPU code in the event-loop thread. At each database operation Pony suspends that
+stack and awaits the native driver directly. No executor thread is occupied
+while PostgreSQL is processing a query.
+
+Install the transport you need (run both commands if the application uses both):
 
 ```console
 python -m pip install "pony[async-sqlite]"
 python -m pip install "pony[async-postgres]"
-# or: python -m pip install "pony[async]"
 ```
 
 ## Basic usage
@@ -58,6 +62,11 @@ await db.bind(
     user="app",
     password="secret",
     max_pool_size=10,
+    max_waiters=40,
+    connect_timeout=10,
+    acquire_timeout=5,
+    query_timeout=30,
+    shutdown_timeout=20,
 )
 ```
 
@@ -65,6 +74,11 @@ await db.bind(
 constructor. SQLite
 `:memory:` uses one retained, serialized connection. File databases use a bounded
 pool; configure it with `max_pool_size`.
+
+The connection pool is bounded. Once all connections and `max_waiters` queue
+slots are occupied, a new operation raises `AsyncPoolQueueFull`. Waiting longer
+than `acquire_timeout` raises `AsyncPoolTimeout`, and a query exceeding
+`query_timeout` raises `AsyncQueryTimeout`.
 
 ## Explicit I/O rules
 
@@ -120,6 +134,22 @@ async def update_data():
     ...
 ```
 
+PostgreSQL transaction characteristics are explicit:
+
+```python
+async with db_session(
+    isolation="serializable",
+    readonly=True,
+    deferrable=True,
+    transaction_timeout=20,
+):
+    ...
+```
+
+`isolation` accepts `read_committed`, `repeatable_read`, or `serializable`.
+`serializable=True` remains a shorthand. A whole-transaction deadline raises
+`AsyncTransactionTimeout` after the mandatory rollback has completed.
+
 Nested sessions follow the synchronous transaction compatibility rules. A
 session belongs to exactly one `asyncio.Task`. Since `create_task()` copies
 context variables, attempting to use an inherited session in the child raises
@@ -134,7 +164,44 @@ Both synchronous callbacks which return an awaitable and `async def` callbacks
 are accepted by `db.on_connect`. The callback receives the native driver
 connection and completes before that connection is made available to a session.
 
-The first release materializes terminal query results. Async server-side
+## Operations and observability
+
+`await db.disconnect()` stops new acquisitions, waits up to `shutdown_timeout`
+for checked-out connections, then terminates remaining PostgreSQL connections or
+closes SQLite connections. `await db.health_check()` executes a real query;
+`await db.readiness_check()` additionally checks pool admission state.
+
+`db.async_stats` returns query, cancellation, retry, timeout, active-transaction
+and pool counters. Pool data includes current occupancy, waiters and cumulative
+acquire wait time. `db.recent_queries` contains SQL text and duration, never
+parameter values. Configure `slow_query_threshold` in `bind()` for warning logs,
+and pass `query_observer=callback` or call `db.add_query_observer(callback)` to
+integrate tracing. Observers may be synchronous or asynchronous.
+SQL parameter values are also hidden from debug output by default; use
+`db_session(sql_debug=True, show_values=True)` only in a safe development
+environment when values are genuinely required.
+
+Recommended starting values are one connection per concurrent database-bound
+request up to the database's safe connection budget, `max_waiters` between two
+and four times the pool size, a short acquire timeout, and a query timeout below
+the request deadline. Measure and tune these values for the deployed workload.
+
+SQLite `:memory:` and `:sharedmemory:` deliberately use a single connection.
+File-backed SQLite can use a larger pool, but SQLite still serializes writes;
+high-contention multi-writer services should use PostgreSQL.
+
+## Supported matrix
+
+| Component | Supported |
+| --- | --- |
+| Python | 3.10–3.14 |
+| greenlet | 3.5.4–3.x |
+| aiosqlite | 0.22.1–0.x |
+| asyncpg | 0.31–0.x |
+| PostgreSQL | 9.5–18 (the asyncpg support range) |
+| SQLite | the SQLite library bundled with supported Python versions |
+
+Terminal query results are materialized before hydration. Async server-side
 streaming and Flask/Bottle integration are not included. MySQL, Oracle, and
 CockroachDB remain available only through the synchronous API.
 

@@ -1,3 +1,4 @@
 include pony/orm/tests/queries.txt
 include pony/flask/example/templates *.html
 include LICENSE
+include docs/asyncio.md
