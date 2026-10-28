@@ -935,7 +935,7 @@ FROM "student" "s"
 
 SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
 FROM "Student" "s"
-WHERE ("s"."id" % 2) = 0
+WHERE py_mod("s"."id", 2) = 0
 
 PostgreSQL:
 
