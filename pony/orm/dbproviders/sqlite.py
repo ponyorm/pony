@@ -18,7 +18,7 @@ from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.orm.ormtypes import Json, TrackedArray
 from pony.orm.sqlbuilding import SQLBuilder, Value, join, make_unary_func
-from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
+from pony.orm.sqltranslation import NumericMixin, SQLTranslator, StringExprMonad
 from pony.py23compat import buffer, int_types
 from pony.utils import (
     absolutize_path,
@@ -68,6 +68,13 @@ class SQLiteTranslator(SQLTranslator):
     StringMixin_UPPER = make_overriden_string_func("PY_UPPER")
     StringMixin_LOWER = make_overriden_string_func("PY_LOWER")
 
+    def NumericMixin_DIV(translator, monad, monad2):
+        result = NumericMixin.__truediv__.__wrapped__(monad, monad2)
+        if result.type is int:
+            # In Python 3 true division of two integers produces a float
+            result.type = float
+        return result
+
 
 class SQLiteValue(Value):
     __slots__ = []
@@ -101,6 +108,15 @@ class SQLiteBuilder(SQLBuilder):
         if not values:
             return "INSERT INTO %s DEFAULT VALUES" % self.quote_name(table_name)
         return SQLBuilder.INSERT(self, table_name, columns, values, returning)
+
+    def DIV(self, a, b):
+        return "py_truediv(", self(a), ", ", self(b), ")"
+
+    def FLOORDIV(self, a, b):
+        return "py_floordiv(", self(a), ", ", self(b), ")"
+
+    def MOD(self, a, b):
+        return "py_mod(", self(a), ", ", self(b), ")"
 
     def STRING_SLICE(self, expr, start, stop):
         if start is None:
@@ -847,6 +863,51 @@ def py_make_array(*items):
     return dumps(items)
 
 
+def _py_division_operands(a, b):
+    # Pony stores Decimal values in SQLite as strings, so a Decimal query
+    # parameter reaches these functions as str (a Decimal column value
+    # usually arrives as a float because of SQLite's numeric affinity).
+    if isinstance(a, str):
+        a = Decimal(a)
+    if isinstance(b, str):
+        b = Decimal(b)
+    # Python forbids mixing Decimal and float in arithmetic
+    if isinstance(a, Decimal) and isinstance(b, float):
+        a = float(a)
+    elif isinstance(b, Decimal) and isinstance(a, float):
+        b = float(b)
+    return a, b
+
+
+def _py_division_result(value):
+    # The sqlite3 module cannot return a Decimal from a user-defined
+    # function; use the same string representation Pony stores
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
+def py_truediv(a, b):
+    if a is None or b is None:
+        return None
+    a, b = _py_division_operands(a, b)
+    return _py_division_result(a / b)
+
+
+def py_floordiv(a, b):
+    if a is None or b is None:
+        return None
+    a, b = _py_division_operands(a, b)
+    return _py_division_result(a // b)
+
+
+def py_mod(a, b):
+    if a is None or b is None:
+        return None
+    a, b = _py_division_operands(a, b)
+    return _py_division_result(a % b)
+
+
 def py_string_slice(s, start, end):
     if s is None:
         return None
@@ -899,6 +960,9 @@ class SQLitePool(Pool):
         create_function("py_make_array", -1, py_make_array)
 
         create_function("py_string_slice", 3, py_string_slice)
+        create_function("py_truediv", 2, py_truediv)
+        create_function("py_floordiv", 2, py_floordiv)
+        create_function("py_mod", 2, py_mod)
 
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute("PRAGMA foreign_keys = true")
