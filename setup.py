@@ -4,7 +4,6 @@ from pathlib import Path
 
 from setuptools import setup
 
-
 name = "pony"
 version_file = Path(__file__).parent / "pony" / "__init__.py"
 version_match = re.search(

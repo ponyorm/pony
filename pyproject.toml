@@ -32,6 +32,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Software Development :: Libraries",
     "Topic :: Database",
+    "Typing :: Typed",
 ]
 
 [project.urls]
@@ -80,6 +81,7 @@ select = [
     "UP",
     "B",
     "RUF100",
+    "TC",
 ]
 ignore = [
     # Pony expressions intentionally overload comparisons with None and booleans.
@@ -97,7 +99,10 @@ ignore = [
     # Pony wraps database exceptions deliberately and preserves its historical
     # exception surface instead of exposing implementation exception chains.
     "B904",
+    # Temporarily ignore B905 until each zip() call is audited for intended strictness.
+    "B905",
 ]
+future-annotations = true
 
 [tool.ruff.lint.per-file-ignores]
 "pony/orm/dbproviders/mysql.py" = ["E402"]
@@ -115,3 +120,25 @@ ignore = [
 
 [tool.ruff.format]
 line-ending = "lf"
+
+[tool.pyright]
+pythonVersion = "3.10"
+include = ["pony"]
+exclude = [
+    "pony/orm/tests/fixtures.py",
+    "pony/orm/examples/bottle_example.py",
+    "pony/orm/integration",
+    "pony/thirdparty",
+    "pony/flask",
+]
+reportMissingImports = true
+reportUnnecessaryCast = true
+reportUnnecessaryTypeIgnoreComment = true
+
+# The DB drivers are optional dependencies: don't report them as missing, and
+# don't report unnecessary ignores when they are installed.
+[[tool.pyright.executionEnvironments]]
+root = "pony/orm/dbproviders"
+extraPaths = ["."]
+reportMissingImports = false
+reportMissingModuleSource = false
