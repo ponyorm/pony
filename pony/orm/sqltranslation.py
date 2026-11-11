@@ -406,6 +406,7 @@ class SQLTranslator(ASTTranslator):
         self.order = []
         self.limit = self.offset = None
         self.inside_order_by = False
+        self.or_depth = 0
         self.aggregated = False if not optimize else True
         self.hint_join = False
         self.query_result_is_cacheable = True
@@ -1489,7 +1490,13 @@ class SQLTranslator(ASTTranslator):
     def postAnd(self, node):
         return AndMonad([expr.monad for expr in node.values])
 
+    def preOr(self, node):
+        # Joins made while translating OR operands must not filter out rows,
+        # see JoinedTableRef.make_join
+        self.or_depth += 1
+
     def postOr(self, node):
+        self.or_depth -= 1
         return OrMonad([expr.monad for expr in node.values])
 
     def postBitOr(self, node):
@@ -1955,6 +1962,21 @@ class JoinedTableRef:
             discr_criteria = entity._construct_discriminator_criteria_(alias)
             assert discr_criteria is not None
             join_cond.append(discr_criteria)
+
+        if (
+            not pk_only
+            and not attr.is_collection
+            and attr.nullable
+            and sqlquery.translator.or_depth
+            and sqlquery is sqlquery.translator.sqlquery
+            and sqlquery.from_ast[0] == "FROM"
+        ):
+            # The join is made inside an OR expression, like
+            # `x.a == 1 or x.optional_attr.b == 2`. An inner join would
+            # discard rows where `optional_attr` is NULL even when another
+            # OR operand is true, so the query needs to use LEFT JOIN instead
+            sqlquery.translator.left_join = sqlquery.left_join = True
+            sqlquery.from_ast[0] = "LEFT_JOIN"
 
         translator = self.sqlquery.translator.root_translator
         if (
@@ -3827,6 +3849,15 @@ class AndMonad(LogicalBinOpMonad):
 
 class OrMonad(LogicalBinOpMonad):
     binop = "OR"
+
+    def getsql(self, sqlquery=None):
+        # Some operands build their SQL lazily, so joins can be made here too
+        translator = self.translator
+        translator.or_depth += 1
+        try:
+            return LogicalBinOpMonad.getsql(self, sqlquery)
+        finally:
+            translator.or_depth -= 1
 
 
 class NotMonad(BoolMonad):
