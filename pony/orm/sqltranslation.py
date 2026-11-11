@@ -490,6 +490,8 @@ class SQLTranslator(ASTTranslator):
                     prev_translator = iterable.translator.deepcopy()
                     prev_limit = iterable.limit
                     prev_offset = iterable.offset
+                    # Only an explicit distinct() matters, without_distinct() keeps the old behavior
+                    prev_distinct = True if iterable.distinct else None
                     database = prev_translator.database
                     try:
                         self.process_query_qual(
@@ -498,6 +500,7 @@ class SQLTranslator(ASTTranslator):
                             prev_offset,
                             names,
                             try_extend_prev_query=not i,
+                            prev_distinct=prev_distinct,
                         )
                     except UseAnotherTranslator as e:
                         assert local.translators and local.translators[-1] is self
@@ -761,7 +764,14 @@ class SQLTranslator(ASTTranslator):
         prev_offset,
         names,
         try_extend_prev_query=False,
+        prev_distinct=None,
     ):
+        # prev_distinct is the explicit distinct flag of the previous query
+        # (set by query.distinct() / distinct(...) / query.without_distinct()).
+        # When it is specified, the previous query cannot be merged into the
+        # current one, because the new query (for example, an aggregate one)
+        # may drop the DISTINCT clause. In that case the previous query is
+        # translated as a subquery with the requested DISTINCT setting.
         sqlquery = self.sqlquery
         tablerefs = sqlquery.tablerefs
         expr_types = prev_translator.expr_type
@@ -803,6 +813,8 @@ class SQLTranslator(ASTTranslator):
                 pass
             elif prev_translator.left_join:
                 pass
+            elif prev_distinct is not None:
+                pass
             else:
                 assert self.parent is None
                 assert prev_translator.vars is None
@@ -834,13 +846,14 @@ class SQLTranslator(ASTTranslator):
             and isinstance(prev_translator.expr_type, EntityMeta)
             and not prev_translator.aggregated
             and not prev_translator.distinct
+            and not prev_distinct
         ):
             name = names[0]
             entity = prev_translator.expr_type
             [expr_monad] = prev_translator.expr_monads
             entity_alias = expr_monad.tableref.alias
             subquery_ast = prev_translator.construct_subquery_ast(
-                prev_limit, prev_offset, star=entity_alias
+                prev_limit, prev_offset, star=entity_alias, distinct=prev_distinct
             )
             tableref = StarTableRef(sqlquery, name, entity, subquery_ast)
             tablerefs[name] = tableref
@@ -863,7 +876,7 @@ class SQLTranslator(ASTTranslator):
                     aliases_dict[base_expr_monad] = name
 
             subquery_ast = prev_translator.construct_subquery_ast(
-                prev_limit, prev_offset, aliases=aliases
+                prev_limit, prev_offset, aliases=aliases, distinct=prev_distinct
             )
             tableref = ExprTableRef(sqlquery, "t", subquery_ast, names, aliases)
             for name in names:
@@ -895,7 +908,11 @@ class SQLTranslator(ASTTranslator):
         is_not_null_checks=False,
     ):
         subquery_ast, attr_offsets = self.construct_sql_ast(
-            limit, offset, distinct, is_not_null_checks=is_not_null_checks
+            limit,
+            offset,
+            distinct,
+            is_not_null_checks=is_not_null_checks,
+            subquery=True,
         )
         assert len(subquery_ast) >= 3 and subquery_ast[0] == "SELECT"
 
@@ -949,6 +966,7 @@ class SQLTranslator(ASTTranslator):
         nowait=False,
         skip_locked=False,
         is_not_null_checks=False,
+        subquery=False,
     ):
         attr_offsets = None
         if distinct is None:
@@ -1062,7 +1080,10 @@ class SQLTranslator(ASTTranslator):
             and not self.parent
             and not self.aggregated
             and not self.optimize
+            and not subquery
         ):
+            # Full entity columns are needed only for the top-level query;
+            # a subquery selects entity primary key columns only
             select_ast, attr_offsets = self.expr_type._construct_select_clause_(
                 self.alias, distinct, self.tableref.used_attrs
             )

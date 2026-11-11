@@ -470,6 +470,61 @@ class TestSelectFromSelect(unittest.TestCase):
         q2 = select((c.name, c.credits, m) for c, m in q).limit(1, offset=1)
         self.assertEqual(set(q2), {("3D Modeling", 15, 2)})
 
+    @db_session
+    def test_47(self):  # aggregate over distinct(...) query keeps DISTINCT
+        q = distinct(s.age for s in Student)
+        q2 = select(avg(a) for a in q)
+        self.assertEqual(q2.get(), 22.25)
+        self.assertIn("DISTINCT", db.last_sql)
+
+    @db_session
+    def test_48(self):  # aggregate over query.distinct() keeps DISTINCT
+        q = select(s.age for s in Student).distinct()
+        q2 = select(sum(a) for a in q)
+        self.assertEqual(q2.get(), 89)
+        self.assertIn("DISTINCT", db.last_sql)
+
+    @db_session
+    def test_49(self):  # without_distinct() and default behavior are not affected
+        q = select(s.age for s in Student).without_distinct()
+        self.assertEqual(select(sum(a) for a in q).get(), 109)
+        self.assertNotIn("DISTINCT", db.last_sql)
+        q = select(s.age for s in Student)
+        self.assertEqual(select(sum(a) for a in q).get(), 109)
+
+    @db_session
+    def test_50(self):  # aggregate over distinct entity query
+        q = distinct(s for s in Student if s.age > 20)
+        q2 = select(avg(s.age) for s in q)
+        self.assertEqual(q2.get(), 23)
+        self.assertIn("DISTINCT", db.last_sql)
+
+    @db_session
+    def test_51(self):  # cached translator must take distinct flag into account
+        def total(q):
+            return select(sum(a) for a in q).get()
+
+        q = select(s.age for s in Student)
+        self.assertEqual(total(q.distinct()), 89)
+        self.assertEqual(total(q.without_distinct()), 109)
+        self.assertEqual(total(q.distinct()), 89)
+
+    @db_session
+    def test_52(self):  # distinct entity query used in a non-first for-loop
+        q = select(c for s in Student for c in s.courses)
+        q2 = select((g, c) for g in Group for c in q)
+        self.assertEqual(len(q2[:]), 6)
+        q3 = select((g, c) for g in Group for c in q.distinct())
+        self.assertEqual(len(q3[:]), 6)
+
+    @db_session
+    def test_53(self):  # count and limit over distinct(...) query
+        q = distinct(s.age for s in Student)
+        self.assertEqual(select(count(a) for a in q).get(), 4)
+        self.assertEqual(
+            select(sum(a) for a in q.order_by(lambda a: a).limit(2)).get(), 42
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
