@@ -1,3 +1,11 @@
+# PonyORM unreleased
+
+## Bugfixes
+
+* Fix `distinct()` being ignored when a distinct query is used as a source of another query, e.g. `select(avg(x) for x in distinct(...))`
+* Fix AssertionError when a query with distinct entity results is iterated in a non-first `for` clause of another query
+
+
 # PonyORM release 0.7.20 (2026-08-09)
 
 ## Features

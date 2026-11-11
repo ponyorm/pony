@@ -180,6 +180,8 @@ class QueryType:
         self.translator = query._translator
         self.limit = limit
         self.offset = offset
+        # Explicit query.distinct() / query.without_distinct() flag (None if not specified)
+        self.distinct = query._distinct
 
     def __hash__(self):
         result = hash(self.query_key)
@@ -187,6 +189,8 @@ class QueryType:
             result ^= hash(self.limit + 3)
         if self.offset is not None:
             result ^= hash(self.offset)
+        if self.distinct is not None:
+            result ^= hash(("distinct", self.distinct))
         return result
 
     def __eq__(self, other):
@@ -195,6 +199,7 @@ class QueryType:
             and self.query_key == other.query_key
             and self.limit == other.limit
             and self.offset == other.offset
+            and self.distinct == other.distinct
         )
 
     def __ne__(self, other):
