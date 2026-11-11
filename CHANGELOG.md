@@ -1,3 +1,10 @@
+# PonyORM unreleased
+
+## Bugfixes
+
+* #508: Fix `or` conditions that navigate an Optional relationship, such as `x.a == 1 or x.optional_attr.b == 2`, dropping rows where the relationship is NULL. Such queries now use LEFT JOIN for the whole query
+
+
 # PonyORM release 0.7.20 (2026-08-09)
 
 ## Features
