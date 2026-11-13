@@ -1355,8 +1355,8 @@ class OnConnectDecorator:
     def __call__(self, func=None, provider=None) -> OnConnectDecorator:
         if isinstance(func, types.FunctionType):
             self.database._on_connect_funcs.append((func, provider or self.provider))
-        if not provider and func is str:
-            provider = cast("str", func)
+        if not provider and isinstance(func, str):
+            provider = func
         OnConnectDecorator.check_provider(provider)
         return OnConnectDecorator(self.database, provider)
 
