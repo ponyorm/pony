@@ -1,17 +1,30 @@
+from __future__ import annotations
+
 import json
+import warnings
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from uuid import UUID
 
-from pony.py23compat import buffer, int_types
-
-NoneType = type(None)
-
-import warnings
-
-warnings.filterwarnings(
-    "ignore", "^Table.+already exists$", Warning, "^pony\\.orm\\.dbapiprovider$"
+from pony.converting import str2timedelta, timedelta2str
+from pony.orm import core, dbapiprovider, dbschema, ormtypes
+from pony.orm.core import ParamKey, TranslationError, log_orm
+from pony.orm.dbapiprovider import (
+    DBAPIProvider,
+    Pool,
+    get_version_tuple,
+    wrap_dbapi_exceptions,
 )
+from pony.orm.sqlbuilding import Param, SQLBuilder, Value, join
+from pony.orm.sqltranslation import SQLTranslator
+from pony.py23compat import buffer, int_types
+from pony.utils import throw
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from typing_extensions import LiteralString
 
 try:
     import MySQLdb as mysql_module
@@ -33,33 +46,26 @@ except ImportError:
 
     mysql_module_name = "pymysql"
 
-from pony.converting import str2timedelta, timedelta2str
-from pony.orm import core, dbapiprovider, dbschema, ormtypes
-from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import (
-    DBAPIProvider,
-    Pool,
-    get_version_tuple,
-    wrap_dbapi_exceptions,
+NoneType = type(None)
+
+warnings.filterwarnings(
+    "ignore", "^Table.+already exists$", Warning, "^pony\\.orm\\.dbapiprovider$"
 )
-from pony.orm.sqlbuilding import Param, SQLBuilder, Value, join
-from pony.orm.sqltranslation import SQLTranslator, TranslationError
-from pony.utils import throw
 
 
 class MySQLColumn(dbschema.Column):
-    auto_template = "%(type)s PRIMARY KEY AUTO_INCREMENT"
+    auto_template: ClassVar[str | None] = "%(type)s PRIMARY KEY AUTO_INCREMENT"
 
 
 class MySQLSchema(dbschema.DBSchema):
-    dialect = "MySQL"
-    inline_fk_syntax = False
-    column_class = MySQLColumn
+    dialect: ClassVar[str] = "MySQL"
+    inline_fk_syntax: ClassVar[bool] = False
+    column_class: ClassVar[type[dbschema.Column]] = MySQLColumn
 
 
 class MySQLTranslator(SQLTranslator):
-    dialect = "MySQL"
-    json_path_wildcard_syntax = True
+    dialect: ClassVar[str] = "MySQL"
+    json_path_wildcard_syntax: ClassVar[bool] = True
 
 
 class MySQLValue(Value):
@@ -75,10 +81,10 @@ class MySQLValue(Value):
 
 
 class MySQLBuilder(SQLBuilder):
-    dialect = "MySQL"
-    value_class = MySQLValue
+    dialect: ClassVar[str] = "MySQL"
+    value_class: type[Value] = MySQLValue
 
-    def CONCAT(self, *args):
+    def CONCAT(self, *args) -> tuple[str, list[str], str]:
         return "concat(", join(", ", map(self, args)), ")"
 
     def TRIM(self, expr, chars=None):
@@ -123,33 +129,39 @@ class MySQLBuilder(SQLBuilder):
     def SECOND(self, expr):
         return "second(", self(expr), ")"
 
-    def DATE_ADD(self, expr, delta):
+    def DATE_ADD(
+        self,
+        expr: list[str],
+        delta: list[(str | timedelta | ParamKey | MySQLTimedeltaConverter)],
+    ) -> tuple[str, Any, str, Any, str]:
         if delta[0] == "VALUE" and isinstance(delta[1], time):
             return "ADDTIME(", self(expr), ", ", self(delta), ")"
         return "ADDDATE(", self(expr), ", ", self(delta), ")"
 
-    def DATE_SUB(self, expr, delta):
+    def DATE_SUB(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         if delta[0] == "VALUE" and isinstance(delta[1], time):
             return "SUBTIME(", self(expr), ", ", self(delta), ")"
         return "SUBDATE(", self(expr), ", ", self(delta), ")"
 
-    def DATE_DIFF(self, expr1, expr2):
+    def DATE_DIFF(self, expr1, expr2) -> tuple[str, Any, str, Any, str]:
         return "TIMEDIFF(", self(expr1), ", ", self(expr2), ")"
 
-    def DATETIME_ADD(self, expr, delta):
+    def DATETIME_ADD(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         return self.DATE_ADD(expr, delta)
 
-    def DATETIME_SUB(self, expr, delta):
+    def DATETIME_SUB(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         return self.DATE_SUB(expr, delta)
 
-    def DATETIME_DIFF(self, expr1, expr2):
+    def DATETIME_DIFF(self, expr1, expr2) -> tuple[str, Any, str, Any, str]:
         return "TIMEDIFF(", self(expr1), ", ", self(expr2), ")"
 
-    def JSON_QUERY(self, expr, path):
+    def JSON_QUERY(self, expr, path) -> tuple[str, Any, str, Param | Value, str]:
         path_sql, has_params, has_wildcards = self.build_json_path(path)
         return "json_extract(", self(expr), ", ", path_sql, ")"
 
-    def JSON_VALUE(self, expr, path, type):
+    def JSON_VALUE(
+        self, expr, path, type
+    ) -> tuple[str, tuple[str, Any, str, Param | Value, str], str]:
         path_sql, has_params, has_wildcards = self.build_json_path(path)
         result = "json_extract(", self(expr), ", ", path_sql, ")"
         if type is NoneType:
@@ -176,7 +188,9 @@ class MySQLBuilder(SQLBuilder):
     def JSON_NE(self, left, right):
         return "(", self(left), " != CAST(", self(right), " AS JSON))"
 
-    def JSON_CONTAINS(self, expr, path, key):
+    def JSON_CONTAINS(
+        self, expr: Sequence[str], path: list[Sequence[str]], key: Sequence
+    ) -> list[str | Param | Value | Any]:
         key_sql = self(key)
         if isinstance(key_sql, Value):
             wrapped_key = self.value_class(self.paramstyle, json.dumps([key_sql.value]))
@@ -212,7 +226,7 @@ class MySQLBuilder(SQLBuilder):
 
 
 class MySQLStrConverter(dbapiprovider.StrConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         result = "VARCHAR(%d)" % self.max_len if self.max_len else "LONGTEXT"
         if self.db_encoding:
             result += " CHARACTER SET %s" % self.db_encoding
@@ -220,12 +234,12 @@ class MySQLStrConverter(dbapiprovider.StrConverter):
 
 
 class MySQLRealConverter(dbapiprovider.RealConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "DOUBLE"
 
 
 class MySQLBlobConverter(dbapiprovider.BlobConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "LONGBLOB"
 
 
@@ -246,15 +260,16 @@ class MySQLTimeConverter(dbapiprovider.TimeConverter):
                     type(val),
                 ),
             )
+        assert isinstance(val, time)
         return val
 
 
 class MySQLTimedeltaConverter(dbapiprovider.TimedeltaConverter):
-    sql_type_name = "TIME"
+    sql_type_name: LiteralString = "TIME"
 
 
 class MySQLUuidConverter(dbapiprovider.UuidConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "BINARY(16)"
 
 
@@ -263,14 +278,15 @@ class MySQLJsonConverter(dbapiprovider.JsonConverter):
     NE = "JSON_NE"
 
     def init(self, kwargs):
+        assert isinstance(self.provider.server_version, tuple)
         if self.provider.server_version < (5, 7, 8):
             version = ".".join(map(str, self.provider.server_version))
             raise NotImplementedError("MySQL %s has no JSON support" % version)
 
 
 class MySQLProvider(DBAPIProvider):
-    dialect = "MySQL"
-    paramstyle = "format"
+    dialect: str = "MySQL"
+    paramstyle: str = "format"
     quote_char = "`"
     max_name_len = 64
     max_params_count = 10000
@@ -312,11 +328,14 @@ class MySQLProvider(DBAPIProvider):
         cursor.execute("select version()")
         row = cursor.fetchone()
         assert row is not None
-        self.server_version = get_version_tuple(row[0])
+        self.server_version = get_version_tuple(row[0])  # pyright: ignore[reportArgumentType]
+        assert self.server_version is not None
         if self.server_version >= (5, 6, 4):
             self.max_time_precision = 6
         cursor.execute("select database()")
-        self.default_schema_name = cursor.fetchone()[0]
+        db_name = cursor.fetchone()
+        assert db_name is not None
+        self.default_schema_name = cast("str", db_name[0])
         cursor.execute("set session group_concat_max_len = 4294967295")
 
     def should_reconnect(self, exc):
@@ -329,10 +348,10 @@ class MySQLProvider(DBAPIProvider):
         if "conv" not in kwargs:
             conv = mysql_converters.conversions.copy()
             if mysql_module_name == "MySQLdb":
-                conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+                conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]  # pyright: ignore[reportArgumentType]
 
             def encode_timedelta(val, encoders=None):
-                return string_literal(timedelta2str(val), encoders)
+                return string_literal(timedelta2str(val), encoders)  # pyright: ignore[reportCallIssue]
 
             conv[timedelta] = encode_timedelta
             conv[FIELD_TYPE.TIMESTAMP] = str2datetime
@@ -401,7 +420,7 @@ class MySQLProvider(DBAPIProvider):
             )
         cursor.execute(sql, [db_name, table_name])
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str", row[0]) if row is not None else None
 
     def index_exists(self, connection, table_name, index_name, case_sensitive=True):
         db_name, table_name = self.split_table_name(table_name)
@@ -418,7 +437,7 @@ class MySQLProvider(DBAPIProvider):
         cursor = connection.cursor()
         cursor.execute(sql, [db_name, table_name, index_name])
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str", row[0]) if row is not None else None
 
     def fk_exists(self, connection, table_name, fk_name, case_sensitive=True):
         db_name, table_name = self.split_table_name(table_name)
@@ -437,7 +456,7 @@ class MySQLProvider(DBAPIProvider):
         cursor = connection.cursor()
         cursor.execute(sql, [db_name, table_name, fk_name])
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str | None", row[0] if row is not None else None)
 
 
 provider_cls = MySQLProvider
@@ -448,6 +467,6 @@ def str2datetime(s):
         s += "000000"[: 26 - len(s)]
     s = s.replace("-", " ").replace(":", " ").replace(".", " ").replace("T", " ")
     try:
-        return datetime(*map(int, s.split()))
+        return datetime(*map(int, s.split()))  # pyright: ignore[reportArgumentType]
     except ValueError:
         return None  # for incorrect values like 0000-00-00 00:00:00

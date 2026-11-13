@@ -1,8 +1,34 @@
+from __future__ import annotations
+
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from uuid import UUID
 
+from pony.orm import core, dbapiprovider, dbschema, ormtypes
+from pony.orm.core import (
+    DbConnection,
+    DbCursor,
+    ParamKey,
+    SessionCache,
+    TableName,
+    log_orm,
+)
+from pony.orm.dbapiprovider import (
+    Converter,
+    DBAPIProvider,
+    Pool,
+    wrap_dbapi_exceptions,
+)
+from pony.orm.sqlbuilding import Param, SqlAst, SQLBuilder, Value, join
+from pony.orm.sqltranslation import SQLTranslator
 from pony.py23compat import buffer, int_types
+from pony.utils import is_ident
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from typing_extensions import LiteralString
 
 try:
     import psycopg2
@@ -15,36 +41,27 @@ except ImportError:
         )
     else:
         compat.register()
-
-
 import psycopg2.extras
 
 psycopg2.extras.register_uuid()
-
 psycopg2.extras.register_default_json(loads=lambda x: x)
 psycopg2.extras.register_default_jsonb(loads=lambda x: x)
 
-from pony.orm import core, dbapiprovider, dbschema, ormtypes
-from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.orm.sqlbuilding import SQLBuilder, Value, join
-from pony.orm.sqltranslation import SQLTranslator
-from pony.utils import is_ident
 
 NoneType = type(None)
 
 
 class PGColumn(dbschema.Column):
-    auto_template = "SERIAL PRIMARY KEY"
+    auto_template: ClassVar[str | None] = "SERIAL PRIMARY KEY"
 
 
 class PGSchema(dbschema.DBSchema):
-    dialect = "PostgreSQL"
+    dialect: ClassVar[str] = "PostgreSQL"
     column_class = PGColumn
 
 
 class PGTranslator(SQLTranslator):
-    dialect = "PostgreSQL"
+    dialect: ClassVar[str] = "PostgreSQL"
 
 
 class PGValue(Value):
@@ -53,19 +70,25 @@ class PGValue(Value):
     def __str__(self):
         value = self.value
         if isinstance(value, bool):
-            return (value and "true") or "false"
+            return value and "true" or "false"
         return Value.__str__(self)
 
 
 class PGSQLBuilder(SQLBuilder):
-    dialect = "PostgreSQL"
-    value_class = PGValue
+    dialect: ClassVar[str] = "PostgreSQL"
+    value_class: type[Value] = PGValue
 
-    def INSERT(self, table_name, columns, values, returning=None):
+    def INSERT(
+        self,
+        table_name: str,
+        columns: Iterable[str | Iterable],
+        values: Iterable[Sequence[str | tuple[int, None, None] | Converter]],
+        returning: str | None = None,
+    ) -> SqlAst:
         if not values:
             result = ["INSERT INTO ", self.quote_name(table_name), " DEFAULT VALUES"]
         else:
-            result = SQLBuilder.INSERT(self, table_name, columns, values)
+            result = cast("list", SQLBuilder.INSERT(self, table_name, columns, values))
         if returning is not None:
             result.extend([" RETURNING ", self.quote_name(returning)])
         return result
@@ -79,31 +102,41 @@ class PGSQLBuilder(SQLBuilder):
     def TO_REAL(self, expr):
         return "(", self(expr), ")::double precision"
 
-    def DATE(self, expr):
+    def DATE(self, expr: SqlAst) -> tuple[str, Any, str]:
         return "(", self(expr), ")::date"
 
     def RANDOM(self):
         return "random()"
 
-    def DATE_ADD(self, expr, delta):
+    def DATE_ADD(
+        self,
+        expr: list[str],
+        delta: list[(str | timedelta | ParamKey | PGTimedeltaConverter)],
+    ) -> tuple[str, Any, str, Any, str]:
         return "(", self(expr), " + ", self(delta), ")"
 
-    def DATE_SUB(self, expr, delta):
+    def DATE_SUB(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         return "(", self(expr), " - ", self(delta), ")"
 
-    def DATE_DIFF(self, expr1, expr2):
+    def DATE_DIFF(self, expr1, expr2) -> tuple[str, Any, str, Any, str]:
         return "((", self(expr1), " - ", self(expr2), ") * interval '1 day')"
 
-    def DATETIME_ADD(self, expr, delta):
+    def DATETIME_ADD(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         return "(", self(expr), " + ", self(delta), ")"
 
-    def DATETIME_SUB(self, expr, delta):
+    def DATETIME_SUB(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         return "(", self(expr), " - ", self(delta), ")"
 
-    def DATETIME_DIFF(self, expr1, expr2):
+    def DATETIME_DIFF(
+        self,
+        expr1: list[
+            str | tuple[tuple[int, str, int], None, None] | PGDatetimeConverter
+        ],
+        expr2: list[str],
+    ) -> tuple[Any, str, Any]:
         return self(expr1), " - ", self(expr2)
 
-    def eval_json_path(self, values):
+    def eval_json_path(self, values):  # pyright: ignore[reportIncompatibleMethodOverride]
         result = []
         for value in values:
             if isinstance(value, int):
@@ -116,13 +149,25 @@ class PGSQLBuilder(SQLBuilder):
                 assert False, value
         return "{%s}" % ",".join(result)
 
-    def JSON_QUERY(self, expr, path):
+    def JSON_QUERY(
+        self,
+        expr: Sequence[str],
+        path: Sequence[Sequence[(str | int | ParamKey | Converter)]],
+    ) -> tuple[str, Any, str, Param | Value, str]:
         path_sql, has_params, has_wildcards = self.build_json_path(path)
         return "(", self(expr), " #> ", path_sql, ")"
 
     json_value_type_mapping = {bool: "boolean", int: "int", float: "double precision"}
 
-    def JSON_VALUE(self, expr, path, type):
+    def JSON_VALUE(
+        self,
+        expr: Sequence[str],
+        path: Sequence[Sequence[str | int | ParamKey | Converter]],
+        type: type,
+    ) -> (
+        tuple[str, Any, str, Param | Value, str]
+        | tuple[tuple[str, Any, str, Param | Value, str], str, str]
+    ):
         if type is ormtypes.Json:
             return self.JSON_QUERY(expr, path)
         path_sql, has_params, has_wildcards = self.build_json_path(path)
@@ -141,7 +186,9 @@ class PGSQLBuilder(SQLBuilder):
     def JSON_CONCAT(self, left, right):
         return "(", self(left), "||", self(right), ")"
 
-    def JSON_CONTAINS(self, expr, path, key):
+    def JSON_CONTAINS(
+        self, expr: Sequence[str], path: list[Sequence[str]], key: Sequence
+    ) -> tuple[tuple[str, Any, str, Param | Value, str], str, Any]:
         return (
             (self.JSON_QUERY(expr, path) if path else self(expr)),
             " ? ",
@@ -151,10 +198,17 @@ class PGSQLBuilder(SQLBuilder):
     def JSON_ARRAY_LENGTH(self, value):
         return "jsonb_array_length(", self(value), ")"
 
-    def GROUP_CONCAT(self, distinct, expr, sep=None):
+    def GROUP_CONCAT(
+        self,
+        distinct: bool | None,
+        expr: Sequence[str],
+        sep: Sequence[str] | None = None,
+    ) -> tuple[
+        tuple[tuple[str, Any, str], str] | tuple[tuple[str, Any, str], str, Any], str
+    ]:
         assert distinct in (None, True, False)
         result = (
-            (distinct and "string_agg(distinct ") or "string_agg(",
+            distinct and "string_agg(distinct " or "string_agg(",
             self(expr),
             "::text",
         )
@@ -196,7 +250,7 @@ class PGSQLBuilder(SQLBuilder):
 
 
 class PGIntConverter(dbapiprovider.IntConverter):
-    signed_types = {
+    signed_types: dict[int | None, str] = {
         None: "INTEGER",
         8: "SMALLINT",
         16: "SMALLINT",
@@ -204,7 +258,7 @@ class PGIntConverter(dbapiprovider.IntConverter):
         32: "INTEGER",
         64: "BIGINT",
     }
-    unsigned_types = {
+    unsigned_types: dict[int | None, str] | None = {
         None: "INTEGER",
         8: "SMALLINT",
         16: "INTEGER",
@@ -214,21 +268,21 @@ class PGIntConverter(dbapiprovider.IntConverter):
 
 
 class PGRealConverter(dbapiprovider.RealConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "DOUBLE PRECISION"
 
 
 class PGBlobConverter(dbapiprovider.BlobConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "BYTEA"
 
 
 class PGTimedeltaConverter(dbapiprovider.TimedeltaConverter):
-    sql_type_name = "INTERVAL DAY TO SECOND"
+    sql_type_name: LiteralString = "INTERVAL DAY TO SECOND"
 
 
 class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
-    sql_type_name = "TIMESTAMP"
+    sql_type_name: LiteralString = "TIMESTAMP"
 
 
 class PGUuidConverter(dbapiprovider.UuidConverter):
@@ -237,12 +291,12 @@ class PGUuidConverter(dbapiprovider.UuidConverter):
 
 
 class PGJsonConverter(dbapiprovider.JsonConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "JSONB"
 
 
 class PGArrayConverter(dbapiprovider.ArrayConverter):
-    array_types = {
+    array_types: ClassVar[dict[type[str | float], tuple[str, type[Converter]]]] = {
         int: ("int", PGIntConverter),
         str: ("text", dbapiprovider.StrConverter),
         float: ("double precision", PGRealConverter),
@@ -250,12 +304,13 @@ class PGArrayConverter(dbapiprovider.ArrayConverter):
 
 
 class PGPool(Pool):
-    def _connect(self):
-        self.con = self.dbapi_module.connect(*self.args, **self.kwargs)
+    def _connect(self) -> None:
+        con = self.dbapi_module.connect(*self.args, **self.kwargs)
+        self.con = con
         if "client_encoding" not in self.kwargs:
-            self.con.set_client_encoding("UTF8")
+            con.set_client_encoding("UTF8")
 
-    def release(self, con):
+    def release(self, con: DbConnection) -> None:
         assert con is self.con
         try:
             con.rollback()
@@ -272,7 +327,7 @@ ADMIN_SHUTDOWN = "57P01"
 
 
 class PGProvider(DBAPIProvider):
-    dialect = "PostgreSQL"
+    dialect: str = "PostgreSQL"
     paramstyle = "pyformat"
     max_name_len = 63
     max_params_count = 10000
@@ -288,25 +343,27 @@ class PGProvider(DBAPIProvider):
 
     fk_types = {"SERIAL": "INTEGER", "BIGSERIAL": "BIGINT"}
 
-    def normalize_name(self, name):
+    def normalize_name(self, name: str) -> str:
         return name[: self.max_name_len].lower()
 
     @wrap_dbapi_exceptions
-    def inspect_connection(self, connection):
-        self.server_version = connection.server_version
+    def inspect_connection(self, connection: DbConnection) -> None:
+        self.server_version = cast("int", connection.server_version)
         self.table_if_not_exists_syntax = self.server_version >= 90100
 
-    def should_reconnect(self, exc):
+    def should_reconnect(self, exc: Exception) -> bool:
         return isinstance(exc, psycopg2.OperationalError) and exc.pgcode in (
             None,
             ADMIN_SHUTDOWN,
         )
 
-    def get_pool(self, *args, **kwargs):
+    def get_pool(self, *args, **kwargs) -> PGPool:
         return PGPool(self.dbapi_module, *args, **kwargs)
 
     @wrap_dbapi_exceptions
-    def set_transaction_mode(self, connection, cache):
+    def set_transaction_mode(
+        self, connection: DbConnection, cache: SessionCache
+    ) -> None:
         assert not cache.in_transaction
         if cache.immediate and connection.autocommit:
             connection.autocommit = False
@@ -327,7 +384,13 @@ class PGProvider(DBAPIProvider):
             cache.in_transaction = True
 
     @wrap_dbapi_exceptions
-    def execute(self, cursor, sql, arguments=None, returning_id=False):
+    def execute(
+        self,
+        cursor: DbCursor,
+        sql: str,
+        arguments: Any | None = None,
+        returning_id: bool = False,
+    ) -> int | None:
         if type(arguments) is list:
             assert arguments and not returning_id
             cursor.executemany(sql, arguments)
@@ -337,9 +400,15 @@ class PGProvider(DBAPIProvider):
             else:
                 cursor.execute(sql, arguments)
             if returning_id:
-                return cursor.fetchone()[0]
+                row = cursor.fetchone()
+                return cast("int", row[0]) if row is not None else None
 
-    def table_exists(self, connection, table_name, case_sensitive=True):
+    def table_exists(
+        self,
+        connection: DbConnection,
+        table_name: TableName,
+        case_sensitive: bool = True,
+    ) -> str | None:
         schema_name, table_name = self.split_table_name(table_name)
         cursor = connection.cursor()
         if case_sensitive:
@@ -354,9 +423,15 @@ class PGProvider(DBAPIProvider):
             )
         cursor.execute(sql, (schema_name, table_name))
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str", row[0]) if row is not None else None
 
-    def index_exists(self, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(
+        self,
+        connection: DbConnection,
+        table_name: TableName,
+        index_name: str,
+        case_sensitive: bool = True,
+    ) -> str | None:
         schema_name, table_name = self.split_table_name(table_name)
         cursor = connection.cursor()
         if case_sensitive:
@@ -371,9 +446,15 @@ class PGProvider(DBAPIProvider):
             )
         cursor.execute(sql, [schema_name, table_name, index_name])
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str | None", row[0] if row is not None else None)
 
-    def fk_exists(self, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(
+        self,
+        connection: DbConnection,
+        table_name: TableName,
+        fk_name: str,
+        case_sensitive: bool = True,
+    ) -> str | None:
         schema_name, table_name = self.split_table_name(table_name)
         if case_sensitive:
             sql = (
@@ -394,9 +475,9 @@ class PGProvider(DBAPIProvider):
         cursor = connection.cursor()
         cursor.execute(sql, [schema_name, table_name, fk_name])
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str | None", row[0] if row is not None else None)
 
-    def drop_table(self, connection, table_name):
+    def drop_table(self, connection: DbConnection, table_name: TableName) -> None:
         cursor = connection.cursor()
         sql = "DROP TABLE %s CASCADE" % self.quote_name(table_name)
         cursor.execute(sql)

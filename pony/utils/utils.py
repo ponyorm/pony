@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ast
 import inspect
 import io
@@ -14,23 +16,36 @@ from functools import update_wrapper, wraps
 from inspect import isfunction
 from itertools import count as _count
 from time import strptime
-from xml.etree import cElementTree
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, TypeVar, overload
+from xml.etree import ElementTree
 
 import pony
 from pony import options
 from pony.thirdparty.decorator import decorator as _decorator
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+    from pony.orm.core import EntityProxy, OptAttrValue, Query, SetInstance
+
+_T = TypeVar("_T")
+_F = TypeVar("_F", bound="Callable[..., Any]")
+_KT = TypeVar("_KT")
+_VT = TypeVar("_VT")
+
 if pony.MODE.startswith("GAE-"):
     localbase = object
 else:
-    from threading import local as localbase  # noqa: F401
+    from threading import local
+
+    localbase = local
 
 
 class PonyDeprecationWarning(DeprecationWarning):
     pass
 
 
-def deprecated(stacklevel, message):
+def deprecated(stacklevel: int, message: str) -> None:
     warnings.warn(message, PonyDeprecationWarning, stacklevel)
 
 
@@ -47,7 +62,13 @@ def _improved_decorator(caller, func):
     return pony_wrapper
 
 
-def decorator(caller, func=None):
+@overload
+def decorator(caller: Callable[..., Any], func: None = None) -> Callable[[_F], _F]: ...
+@overload
+def decorator(caller: Callable[..., Any], func: _F) -> _F: ...
+def decorator(
+    caller: Callable[..., Any], func: Callable[..., Any] | None = None
+) -> Any:
     if func is not None:
         return _improved_decorator(caller, func)
 
@@ -69,7 +90,7 @@ def decorator_with_params(dec):
 
 
 @decorator
-def cut_traceback(func, *args, **kwargs):
+def cut_traceback(func, *args, **kwargs):  # pyright: ignore[reportRedeclaration]
     if not options.CUT_TRACEBACK:
         return func(*args, **kwargs)
 
@@ -82,6 +103,7 @@ def cut_traceback(func, *args, **kwargs):
         full_tb = tb
         last_pony_tb = None
         try:
+            assert tb is not None
             while tb.tb_next:
                 module_name = tb.tb_frame.f_globals["__name__"]
                 if module_name == "pony" or (
@@ -103,23 +125,28 @@ def cut_traceback(func, *args, **kwargs):
             del exc, full_tb, tb, last_pony_tb
 
 
-cut_traceback_depth = 2
+cut_traceback_depth: int = 2
 
 if pony.MODE != "INTERACTIVE":
     cut_traceback_depth = 0
 
-    def cut_traceback(func):
+    def cut_traceback(func: _F) -> _F:
         return func
 
 
-def reraise(exc_type, exc, tb):
+def reraise(
+    exc_type: type[BaseException] | None,
+    exc: BaseException | None,
+    tb: types.TracebackType | None,
+) -> NoReturn:
     try:
+        assert exc is not None
         raise exc.with_traceback(tb)
     finally:
         del exc, tb
 
 
-def throw(exc_type, *args, **kwargs):
+def throw(exc_type: type[Exception] | Exception, *args, **kwargs) -> NoReturn:
     if isinstance(exc_type, Exception):
         assert not args and not kwargs
         exc = exc_type
@@ -135,12 +162,12 @@ def throw(exc_type, *args, **kwargs):
         del exc
 
 
-def truncate_repr(s, max_len=100):
+def truncate_repr(s: object, max_len: int = 100) -> str:
     s = repr(s)
     return s if len(s) <= max_len else s[: max_len - 3] + "..."
 
 
-codeobjects = {}
+codeobjects: dict[int, types.CodeType] = {}
 
 
 def get_codeobject_id(codeobject):
@@ -150,10 +177,10 @@ def get_codeobject_id(codeobject):
     return codeobject_id
 
 
-lambda_args_cache = {}
+lambda_args_cache: dict[int | ast.Lambda, list[str]] = {}
 
 
-def get_lambda_args(func):
+def get_lambda_args(func: Callable | ast.Lambda) -> list[str]:
     if type(func) is types.FunctionType:
         codeobject = func.__code__
         cache_key = get_codeobject_id(codeobject)
@@ -219,7 +246,7 @@ _ident_re = re.compile(r"^[A-Za-z_]\w*\Z")
 
 
 # is_ident = ident_re.match
-def is_ident(string):
+def is_ident(string: str) -> bool:
     "is_ident(string) -> bool"
     return bool(_ident_re.match(string))
 
@@ -267,7 +294,7 @@ def mixedcase_name(name):
     return list[0].lower() + "".join(s.capitalize() for s in list[1:])
 
 
-def import_module(name):
+def import_module(name: str) -> types.ModuleType:
     "import_module('a.b.c') -> <module a.b.c>"
     mod = sys.modules.get(name)
     if mod is not None:
@@ -312,14 +339,14 @@ def current_timestamp():
     return datetime2timestamp(datetime.now())
 
 
-def datetime2timestamp(d):
+def datetime2timestamp(d: datetime) -> str:
     result = d.isoformat(" ")
     if len(result) == 19:
         return result + ".000000"
     return result
 
 
-def timestamp2datetime(t):
+def timestamp2datetime(t: str) -> datetime:
     time_tuple = strptime(t[:19], "%Y-%m-%d %H:%M:%S")
     microseconds = int((t[20:26] + "000000")[:6])
     return datetime(*(time_tuple[:6] + (microseconds,)))
@@ -348,7 +375,7 @@ expr3_re = re.compile(
     r"""
         [()[\]]                   # parenthesis or braces (group 1)
     |   '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''
-    |   \"""(?:[^\\]|\\.)*?\"""   # \"""triple-quoted string\"""
+    |   \"""(?:[^\\]|\\.)*?\"""   # "\""triple-quoted string"\""
     |   '(?:[^'\\]|\\.)*?'        # 'string'
     |   "(?:[^"\\]|\\.)*?"        # "string"
     """,
@@ -356,7 +383,7 @@ expr3_re = re.compile(
 )
 
 
-def parse_expr(s, pos=0):
+def parse_expr(s: str, pos: int = 0) -> tuple[str, bool]:
     z = 0
     match = expr1_re.match(s, pos)
     if match is None:
@@ -407,7 +434,7 @@ def parse_expr(s, pos=0):
             assert False  # pragma: no cover
 
 
-def tostring(x):
+def tostring(x: str | bytes | ElementTree.Element) -> str:
     if isinstance(x, str):
         return x
     if hasattr(x, "__unicode__"):
@@ -416,7 +443,8 @@ def tostring(x):
         except BaseException:
             pass
     if hasattr(x, "makeelement"):
-        return cElementTree.tostring(x)
+        assert isinstance(x, ElementTree.Element)
+        return ElementTree.tostring(x, encoding="unicode")
     try:
         return str(x)
     except BaseException:
@@ -425,11 +453,26 @@ def tostring(x):
         return repr(x)
     except BaseException:
         pass
-    if type(x) == types.InstanceType:
+    if type(x) == types.InstanceType:  # type: ignore # not available in Python 3
         return "<%s instance at 0x%X>" % (x.__class__.__name__)
     return "<%s object at 0x%X>" % (x.__class__.__name__)
 
 
+@overload
+def strjoin(
+    sep: str,
+    strings: Iterable[str],
+    source_encoding: str = "ascii",
+    dest_encoding: None = None,
+) -> str: ...
+@overload
+def strjoin(
+    sep: str,
+    strings: Iterable[str],
+    source_encoding: str = "ascii",
+    *,
+    dest_encoding: str,
+) -> bytes: ...
 def strjoin(sep, strings, source_encoding="ascii", dest_encoding=None):
     "Can join mix of str and byte strings in different encodings"
     strings = list(strings)
@@ -438,7 +481,7 @@ def strjoin(sep, strings, source_encoding="ascii", dest_encoding=None):
     except UnicodeDecodeError:
         pass
     for i, s in enumerate(strings):
-        if isinstance(s, str):
+        if isinstance(s, bytes):
             strings[i] = s.decode(source_encoding, "replace").replace("\ufffd", "?")
     result = sep.join(strings)
     if dest_encoding is None:
@@ -446,6 +489,14 @@ def strjoin(sep, strings, source_encoding="ascii", dest_encoding=None):
     return result.encode(dest_encoding, "replace")
 
 
+@overload
+def count() -> _count[int]: ...
+@overload
+def count(args: tuple, kwargs: dict) -> _count: ...
+@overload
+def count(args: tuple) -> _count: ...
+@overload
+def count(arg: Iterable | SetInstance | Query) -> int: ...
 def count(*args, **kwargs):
     if kwargs:
         return _count(*args, **kwargs)
@@ -461,7 +512,7 @@ def count(*args, **kwargs):
     return len(set(it))
 
 
-def avg(iter):
+def avg(iter: Iterable[float]) -> float | None:
     count = 0
     sum = 0.0
     for elem in iter:
@@ -474,35 +525,35 @@ def avg(iter):
     return sum / count
 
 
-def group_concat(items, sep=","):
+def group_concat(items: Iterable | None, sep: str = ",") -> str | None:
     if items is None:
         return None
     return str(sep).join(str(item) for item in items)
 
 
-def coalesce(*args):
+def coalesce(*args) -> OptAttrValue:
     for arg in args:
         if arg is not None:
             return arg
     return None
 
 
-def distinct(iter):
-    d = defaultdict(int)
+def distinct(iter: Iterable[_T]) -> defaultdict[_T, int]:
+    d: defaultdict[_T, int] = defaultdict(int)
     for item in iter:
         d[item] = d[item] + 1
     return d
 
 
-def concat(*args):
+def concat(*args) -> str:
     return "".join(tostring(arg) for arg in args)
 
 
-def between(x, a, b):
+def between(x: Any, a: Any, b: Any) -> bool:
     return a <= x <= b
 
 
-def is_utf8(encoding):
+def is_utf8(encoding: str) -> bool:
     return encoding.upper().replace("_", "").replace("-", "") in ("UTF8", "UTF", "U8")
 
 
@@ -520,24 +571,24 @@ class PersistentUnpickler(pickle.Unpickler):
         raise pickle.UnpicklingError("unsupported persistent object")
 
 
-def pickle_ast(val):
+def pickle_ast(val: ast.expr) -> io.BytesIO:
     pickled = io.BytesIO()
     pickler = PersistentPickler(pickled)
     pickler.dump(val)
     return pickled
 
 
-def unpickle_ast(pickled):
+def unpickle_ast(pickled: io.BytesIO) -> ast.expr:
     pickled.seek(0)
     unpickler = PersistentUnpickler(pickled)
     return unpickler.load()
 
 
-def copy_ast(tree):
+def copy_ast(tree: ast.expr) -> ast.expr:
     return unpickle_ast(pickle_ast(tree))
 
 
-def _hashable_wrap(func):
+def _hashable_wrap(func: Callable) -> Callable:
     @wraps(func, assigned=("__name__", "__doc__"))
     def new_func(self, *args, **kwargs):
         if getattr(self, "_hash", None) is not None:
@@ -549,8 +600,10 @@ def _hashable_wrap(func):
     return new_func
 
 
-class HashableDict(dict):
-    def __hash__(self):
+class HashableDict(dict[_KT, _VT]):
+    _hash: int
+
+    def __hash__(self) -> int:  # type: ignore[override]
         result = getattr(self, "_hash", None)
         if result is None:
             result = 0
@@ -560,23 +613,23 @@ class HashableDict(dict):
             self._hash = result
         return result
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: dict[int, object]) -> HashableDict[_KT, _VT]:
         if getattr(self, "_hash", None) is not None:
             return self
         return HashableDict(
             {deepcopy(key, memo): deepcopy(value, memo) for key, value in self.items()}
         )
 
-    __setitem__ = _hashable_wrap(dict.__setitem__)
-    __delitem__ = _hashable_wrap(dict.__delitem__)
-    clear = _hashable_wrap(dict.clear)
-    pop = _hashable_wrap(dict.pop)
-    popitem = _hashable_wrap(dict.popitem)
-    setdefault = _hashable_wrap(dict.setdefault)
-    update = _hashable_wrap(dict.update)
+    __setitem__: ClassVar[Callable] = _hashable_wrap(dict.__setitem__)
+    __delitem__: ClassVar[Callable] = _hashable_wrap(dict.__delitem__)
+    clear: ClassVar[Callable] = _hashable_wrap(dict.clear)
+    pop: ClassVar[Callable] = _hashable_wrap(dict.pop)
+    popitem: ClassVar[Callable] = _hashable_wrap(dict.popitem)
+    setdefault: ClassVar[Callable] = _hashable_wrap(dict.setdefault)
+    update: ClassVar[Callable] = _hashable_wrap(dict.update)
 
 
-def deref_proxy(value):
+def deref_proxy(value: EntityProxy | Any) -> Any:
     t = type(value)
     if t.__name__ == "LocalProxy" and "_get_current_object" in t.__dict__:
         # Flask local proxy
@@ -588,7 +641,7 @@ def deref_proxy(value):
     return value
 
 
-def deduplicate(value, deduplication_cache):
+def deduplicate(value: _T, deduplication_cache: dict[type[_T], dict[_T, _T]]) -> _T:
     t = type(value)
     try:
         return deduplication_cache[t].setdefault(value, value)
@@ -599,13 +652,13 @@ def deduplicate(value, deduplication_cache):
 class IntegerGenerator:
     """pickleable version of itertools.count() with fixed step=1"""
 
-    def __init__(self, firstval=0):
+    def __init__(self, firstval: int = 0) -> None:
         self.val = firstval
 
-    def __iter__(self):
+    def __iter__(self) -> IntegerGenerator:
         return self
 
-    def __next__(self):
+    def __next__(self) -> int:
         res = self.val
         self.val += 1
         return res

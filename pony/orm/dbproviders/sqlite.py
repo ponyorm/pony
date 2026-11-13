@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import json
 import os
@@ -11,13 +13,40 @@ from decimal import Decimal
 from functools import wraps
 from random import random
 from threading import Lock
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NoReturn, TypeVar, cast
 from uuid import UUID
 
 from pony.orm import core, dbapiprovider, dbschema
 from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.orm.ormtypes import Json, TrackedArray
-from pony.orm.sqlbuilding import SQLBuilder, Value, join, make_unary_func
+
+if TYPE_CHECKING:
+    from pony.orm.core import (
+        Database,
+        DbConnection,
+        Entity,
+        OptAttrValue,
+        ParamKey,
+        PyType,
+        SessionCache,
+        TableName,
+    )
+from pony.orm.dbapiprovider import (
+    ArrayConverter,
+    Converter,
+    DBAPIProvider,
+    IntConverter,
+    Pool,
+    wrap_dbapi_exceptions,
+)
+from pony.orm.ormtypes import Json, TrackedArray, TrackedValue
+from pony.orm.sqlbuilding import (
+    Param,
+    SqlAst,
+    SQLBuilder,
+    Value,
+    join,
+    make_unary_func,
+)
 from pony.orm.sqltranslation import SQLTranslator, StringExprMonad
 from pony.py23compat import buffer, int_types
 from pony.utils import (
@@ -30,6 +59,12 @@ from pony.utils import (
     timestamp2datetime,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Sequence
+    from types import ModuleType
+
+_T = TypeVar("_T")
+
 
 class SqliteExtensionUnavailable(Exception):
     pass
@@ -39,17 +74,17 @@ NoneType = type(None)
 
 
 class SQLiteForeignKey(dbschema.ForeignKey):
-    def get_create_command(self):
+    def get_create_command(self) -> NoReturn:
         assert False  # pragma: no cover
 
 
 class SQLiteSchema(dbschema.DBSchema):
-    dialect = "SQLite"
+    dialect: ClassVar[str] = "SQLite"
     named_foreign_keys = False
     fk_class = SQLiteForeignKey
 
 
-def make_overriden_string_func(sqlop):
+def make_overriden_string_func(sqlop: str) -> Callable:
     def func(translator, monad):
         sql = monad.getsql()
         assert len(sql) == 1
@@ -60,13 +95,17 @@ def make_overriden_string_func(sqlop):
 
 
 class SQLiteTranslator(SQLTranslator):
-    dialect = "SQLite"
-    sqlite_version = sqlite.sqlite_version_info
-    row_value_syntax = False
-    rowid_support = True
+    dialect: ClassVar[str] = "SQLite"
+    sqlite_version: ClassVar[tuple[int, int, int]] = sqlite.sqlite_version_info
+    row_value_syntax: ClassVar[bool] = False
+    rowid_support: ClassVar[bool] = True
 
-    StringMixin_UPPER = make_overriden_string_func("PY_UPPER")
-    StringMixin_LOWER = make_overriden_string_func("PY_LOWER")
+    StringMixin_UPPER: ClassVar[Callable[[str], str]] = make_overriden_string_func(
+        "PY_UPPER"
+    )
+    StringMixin_LOWER: ClassVar[Callable[[str], str]] = make_overriden_string_func(
+        "PY_LOWER"
+    )
 
 
 class SQLiteValue(Value):
@@ -84,25 +123,46 @@ class SQLiteValue(Value):
 
 
 class SQLiteBuilder(SQLBuilder):
-    dialect = "SQLite"
+    dialect: ClassVar[str] = "SQLite"
     least_func_name = "min"
     greatest_func_name = "max"
-    value_class = SQLiteValue
+    value_class: type[Value] = SQLiteValue
 
-    def __init__(self, provider, ast):
+    def __init__(self, provider: SQLiteProvider, ast: list[str | list | None]) -> None:
         self.json1_available = provider.json1_available
         SQLBuilder.__init__(self, provider, ast)
 
-    def SELECT_FOR_UPDATE(self, nowait, skip_locked, *sections):
+    def SELECT_FOR_UPDATE(
+        self, nowait: bool, skip_locked: bool, *sections: SqlAst
+    ) -> SqlAst:
         assert not self.indent
         return self.SELECT(*sections)
 
-    def INSERT(self, table_name, columns, values, returning=None):
+    def INSERT(
+        self,
+        table_name: str,
+        columns: Iterable[str | Iterable],
+        values: Iterable[Sequence[str | tuple[int, None, None] | Converter]],
+        returning: str | None = None,
+    ) -> SqlAst:
         if not values:
             return "INSERT INTO %s DEFAULT VALUES" % self.quote_name(table_name)
         return SQLBuilder.INSERT(self, table_name, columns, values, returning)
 
-    def STRING_SLICE(self, expr, start, stop):
+    def STRING_SLICE(
+        self,
+        expr: Sequence[str],
+        start: Sequence[str | int | Sequence | None] | None,
+        stop: Sequence[str | int | Sequence | None] | None,
+    ) -> tuple[
+        str,
+        list[str],
+        str,
+        Value | list[str] | tuple,
+        str,
+        Value | list[str] | tuple,
+        str,
+    ]:
         if start is None:
             start = ["VALUE", None]
         if stop is None:
@@ -117,7 +177,11 @@ class SQLiteBuilder(SQLBuilder):
             ")",
         )
 
-    def IN(self, expr1, x):
+    def IN(
+        self,
+        expr1: list[str | int | ParamKey | Converter | list[str] | None],
+        x: list,
+    ) -> str | tuple[Any, str, Any] | tuple[Any, str, list, str]:
         if not x:
             return "0 = 1"
         if len(x) >= 1 and x[0] == "SELECT":
@@ -126,7 +190,9 @@ class SQLiteBuilder(SQLBuilder):
         expr_list = [self(expr) for expr in x]
         return self(expr1), op, join(", ", expr_list), ")"
 
-    def NOT_IN(self, expr1, x):
+    def NOT_IN(
+        self, expr1: list[str | int | ParamKey | Converter | list[str]], x: list
+    ) -> str | tuple[Any, str, Any] | tuple[Any, str, list, str]:
         if not x:
             return "1 = 1"
         if len(x) >= 1 and x[0] == "SELECT":
@@ -135,31 +201,33 @@ class SQLiteBuilder(SQLBuilder):
         expr_list = [self(expr) for expr in x]
         return self(expr1), op, join(", ", expr_list), ")"
 
-    def TODAY(self):
+    def TODAY(self) -> str:
         return "date('now', 'localtime')"
 
-    def NOW(self):
+    def NOW(self) -> str:
         return "datetime('now', 'localtime')"
 
-    def YEAR(self, expr):
+    def YEAR(self, expr: list[str]) -> tuple[str, Any, str]:
         return "cast(substr(", self(expr), ", 1, 4) as integer)"
 
-    def MONTH(self, expr):
+    def MONTH(self, expr: list[str]) -> tuple[str, Any, str]:
         return "cast(substr(", self(expr), ", 6, 2) as integer)"
 
-    def DAY(self, expr):
+    def DAY(self, expr: list[str]) -> tuple[str, Any, str]:
         return "cast(substr(", self(expr), ", 9, 2) as integer)"
 
-    def HOUR(self, expr):
+    def HOUR(self, expr: list[str]) -> tuple[str, Any, str]:
         return "cast(substr(", self(expr), ", 12, 2) as integer)"
 
-    def MINUTE(self, expr):
+    def MINUTE(self, expr: list[str]) -> tuple[str, Any, str]:
         return "cast(substr(", self(expr), ", 15, 2) as integer)"
 
-    def SECOND(self, expr):
+    def SECOND(self, expr: list[str]) -> tuple[str, Any, str]:
         return "cast(substr(", self(expr), ", 18, 2) as integer)"
 
-    def datetime_add(self, funcname, expr, td):
+    def datetime_add(
+        self, funcname: str, expr: list[str], td: datetime.timedelta
+    ) -> tuple[str, str, Any, list[str], str]:
         assert isinstance(td, datetime.timedelta)
         modifiers = []
         seconds = td.seconds + td.days * 24 * 3600
@@ -183,37 +251,57 @@ class SQLiteBuilder(SQLBuilder):
             return self(expr)
         return funcname, "(", self(expr), modifiers, ")"
 
-    def DATE_ADD(self, expr, delta):
+    def DATE_ADD(
+        self,
+        expr: list[str],
+        delta: list[(str | datetime.timedelta | ParamKey | SQLiteTimedeltaConverter)],
+    ) -> tuple[str, Any, str, Any, str]:
         if delta[0] == "VALUE" and isinstance(delta[1], datetime.timedelta):
             return self.datetime_add("date", expr, delta[1])
         return "datetime(julianday(", self(expr), ") + ", self(delta), ")"
 
-    def DATE_SUB(self, expr, delta):
+    def DATE_SUB(
+        self,
+        expr: list[str],
+        delta: list[(str | datetime.timedelta | ParamKey | SQLiteTimedeltaConverter)],
+    ) -> tuple[str, Any, str, Any, str]:
         if delta[0] == "VALUE" and isinstance(delta[1], datetime.timedelta):
             return self.datetime_add("date", expr, -delta[1])
         return "datetime(julianday(", self(expr), ") - ", self(delta), ")"
 
-    def DATE_DIFF(self, expr1, expr2):
+    def DATE_DIFF(
+        self, expr1: list[str | ParamKey | SQLiteDateConverter], expr2: list[str]
+    ) -> tuple[str, Any, str, Any, str]:
         return "julianday(", self(expr1), ") - julianday(", self(expr2), ")"
 
-    def DATETIME_ADD(self, expr, delta):
+    def DATETIME_ADD(
+        self,
+        expr: list[str],
+        delta: list[(str | datetime.timedelta | ParamKey | SQLiteTimedeltaConverter)],
+    ) -> tuple[str, Any, str, Any, str]:
         if delta[0] == "VALUE" and isinstance(delta[1], datetime.timedelta):
             return self.datetime_add("datetime", expr, delta[1])
         return "datetime(julianday(", self(expr), ") + ", self(delta), ")"
 
-    def DATETIME_SUB(self, expr, delta):
+    def DATETIME_SUB(
+        self,
+        expr: list[str],
+        delta: list[(str | datetime.timedelta | ParamKey | SQLiteTimedeltaConverter)],
+    ) -> tuple[str, Any, str, Any, str]:
         if delta[0] == "VALUE" and isinstance(delta[1], datetime.timedelta):
             return self.datetime_add("datetime", expr, -delta[1])
         return "datetime(julianday(", self(expr), ") - ", self(delta), ")"
 
-    def DATETIME_DIFF(self, expr1, expr2):
+    def DATETIME_DIFF(
+        self, expr1: list[str | ParamKey | SQLiteDatetimeConverter], expr2: list[str]
+    ) -> tuple[str, Any, str, Any, str]:
         return "julianday(", self(expr1), ") - julianday(", self(expr2), ")"
 
-    def RANDOM(self):
+    def RANDOM(self) -> str:
         return "rand()"  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
 
-    PY_UPPER = make_unary_func("py_upper")
-    PY_LOWER = make_unary_func("py_lower")
+    PY_UPPER: Callable = make_unary_func("py_upper")
+    PY_LOWER: Callable = make_unary_func("py_lower")
 
     def FLOAT_EQ(self, a, b):
         a, b = self(a), self(b)
@@ -243,7 +331,11 @@ class SQLiteBuilder(SQLBuilder):
             ")), 0), 1) > 1e-14",
         )
 
-    def JSON_QUERY(self, expr, path):
+    def JSON_QUERY(
+        self,
+        expr: Sequence[str],
+        path: Sequence[Sequence[(str | int | ParamKey | Converter)]],
+    ) -> tuple[str, str, str, Any, str, Param | Value, str]:
         fname = "json_extract" if self.json1_available else "py_json_extract"
         path_sql, has_params, has_wildcards = self.build_json_path(path)
         return (
@@ -256,32 +348,52 @@ class SQLiteBuilder(SQLBuilder):
             "))",
         )
 
-    json_value_type_mapping = {
+    json_value_type_mapping: dict[type[str | bool | float], str] = {
         str: "text",
         bool: "integer",
         int: "integer",
         float: "real",
     }
 
-    def JSON_VALUE(self, expr, path, type):
+    def JSON_VALUE(
+        self,
+        expr: Sequence[str],
+        path: Sequence[Sequence[str | int | ParamKey | Converter]],
+        type: type[OptAttrValue] | None = None,
+    ) -> (
+        tuple[str, str, list[str], str, Value | Param, str]
+        | tuple[str, tuple[str, str, list[str], str, Value | Param, str], str, str, str]
+    ):
         func_name = "json_extract" if self.json1_available else "py_json_extract"
         path_sql, has_params, has_wildcards = self.build_json_path(path)
-        type_name = self.json_value_type_mapping.get(type)
+        type_name = self.json_value_type_mapping.get(type)  # pyright: ignore[reportArgumentType]
         result = func_name, "(", self(expr), ", ", path_sql, ")"
         if type_name is not None:
             result = "CAST(", result, " as ", type_name, ")"
         return result
 
-    def JSON_NONZERO(self, expr):
+    def JSON_NONZERO(
+        self, expr: SqlAst
+    ) -> tuple[tuple[str, str, str, list[str], str, Value, str], str]:
         return self(expr), """ NOT IN ('null', 'false', '0', '""', '[]', '{}')"""
 
-    def JSON_ARRAY_LENGTH(self, value):
+    def JSON_ARRAY_LENGTH(
+        self, value: SqlAst
+    ) -> (
+        tuple[str, str, tuple[str, str, str, list[str], str, Value, str], str]
+        | tuple[str, str, list[str], str]
+    ):
         func_name = (
             "json_array_length" if self.json1_available else "py_json_array_length"
         )
         return func_name, "(", self(value), ")"
 
-    def JSON_CONTAINS(self, expr, path, key):
+    def JSON_CONTAINS(
+        self,
+        expr: Sequence[str],
+        path: Sequence[Sequence[str]],
+        key: Sequence[str | ParamKey | Converter],
+    ) -> tuple[str, list[str], str, Param | Value, str, Param | Value, str]:
         path_sql, has_params, has_wildcards = self.build_json_path(path)
         return (
             "py_json_contains(",
@@ -293,10 +405,23 @@ class SQLiteBuilder(SQLBuilder):
             ")",
         )
 
-    def ARRAY_INDEX(self, col, index):
+    def ARRAY_INDEX(
+        self,
+        col: Sequence[str],
+        index: Sequence[
+            str
+            | int
+            | Sequence[
+                str | int | Sequence[str | int | ParamKey | IntConverter | Sequence]
+            ]
+            | None
+        ],
+    ) -> tuple[str, Any, str, Any, str]:
         return "py_array_index(", self(col), ", ", self(index), ")"
 
-    def ARRAY_CONTAINS(self, key, not_in, col):
+    def ARRAY_CONTAINS(
+        self, key: Sequence[str | float], not_in: bool, col: Sequence[str]
+    ) -> tuple[str, str, Any, str, Any, str]:
         return (
             ("NOT " if not_in else ""),
             "py_array_contains(",
@@ -306,7 +431,12 @@ class SQLiteBuilder(SQLBuilder):
             ")",
         )
 
-    def ARRAY_SUBSET(self, array1, not_in, array2):
+    def ARRAY_SUBSET(
+        self,
+        array1: Sequence[(str | ParamKey | ArrayConverter | Sequence[str | int])],
+        not_in: bool,
+        array2: Sequence[str],
+    ) -> tuple[str, str, Any, str, Any, str]:
         return (
             ("NOT " if not_in else ""),
             "py_array_subset(",
@@ -316,10 +446,15 @@ class SQLiteBuilder(SQLBuilder):
             ")",
         )
 
-    def ARRAY_LENGTH(self, array):
+    def ARRAY_LENGTH(self, array: Sequence[str]) -> tuple[str, Any, str]:
         return "py_array_length(", self(array), ")"
 
-    def ARRAY_SLICE(self, array, start, stop):
+    def ARRAY_SLICE(
+        self,
+        array: Sequence[str],
+        start: Sequence[str | int | Sequence | None] | None,
+        stop: Sequence[str | int | Sequence | None] | None,
+    ) -> tuple[str, Any, str, Any | Literal["null"], str, Any | Literal["null"], str]:
         return (
             "py_array_slice(",
             self(array),
@@ -330,12 +465,12 @@ class SQLiteBuilder(SQLBuilder):
             ")",
         )
 
-    def MAKE_ARRAY(self, *items):
+    def MAKE_ARRAY(self, *items) -> tuple[str, list, str]:
         return "py_make_array(", join(", ", (self(item) for item in items)), ")"
 
 
 class SQLiteIntConverter(dbapiprovider.IntConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         attr = self.attr
         if attr is not None and attr.auto:
             return "INTEGER"  # Only this type can have AUTOINCREMENT option
@@ -347,17 +482,17 @@ class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
     neg_inf = Decimal("-infinity")
     NaN = Decimal("NaN")
 
-    def sql2py(self, val):
+    def sql2py(self, val: Decimal | float | str) -> Decimal:
         try:
             val = Decimal(str(val))
         except BaseException:
-            return val
+            return cast("Decimal", val)
         exp = self.exp
         if exp is not None:
             val = val.quantize(exp)
         return val
 
-    def py2sql(self, val):
+    def py2sql(self, val: Decimal) -> str:
         if type(val) is not Decimal:
             val = Decimal(val)
         exp = self.exp
@@ -369,27 +504,27 @@ class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
 
 
 class SQLiteDateConverter(dbapiprovider.DateConverter):
-    def sql2py(self, val):
+    def sql2py(self, val: str | datetime.date) -> datetime.date:
         try:
-            time_tuple = time.strptime(val[:10], "%Y-%m-%d")
+            time_tuple = time.strptime(cast("str", val)[:10], "%Y-%m-%d")
             return datetime.date(*time_tuple[:3])
         except BaseException:
-            return val
+            return cast("datetime.date", val)
 
-    def py2sql(self, val):
+    def py2sql(self, val: datetime.date) -> str:
         return val.strftime("%Y-%m-%d")
 
 
 class SQLiteTimeConverter(dbapiprovider.TimeConverter):
     def sql2py(self, val):
         try:
-            if len(val) <= 8:
-                dt = datetime.strptime(val, "%H:%M:%S")
+            if len(val) <= 8:  # pyright: ignore[reportArgumentType]
+                dt = datetime.datetime.strptime(val, "%H:%M:%S")  # pyright: ignore[reportArgumentType]
             else:
-                dt = datetime.strptime(val, "%H:%M:%S.%f")
-            return dt.datetime.time()
+                dt = datetime.datetime.strptime(val, "%H:%M:%S.%f")  # pyright: ignore[reportArgumentType]
+            return dt.time()
         except BaseException:
-            return val
+            return cast("datetime.time", val)
 
     def py2sql(self, val):
         return val.isoformat()
@@ -397,20 +532,20 @@ class SQLiteTimeConverter(dbapiprovider.TimeConverter):
 
 class SQLiteTimedeltaConverter(dbapiprovider.TimedeltaConverter):
     def sql2py(self, val):
-        return datetime.timedelta(days=val)
+        return datetime.timedelta(days=val)  # pyright: ignore[reportArgumentType]
 
-    def py2sql(self, val):
+    def py2sql(self, val: datetime.timedelta) -> float:
         return val.days + (val.seconds + val.microseconds / 1000000.0) / 86400.0
 
 
 class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
-    def sql2py(self, val):
+    def sql2py(self, val: str | datetime.datetime) -> datetime.datetime:
         try:
-            return timestamp2datetime(val)
+            return timestamp2datetime(val)  # pyright: ignore[reportArgumentType]
         except BaseException:
-            return val
+            return cast("datetime.datetime", val)
 
-    def py2sql(self, val):
+    def py2sql(self, val: datetime.datetime) -> str:
         return datetime2timestamp(val)
 
 
@@ -418,41 +553,48 @@ class SQLiteJsonConverter(dbapiprovider.JsonConverter):
     json_kwargs = {"separators": (",", ":"), "sort_keys": True, "ensure_ascii": False}
 
 
-def dumps(items):
+def dumps(items: object) -> str:
     return json.dumps(items, **SQLiteJsonConverter.json_kwargs)
 
 
 class SQLiteArrayConverter(dbapiprovider.ArrayConverter):
-    array_types = {
+    array_types: ClassVar[dict[type[str | float], tuple[str, type[Converter]]]] = {
         int: ("int", SQLiteIntConverter),
         str: ("text", dbapiprovider.StrConverter),
         float: ("real", dbapiprovider.RealConverter),
     }
 
-    def dbval2val(self, dbval, obj=None):
+    def dbval2val(
+        self, dbval: OptAttrValue | Entity, obj: Entity | None = None
+    ) -> TrackedArray | list[str | int | float] | None:
         if not dbval:
             return None
-        items = json.loads(dbval)
+        items = json.loads(dbval)  # pyright: ignore[reportArgumentType]
         if obj is None:
             return items
-        return TrackedArray(obj, self.attr, items)
+        return TrackedArray(obj, self.attr, items)  # pyright: ignore[reportArgumentType]
 
-    def val2dbval(self, val, obj=None):
+    def val2dbval(
+        self, val: TrackedValue | OptAttrValue, obj: Entity | None = None
+    ) -> str:
         return dumps(val)
 
 
 class LocalExceptions(localbase):
-    def __init__(self):
+    exc_info: tuple | None
+    keep_traceback: bool
+
+    def __init__(self) -> None:
         self.exc_info = None
         self.keep_traceback = False
 
 
-local_exceptions = LocalExceptions()
+local_exceptions: LocalExceptions = LocalExceptions()
 
 
-def keep_exception(func):
+def keep_exception(func: Callable[..., _T]) -> Callable[..., _T]:
     @wraps(func)
-    def new_func(*args):
+    def new_func(*args) -> _T:
         local_exceptions.exc_info = None
         try:
             return func(*args)
@@ -468,21 +610,23 @@ def keep_exception(func):
 
 
 class SQLiteProvider(DBAPIProvider):
-    dialect = "SQLite"
-    local_exceptions = local_exceptions
-    max_name_len = 1024
+    dialect: str = "SQLite"
+    local_exceptions: LocalExceptions = local_exceptions
+    max_name_len: int = 1024
 
-    dbapi_module = sqlite
-    dbschema_cls = SQLiteSchema
-    translator_cls = SQLiteTranslator
-    sqlbuilder_cls = SQLiteBuilder
-    array_converter_cls = SQLiteArrayConverter
+    dbapi_module: ModuleType = sqlite
+    dbschema_cls: type[SQLiteSchema] = SQLiteSchema
+    translator_cls: type[SQLiteTranslator] = SQLiteTranslator
+    sqlbuilder_cls: type[SQLiteBuilder] = SQLiteBuilder
+    array_converter_cls: type[SQLiteArrayConverter] = SQLiteArrayConverter
 
-    name_before_table = "db_name"
+    name_before_table: str = "db_name"
 
-    server_version = sqlite.sqlite_version_info
+    server_version: int | tuple[int, ...] | None = sqlite.sqlite_version_info
 
-    converter_classes = [
+    converter_classes: list[
+        tuple[PyType | type[None] | tuple[type[int]], type[Converter]]  # noqa: Y090
+    ] = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
         (str, dbapiprovider.StrConverter),
@@ -498,7 +642,7 @@ class SQLiteProvider(DBAPIProvider):
         (Json, SQLiteJsonConverter),
     ]
 
-    def __init__(self, database, filename, **kwargs):
+    def __init__(self, database: Database, filename: str, **kwargs) -> None:
         is_shared_memory_db = filename == ":sharedmemory:"
         if is_shared_memory_db:
             filename = "file:memdb%d_%s?mode=memory&cache=shared" % (
@@ -511,29 +655,31 @@ class SQLiteProvider(DBAPIProvider):
         self.transaction_lock = Lock()
 
     @wrap_dbapi_exceptions
-    def inspect_connection(self, conn):
-        DBAPIProvider.inspect_connection(self, conn)
-        self.json1_available = self.check_json1(conn)
+    def inspect_connection(self, connection: DbConnection) -> None:
+        DBAPIProvider.inspect_connection(self, connection)
+        self.json1_available = self.check_json1(connection)
 
-    def restore_exception(self):
+    def restore_exception(self) -> None:
         if self.local_exceptions.exc_info is not None:
             try:
                 reraise(*self.local_exceptions.exc_info)
             finally:
                 self.local_exceptions.exc_info = None
 
-    def acquire_lock(self):
+    def acquire_lock(self) -> None:
         self.pre_transaction_lock.acquire()
         try:
             self.transaction_lock.acquire()
         finally:
             self.pre_transaction_lock.release()
 
-    def release_lock(self):
+    def release_lock(self) -> None:
         self.transaction_lock.release()
 
     @wrap_dbapi_exceptions
-    def set_transaction_mode(self, connection, cache):
+    def set_transaction_mode(
+        self, connection: DbConnection, cache: SessionCache
+    ) -> None:
         assert not cache.in_transaction
         if cache.immediate:
             self.acquire_lock()
@@ -566,35 +712,41 @@ class SQLiteProvider(DBAPIProvider):
             if cache.immediate and not cache.in_transaction:
                 self.release_lock()
 
-    def commit(self, connection, cache=None):
+    def commit(
+        self, connection: DbConnection, cache: SessionCache | None = None
+    ) -> None:
         in_transaction = cache is not None and cache.in_transaction
         try:
             DBAPIProvider.commit(self, connection, cache)
         finally:
-            if in_transaction:
+            if cache is not None and in_transaction:
                 cache.in_transaction = False
                 self.release_lock()
 
-    def rollback(self, connection, cache=None):
+    def rollback(
+        self, connection: DbConnection, cache: SessionCache | None = None
+    ) -> None:
         in_transaction = cache is not None and cache.in_transaction
         try:
             DBAPIProvider.rollback(self, connection, cache)
         finally:
-            if in_transaction:
+            if cache is not None and in_transaction:
                 cache.in_transaction = False
                 self.release_lock()
 
-    def drop(self, connection, cache=None):
+    def drop(self, connection: DbConnection, cache: SessionCache | None = None) -> None:
         in_transaction = cache is not None and cache.in_transaction
         try:
             DBAPIProvider.drop(self, connection, cache)
         finally:
-            if in_transaction:
+            if cache is not None and in_transaction:
                 cache.in_transaction = False
                 self.release_lock()
 
     @wrap_dbapi_exceptions
-    def release(self, connection, cache=None):
+    def release(
+        self, connection: DbConnection, cache: SessionCache | None = None
+    ) -> None:
         if cache is not None:
             db_session = cache.db_session
             if db_session is not None and db_session.ddl and cache.saved_fk_state:
@@ -609,7 +761,13 @@ class SQLiteProvider(DBAPIProvider):
                     raise
         DBAPIProvider.release(self, connection, cache)
 
-    def get_pool(self, is_shared_memory_db, filename, create_db=False, **kwargs):
+    def get_pool(
+        self,
+        is_shared_memory_db: bool,
+        filename: str,
+        create_db: bool = False,
+        **kwargs,
+    ) -> SQLitePool:
         if is_shared_memory_db or filename == ":memory:":
             pass
         else:
@@ -629,13 +787,30 @@ class SQLiteProvider(DBAPIProvider):
             filename = absolutize_path(filename, frame_depth=cut_traceback_depth + 5)
         return SQLitePool(is_shared_memory_db, filename, create_db, **kwargs)
 
-    def table_exists(self, connection, table_name, case_sensitive=True):
-        return self._exists(connection, table_name, None, case_sensitive)
+    def table_exists(
+        self,
+        connection: DbConnection,
+        table_name: TableName,
+        case_sensitive: bool = True,
+    ) -> str | None:
+        return self._exists(connection, table_name, None, case_sensitive)  # pyright: ignore[reportArgumentType]
 
-    def index_exists(self, connection, table_name, index_name, case_sensitive=True):
-        return self._exists(connection, table_name, index_name, case_sensitive)
+    def index_exists(
+        self,
+        connection: DbConnection,
+        table_name: TableName,
+        index_name: str,
+        case_sensitive: bool = True,
+    ) -> str | None:
+        return self._exists(connection, table_name, index_name, case_sensitive)  # pyright: ignore[reportArgumentType]
 
-    def _exists(self, connection, table_name, index_name=None, case_sensitive=True):
+    def _exists(
+        self,
+        connection: DbConnection,
+        table_name: str,
+        index_name: str | None = None,
+        case_sensitive: bool = True,
+    ) -> str | None:
         db_name, table_name = self.split_table_name(table_name)
 
         if db_name is None:
@@ -656,12 +831,12 @@ class SQLiteProvider(DBAPIProvider):
                 sql += " COLLATE NOCASE"
             cursor.execute(sql, [table_name])
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str | None", row[0] if row is not None else None)
 
-    def fk_exists(self, connection, table_name, fk_name):
+    def fk_exists(self, connection, table_name, fk_name, case_sensitive: bool = True):
         assert False  # pragma: no cover
 
-    def check_json1(self, connection):
+    def check_json1(self, connection: DbConnection) -> bool:
         cursor = connection.cursor()
         sql = """
             select json('{"this": "is", "a": ["test"]}')"""
@@ -675,12 +850,14 @@ class SQLiteProvider(DBAPIProvider):
 provider_cls = SQLiteProvider
 
 
-def _text_factory(s):
+def _text_factory(s: bytes) -> str:
     return s.decode("utf8", "replace")
 
 
-def make_string_function(name, base_func):
-    def func(value):
+def make_string_function(
+    name: str, base_func: Callable[[object], _T]
+) -> Callable[[str], _T | None]:
+    def func(value) -> _T | None:
         if value is None:
             return None
         t = type(value)
@@ -696,23 +873,25 @@ def make_string_function(name, base_func):
     return func
 
 
-py_upper = make_string_function("py_upper", str.upper)
-py_lower = make_string_function("py_lower", str.lower)
+py_upper: Callable[[str], Any] = make_string_function("py_upper", str.upper)  # pyright: ignore[reportArgumentType]
+py_lower: Callable[[str], Any] = make_string_function("py_lower", str.lower)  # pyright: ignore[reportArgumentType]
 
 
-def py_json_unwrap(value):
+def py_json_unwrap(value: str) -> str | None:
     # "[null,some_json]" -> "some_json"
     if isinstance(value, str) and value.startswith("[null,"):
         return value[6:-1]
     return None
 
 
-path_cache = {}
+path_cache: dict[str, tuple[int | str, ...] | None] = {}
 
-json_path_re = re.compile(r'\[(-?\d+)\]|\.(?:(\w+)|"([^"]*)")', re.UNICODE)
+json_path_re: re.Pattern[str] = re.compile(
+    r'\[(-?\d+)\]|\.(?:(\w+)|"([^"]*)")', re.UNICODE
+)
 
 
-def _parse_path(path):
+def _parse_path(path: str) -> tuple[int | str, ...] | None:
     if path in path_cache:
         return path_cache[path]
     keys = None
@@ -735,7 +914,7 @@ def _parse_path(path):
     return keys
 
 
-def _traverse(obj, keys):
+def _traverse(obj: object, keys: Iterable[str | int] | None) -> Any:
     if keys is None:
         return None
     list_or_dict = (list, dict)
@@ -743,7 +922,7 @@ def _traverse(obj, keys):
         if type(obj) not in list_or_dict:
             return None
         try:
-            obj = obj[key]
+            obj = cast("Any", obj)[key]
         except (KeyError, IndexError):
             return None
     return obj
@@ -779,7 +958,7 @@ def py_json_value(expr, path):
     return result if type(result) not in (list, dict) else None
 
 
-def py_json_contains(expr, path, key):
+def py_json_contains(expr: str, path: str, key: str) -> bool:
     expr = json.loads(expr) if isinstance(expr, str) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
@@ -801,9 +980,9 @@ def py_json_array_length(expr, path=None):
     return len(expr) if type(expr) is list else 0
 
 
-def wrap_array_func(func):
+def wrap_array_func(func: Callable[..., _T]) -> Callable[..., _T | None]:
     @wraps(func)
-    def new_func(array, *args):
+    def new_func(array, *args) -> _T | None:
         if array is None:
             return None
         array = json.loads(array)
@@ -813,7 +992,7 @@ def wrap_array_func(func):
 
 
 @wrap_array_func
-def py_array_index(array, index):
+def py_array_index(array: list, index: int) -> float | None:
     try:
         return array[index]
     except IndexError:
@@ -821,12 +1000,12 @@ def py_array_index(array, index):
 
 
 @wrap_array_func
-def py_array_contains(array, item):
+def py_array_contains(array: list, item: object) -> bool:
     return item in array
 
 
 @wrap_array_func
-def py_array_subset(array, items):
+def py_array_subset(array: list, items: str) -> bool:
     if items is None:
         return None
     items = json.loads(items)
@@ -834,20 +1013,20 @@ def py_array_subset(array, items):
 
 
 @wrap_array_func
-def py_array_length(array):
+def py_array_length(array: list) -> int:
     return len(array)
 
 
 @wrap_array_func
-def py_array_slice(array, start, stop):
+def py_array_slice(array: list, start: int | None, stop: int | None) -> str:
     return dumps(array[start:stop])
 
 
-def py_make_array(*items):
+def py_make_array(*items) -> str:
     return dumps(items)
 
 
-def py_string_slice(s, start, end):
+def py_string_slice(s: str, start: int | None, end: int | None) -> str:
     if s is None:
         return None
     if isinstance(start, str):
@@ -859,15 +1038,15 @@ def py_string_slice(s, start, end):
 
 class SQLitePool(Pool):
     def __init__(
-        self, is_shared_memory_db, filename, create_db, **kwargs
-    ):  # called separately in each thread
+        self, is_shared_memory_db: bool, filename: str, create_db: bool, **kwargs
+    ) -> None:  # called separately in each thread
         self.is_shared_memory_db = is_shared_memory_db
         self.filename = filename
         self.create_db = create_db
         self.kwargs = kwargs
         self.con = None
 
-    def _connect(self):
+    def _connect(self) -> None:
         filename = self.filename
         if self.is_shared_memory_db or self.filename == ":memory:":
             pass
@@ -905,13 +1084,13 @@ class SQLitePool(Pool):
 
         con.execute("PRAGMA case_sensitive_like = true")
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         if self.is_shared_memory_db or self.filename == ":memory:":
             pass
         else:
             Pool.disconnect(self)
 
-    def drop(self, con):
+    def drop(self, con: DbConnection) -> None:
         if self.is_shared_memory_db or self.filename == ":memory:":
             con.rollback()
         else:

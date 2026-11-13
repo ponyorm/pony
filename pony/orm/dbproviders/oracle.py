@@ -1,37 +1,53 @@
+from __future__ import annotations
+
 import os
-
-from pony.py23compat import buffer, int_types
-
-os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
-
 import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from uuid import UUID
 
 import cx_Oracle
 
 from pony.orm import core, dbapiprovider, sqltranslation
-from pony.orm.core import TranslationError, log_orm
+from pony.orm.core import (
+    DbConnection,
+    ParamKey,
+    PyType,
+    TableName,
+    TranslationError,
+    log_orm,
+)
 from pony.orm.dbapiprovider import (
+    Converter,
     DBAPIProvider,
+    Pool,
     get_version_tuple,
     wrap_dbapi_exceptions,
 )
 from pony.orm.dbschema import Column, DBObject, DBSchema, Table
 from pony.orm.ormtypes import Json
-from pony.orm.sqlbuilding import SQLBuilder
+from pony.orm.sqlbuilding import Param, SqlAst, SQLBuilder, Value
+from pony.py23compat import buffer, int_types
 from pony.utils import throw
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+    from types import ModuleType
+
+    from typing_extensions import LiteralString
+
+os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 
 NoneType = type(None)
 
 
 class OraTable(Table):
     def get_objects_to_create(self, created_tables=None):
-        result = Table.get_objects_to_create(self, created_tables)
+        result = cast("list", Table.get_objects_to_create(self, created_tables))
         for column in self.column_list:
             if column.is_pk == "auto":
-                sequence_name = column.converter.attr.kwargs.get("sequence_name")
+                sequence_name = column.converter.attr.kwargs.get("sequence_name")  # pyright: ignore[reportOptionalMemberAccess]
                 sequence = OraSequence(self, sequence_name)
                 trigger = OraTrigger(self, column, sequence)
                 result.extend((sequence, trigger))
@@ -40,9 +56,11 @@ class OraTable(Table):
 
 
 class OraSequence(DBObject):
-    typename = "Sequence"
+    name: TableName
+    table: OraTable
+    typename: ClassVar[str] = "Sequence"
 
-    def __init__(self, table, name=None):
+    def __init__(self, table: OraTable, name: TableName | None = None):
         self.table = table
         table_name = table.name
         if name is not None:
@@ -50,9 +68,16 @@ class OraSequence(DBObject):
         elif isinstance(table_name, str):
             self.name = table_name + "_SEQ"
         else:
-            self.name = tuple(table_name[:-1]) + (table_name[0] + "_SEQ",)
+            self.name = cast("tuple[str]", tuple(table_name[:-1])) + (
+                table_name[0] + "_SEQ",
+            )
 
-    def exists(self, provider, connection, case_sensitive=True):
+    def exists(
+        self,
+        provider: OraProvider,
+        connection: DbConnection,
+        case_sensitive: bool = True,
+    ) -> str | None:
         if case_sensitive:
             sql = (
                 "SELECT sequence_name FROM all_sequences "
@@ -66,7 +91,7 @@ class OraSequence(DBObject):
         owner_name, sequence_name = provider.split_table_name(self.name)
         cursor = connection.cursor()
         cursor.execute(sql, dict(so=owner_name, sn=sequence_name))
-        row = cursor.fetchone()
+        row = cast("Sequence[str] | None", cursor.fetchone())
         return row[0] if row is not None else None
 
     def get_create_command(self):
@@ -75,7 +100,7 @@ class OraSequence(DBObject):
         return schema.case("CREATE SEQUENCE %s NOCACHE") % seq_name
 
 
-trigger_template = """
+trigger_template: LiteralString = """
 CREATE TRIGGER %s
   BEFORE INSERT ON %s
   FOR EACH ROW
@@ -87,7 +112,7 @@ END;""".strip()
 
 
 class OraTrigger(DBObject):
-    typename = "Trigger"
+    typename: ClassVar[str] = "Trigger"
 
     def __init__(self, table, column, sequence):
         self.table = table
@@ -134,11 +159,11 @@ class OraTrigger(DBObject):
 
 
 class OraColumn(Column):
-    auto_template = None
+    auto_template: ClassVar[str | None] = None
 
 
 class OraSchema(DBSchema):
-    dialect = "Oracle"
+    dialect: ClassVar[str] = "Oracle"
     table_class = OraTable
     column_class = OraColumn
 
@@ -151,37 +176,51 @@ class OraNoneMonad(sqltranslation.NoneMonad):
 
 class OraConstMonad(sqltranslation.ConstMonad):
     @staticmethod
-    def new(value):
+    def new(value):  # pyright: ignore[reportIncompatibleMethodOverride]
         if value == "":
             value = None
         return sqltranslation.ConstMonad.new(value)
 
 
 class OraTranslator(sqltranslation.SQLTranslator):
-    dialect = "Oracle"
-    rowid_support = True
-    json_path_wildcard_syntax = True
-    json_values_are_comparable = False
-    NoneMonad = OraNoneMonad
-    ConstMonad = OraConstMonad
+    dialect: ClassVar[str] = "Oracle"
+    rowid_support: ClassVar[bool] = True
+    json_path_wildcard_syntax: ClassVar[bool] = True
+    json_values_are_comparable: ClassVar[bool] = False
+    NoneMonad: type[OraNoneMonad] = OraNoneMonad
+    ConstMonad: type[OraConstMonad] = OraConstMonad
 
 
 class OraBuilder(SQLBuilder):
-    dialect = "Oracle"
+    dialect: ClassVar[str] = "Oracle"
 
-    def INSERT(self, table_name, columns, values, returning=None):
-        result = SQLBuilder.INSERT(self, table_name, columns, values)
+    def INSERT(
+        self,
+        table_name: str,
+        columns: Iterable[str | Iterable],
+        values: Iterable[Sequence[str | tuple[int, None, None] | Converter]],
+        returning: str | None = None,
+    ) -> SqlAst:
+        result = cast("list", SQLBuilder.INSERT(self, table_name, columns, values))
         if returning is not None:
             result.extend((" RETURNING ", self.quote_name(returning), " INTO :new_id"))
         return result
 
-    def SELECT_FOR_UPDATE(self, nowait, skip_locked, *sections):
+    def SELECT_FOR_UPDATE(
+        self, nowait: bool, skip_locked: bool, *sections: SqlAst
+    ) -> tuple[SqlAst, str, str, str, str]:
         assert not self.indent
-        nowait = " NOWAIT" if nowait else ""
-        skip_locked = " SKIP LOCKED" if skip_locked else ""
+        nowait_str = " NOWAIT" if nowait else ""
+        skip_locked_str = " SKIP LOCKED" if skip_locked else ""
         last_section = sections[-1]
         if last_section[0] != "LIMIT":
-            return self.SELECT(*sections), "FOR UPDATE", nowait, skip_locked, "\n"
+            return (
+                self.SELECT(*sections),
+                "FOR UPDATE",
+                nowait_str,
+                skip_locked_str,
+                "\n",
+            )
 
         from_section = sections[1]
         assert from_section[0] == "FROM"
@@ -216,9 +255,9 @@ class OraBuilder(SQLBuilder):
         if order_by_section:
             sql_ast.append(order_by_section)
         result = self(sql_ast)
-        return result, "FOR UPDATE", nowait, skip_locked, "\n"
+        return result, "FOR UPDATE", nowait_str, skip_locked_str, "\n"
 
-    def SELECT(self, *sections):
+    def SELECT(self, *sections: SqlAst) -> SqlAst:
         prev_suppress_aliases = self.suppress_aliases
         self.suppress_aliases = False
         try:
@@ -244,7 +283,7 @@ class OraBuilder(SQLBuilder):
             elif not offset:
                 result = [indent0, "SELECT * FROM (\n"]
                 self.indent += 1
-                result.extend(self._subquery(*sections))
+                result.extend(self._subquery(*sections))  # pyright: ignore[reportArgumentType]
                 self.indent -= 1
                 result.extend((indent, ") WHERE ROWNUM <= %d\n" % limit))
             else:
@@ -256,12 +295,13 @@ class OraBuilder(SQLBuilder):
                     'SELECT t.*, ROWNUM "row-num" FROM (\n',
                 ]
                 self.indent += 2
-                result.extend(self._subquery(*sections))
+                result.extend(self._subquery(*sections))  # pyright: ignore[reportArgumentType]
                 self.indent -= 2
                 if limit is None:
                     result.append("%s) t\n" % indent2)
                     result.append('%s) t WHERE "row-num" > %d\n' % (indent, offset))
                 else:
+                    assert isinstance(limit, int) and isinstance(offset, int)
                     result.append(
                         "%s) t WHERE ROWNUM <= %d\n" % (indent2, limit + offset)
                     )
@@ -285,40 +325,46 @@ class OraBuilder(SQLBuilder):
     def TO_STR(self, expr):
         return "TO_CHAR(", self(expr), ")"
 
-    def DATE(self, expr):
+    def DATE(self, expr: SqlAst) -> tuple[str, Any, str]:
         return "TRUNC(", self(expr), ")"
 
     def RANDOM(self):
         return "dbms_random.value"
 
-    def MOD(self, a, b):
+    def MOD(self, a, b) -> tuple[str, Any, str, Any, str]:
         return "MOD(", self(a), ", ", self(b), ")"
 
-    def DATE_ADD(self, expr, delta):
+    def DATE_ADD(
+        self,
+        expr: list[str],
+        delta: list[(str | timedelta | ParamKey | OraTimedeltaConverter)],
+    ) -> tuple[str, Any, str, Any, str]:
         return "(", self(expr), " + ", self(delta), ")"
 
     def DATE_SUB(self, expr, delta):
         return "(", self(expr), " - ", self(delta), ")"
 
-    def DATE_DIFF(self, expr1, expr2):
+    def DATE_DIFF(self, expr1, expr2) -> tuple[Any, str, Any]:
         return self(expr1), " - ", self(expr2)
 
-    def DATETIME_ADD(self, expr, delta):
+    def DATETIME_ADD(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         return "(", self(expr), " + ", self(delta), ")"
 
-    def DATETIME_SUB(self, expr, delta):
+    def DATETIME_SUB(self, expr, delta) -> tuple[str, Any, str, Any, str]:
         return "(", self(expr), " - ", self(delta), ")"
 
-    def DATETIME_DIFF(self, expr1, expr2):
+    def DATETIME_DIFF(self, expr1, expr2) -> tuple[Any, str, Any]:
         return self(expr1), " - ", self(expr2)
 
-    def build_json_path(self, path):
+    def build_json_path(
+        self, path: Sequence[SqlAst]
+    ) -> tuple[Param | Value, bool, bool]:
         path_sql, has_params, has_wildcards = SQLBuilder.build_json_path(self, path)
         if has_params:
             throw(TranslationError, "Oracle doesn't allow parameters in JSON paths")
         return path_sql, has_params, has_wildcards
 
-    def JSON_QUERY(self, expr, path):
+    def JSON_QUERY(self, expr, path) -> tuple[str, Any, str, Param | Value, str]:
         expr_sql = self(expr)
         path_sql, has_params, has_wildcards = self.build_json_path(path)
         if has_wildcards:
@@ -331,7 +377,11 @@ class OraBuilder(SQLBuilder):
             " WITH WRAPPER), '(^\\[|\\]$)', '')",
         )
 
-    json_value_type_mapping = {bool: "NUMBER", int: "NUMBER", float: "NUMBER"}
+    json_value_type_mapping: dict[type, str] = {
+        bool: "NUMBER",
+        int: "NUMBER",
+        float: "NUMBER",
+    }
 
     def JSON_VALUE(self, expr, path, type):
         if type is Json:
@@ -398,7 +448,7 @@ class OraBuilder(SQLBuilder):
 
     def GROUP_CONCAT(self, distinct, expr, sep=None):
         assert distinct in (None, True, False)
-        if distinct and self.provider.server_version >= (19,):
+        if distinct and cast("tuple[int, ...]", self.provider.server_version) >= (19,):
             distinct = "DISTINCT "
         else:
             distinct = ""
@@ -422,7 +472,7 @@ class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql2py(self, val):
         return bool(val)  # TODO: True/False, T/F, Y/N, Yes/No, etc.
 
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "NUMBER(1)"
 
 
@@ -434,10 +484,10 @@ class OraStrConverter(dbapiprovider.StrConverter):
 
     def sql2py(self, val):
         if isinstance(val, cx_Oracle.LOB):
-            val = val.read()
+            val = cast("cx_Oracle.LOB", val).read()
         return val
 
-    def sql_type(self):
+    def sql_type(self) -> str:
         # TODO: Add support for NVARCHAR2 and NCLOB datatypes
         if self.max_len:
             return "VARCHAR2(%d CHAR)" % self.max_len
@@ -445,7 +495,7 @@ class OraStrConverter(dbapiprovider.StrConverter):
 
 
 class OraIntConverter(dbapiprovider.IntConverter):
-    signed_types = {
+    signed_types: dict[int | None, str] = {
         None: "NUMBER(38)",
         8: "NUMBER(3)",
         16: "NUMBER(5)",
@@ -453,7 +503,7 @@ class OraIntConverter(dbapiprovider.IntConverter):
         32: "NUMBER(10)",
         64: "NUMBER(19)",
     }
-    unsigned_types = {
+    unsigned_types: dict[int | None, str] | None = {
         None: "NUMBER(38)",
         8: "NUMBER(3)",
         16: "NUMBER(5)",
@@ -465,7 +515,10 @@ class OraIntConverter(dbapiprovider.IntConverter):
     def init(self, kwargs):
         dbapiprovider.IntConverter.init(self, kwargs)
         sequence_name = kwargs.pop("sequence_name", None)
-        if sequence_name is not None and not (self.attr.auto and self.attr.is_pk):
+        attr = self.attr
+        if sequence_name is not None and (
+            attr is None or not (attr.auto and attr.is_pk)
+        ):
             throw(
                 TypeError,
                 "Parameter 'sequence_name' can be used only for PrimaryKey attributes with auto=True",
@@ -474,18 +527,18 @@ class OraIntConverter(dbapiprovider.IntConverter):
 
 class OraRealConverter(dbapiprovider.RealConverter):
     # Note that Oracle has different representation of float numbers
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "NUMBER"
 
 
 class OraDecimalConverter(dbapiprovider.DecimalConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "NUMBER(%d, %d)" % (self.precision, self.scale)
 
 
 class OraBlobConverter(dbapiprovider.BlobConverter):
     def sql2py(self, val):
-        return buffer(val.read())
+        return buffer(cast("cx_Oracle.LOB", val).read())
 
 
 class OraDateConverter(dbapiprovider.DateConverter):
@@ -502,11 +555,11 @@ class OraDateConverter(dbapiprovider.DateConverter):
 
 
 class OraTimeConverter(dbapiprovider.TimeConverter):
-    sql_type_name = "INTERVAL DAY(0) TO SECOND"
+    sql_type_name: LiteralString = "INTERVAL DAY(0) TO SECOND"
 
     def __init__(self, provider, py_type, attr=None):
         dbapiprovider.TimeConverter.__init__(self, provider, py_type, attr)
-        if attr is not None and self.precision > 0:
+        if attr is not None and cast("int", self.precision) > 0:
             # cx_Oracle 5.1.3 corrupts microseconds for values of DAY TO SECOND type
             self.precision = 0
 
@@ -526,6 +579,7 @@ class OraTimeConverter(dbapiprovider.TimeConverter):
                     type(val),
                 ),
             )
+        assert isinstance(val, time)
         return val
 
     def py2sql(self, val):
@@ -538,21 +592,21 @@ class OraTimeConverter(dbapiprovider.TimeConverter):
 
 
 class OraTimedeltaConverter(dbapiprovider.TimedeltaConverter):
-    sql_type_name = "INTERVAL DAY TO SECOND"
+    sql_type_name: LiteralString = "INTERVAL DAY TO SECOND"
 
     def __init__(self, provider, py_type, attr=None):
         dbapiprovider.TimedeltaConverter.__init__(self, provider, py_type, attr)
-        if attr is not None and self.precision > 0:
+        if attr is not None and cast("int", self.precision) > 0:
             # cx_Oracle 5.1.3 corrupts microseconds for values of DAY TO SECOND type
             self.precision = 0
 
 
 class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
-    sql_type_name = "TIMESTAMP"
+    sql_type_name: LiteralString = "TIMESTAMP"
 
 
 class OraUuidConverter(dbapiprovider.UuidConverter):
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "RAW(16)"
 
 
@@ -565,27 +619,29 @@ class OraJsonConverter(dbapiprovider.JsonConverter):
             dbval = dbval.read()
         return dbapiprovider.JsonConverter.sql2py(self, dbval)
 
-    def sql_type(self):
+    def sql_type(self) -> str:
         return "CLOB"
 
 
 class OraProvider(DBAPIProvider):
-    dialect = "Oracle"
-    paramstyle = "named"
-    max_name_len = 30
-    table_if_not_exists_syntax = False
-    index_if_not_exists_syntax = False
-    varchar_default_max_len = 1000
-    uint64_support = True
+    dialect: str = "Oracle"
+    paramstyle: str = "named"
+    max_name_len: int = 30
+    table_if_not_exists_syntax: bool = False
+    index_if_not_exists_syntax: bool = False
+    varchar_default_max_len: int | None = 1000
+    uint64_support: bool = True
 
-    dbapi_module = cx_Oracle
-    dbschema_cls = OraSchema
-    translator_cls = OraTranslator
-    sqlbuilder_cls = OraBuilder
+    dbapi_module: ModuleType = cx_Oracle
+    dbschema_cls: type[OraSchema] = OraSchema
+    translator_cls: type[OraTranslator] = OraTranslator
+    sqlbuilder_cls: type[OraBuilder] = OraBuilder
 
-    name_before_table = "owner"
+    name_before_table: str = "owner"
 
-    converter_classes = [
+    converter_classes: list[
+        tuple[PyType | type[None] | tuple[type[int]], type[Converter]]  # noqa: Y090
+    ] = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, OraBoolConverter),
         (str, OraStrConverter),
@@ -608,9 +664,9 @@ class OraProvider(DBAPIProvider):
             "SELECT version FROM product_component_version "
             "WHERE product LIKE 'Oracle Database %'"
         )
-        self.server_version = get_version_tuple(cursor.fetchone()[0])
+        self.server_version = get_version_tuple(cast("list", cursor.fetchone())[0])
         cursor.execute("SELECT sys_context( 'userenv', 'current_schema' ) FROM DUAL")
-        self.default_schema_name = cursor.fetchone()[0]
+        self.default_schema_name = cast("list", cursor.fetchone())[0]
 
     def should_reconnect(self, exc):
         reconnect_error_codes = (
@@ -629,7 +685,7 @@ class OraProvider(DBAPIProvider):
         DBAPIProvider.normalize_vars(self, vars, vartypes)
         for key, value in vars.items():
             if value == "":
-                vars[key] = None
+                vars[key] = None  # pyright: ignore[reportArgumentType]
                 vartypes[key] = NoneType
 
     @wrap_dbapi_exceptions
@@ -659,7 +715,7 @@ class OraProvider(DBAPIProvider):
                 var = cursor.var(
                     cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int
                 )
-                arguments["new_id"] = var
+                arguments["new_id"] = var  # pyright: ignore[reportIndexIssue, reportOptionalSubscript]
                 if arguments is None:
                     cursor.execute(sql)
                 else:
@@ -718,7 +774,7 @@ class OraProvider(DBAPIProvider):
             sql = "SELECT table_name FROM all_tables WHERE owner = :o AND upper(table_name) = upper(:tn)"
         cursor.execute(sql, dict(o=owner_name, tn=table_name))
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str", row[0]) if row is not None else None
 
     def index_exists(self, connection, table_name, index_name, case_sensitive=True):
         owner_name, table_name = self.split_table_name(table_name)
@@ -737,7 +793,7 @@ class OraProvider(DBAPIProvider):
         cursor = connection.cursor()
         cursor.execute(sql, dict(o=owner_name, i=index_name, t=table_name))
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str", row[0]) if row is not None else None
 
     def fk_exists(self, connection, table_name, fk_name, case_sensitive=True):
         owner_name, table_name = self.split_table_name(table_name)
@@ -756,7 +812,7 @@ class OraProvider(DBAPIProvider):
         cursor = connection.cursor()
         cursor.execute(sql, dict(tn=table_name, cn=fk_name, o=owner_name))
         row = cursor.fetchone()
-        return row[0] if row is not None else None
+        return cast("str | None", row[0] if row is not None else None)
 
     def table_has_data(self, connection, table_name):
         cursor = connection.cursor()
@@ -804,13 +860,13 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
     return None
 
 
-class OraPool:
-    forked_pools = []
+class OraPool(Pool):
+    forked_pools: list[tuple[cx_Oracle.SessionPool, int]] = []
 
     def __init__(self, **kwargs):
-        self.kwargs = kwargs
-        self.cx_pool = cx_Oracle.SessionPool(**kwargs)
-        self.pid = os.getpid()
+        self.kwargs: dict[str, Any] = kwargs
+        self.cx_pool: cx_Oracle.SessionPool = cx_Oracle.SessionPool(**kwargs)
+        self.pid: int = os.getpid()
 
     def connect(self):
         pid = os.getpid()
@@ -834,13 +890,13 @@ class OraPool:
         pass
 
 
-def get_inputsize(arg):
+def get_inputsize(arg) -> cx_Oracle.DATETIME | None:
     if isinstance(arg, datetime):
         return cx_Oracle.TIMESTAMP
     return None
 
 
-def set_input_sizes(cursor, arguments):
+def set_input_sizes(cursor, arguments) -> None:
     if type(arguments) is dict:
         input_sizes = {}
         for name, arg in arguments.items():

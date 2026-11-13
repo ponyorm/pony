@@ -217,7 +217,9 @@ def test_queries():
     print_students(students)
 
     students = select(
-        s for s in Student if len(c for c in s.courses if c.dept.number == 1) < 4
+        s
+        for s in Student
+        if len(c for c in s.courses if c.dept.number == 1) < 4  # pyright: ignore[reportArgumentType]
     )
     print_students(students)
 

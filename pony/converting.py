@@ -200,7 +200,7 @@ def str2date(s):
     return date(int(year), int(month), int(day))
 
 
-def str2time(s):
+def str2time(s: str) -> time:
     s = s.strip().lower()
     match = time_re.match(s)
     if match is None:
@@ -209,7 +209,7 @@ def str2time(s):
     return time(hh, mm, ss, mcs)
 
 
-def str2datetime(s):
+def str2datetime(s: str) -> datetime:
     s = s.strip().lower()
     for datetime_re in datetime_re_list:
         match = datetime_re.match(s)
@@ -253,15 +253,15 @@ def _extract_time_parts(groupdict):
     return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 
-def str2timedelta(s):
+def str2timedelta(s: str) -> timedelta:
     negative = s.startswith("-")
     if "." in s:
         s, fractional = s.split(".")
         microseconds = int((fractional + "000000")[:6])
     else:
         microseconds = 0
-    h, m, s = map(int, s.split(":"))
-    td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
+    h, m, sec = map(int, s.split(":"))
+    td = timedelta(hours=abs(h), minutes=m, seconds=sec, microseconds=microseconds)
     return -td if negative else td
 
 

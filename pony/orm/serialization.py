@@ -1,20 +1,30 @@
+from __future__ import annotations
+
 import json
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any
 
-from pony.orm.core import Entity, TransactionError
+from pony.orm.core import Database, Entity, TransactionError
 from pony.utils import cut_traceback, throw
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from pony.orm.core import Attribute, EntityMeta
 
 
 class Bag:
-    def __init__(self, database):
+    def __init__(self, database: Database) -> None:
         self.database = database
         self.session_cache = None
-        self.entity_configs = {}
-        self.objects = defaultdict(set)
-        self.vars = {}
-        self.dicts = defaultdict(dict)
+        self.entity_configs: dict[EntityMeta, tuple[tuple[Attribute, ...], bool]] = {}
+        self.objects: defaultdict[EntityMeta, set[Entity]] = defaultdict(set)
+        self.vars: dict[Any, Any] = {}
+        self.dicts: defaultdict[EntityMeta, dict[Entity, dict[str, Any]]] = defaultdict(
+            dict
+        )
 
     @cut_traceback
     def config(
@@ -79,7 +89,7 @@ class Bag:
         return ",".join(str(item).replace("*", "**").replace(",", "*,") for item in pk)
 
     @cut_traceback
-    def to_dict(self):
+    def to_dict(self) -> defaultdict[str, dict[Any, dict[str, Any]]]:
         self.dicts.clear()
         for entity, objects in self.objects.items():
             for obj in objects:
@@ -99,7 +109,7 @@ class Bag:
         self.dicts.clear()
         return result
 
-    def _process_object(self, obj, process_related=True):
+    def _process_object(self, obj: Entity, process_related: bool = True) -> None:
         entity = obj.__class__
         try:
             attrs, related_objects = self.entity_configs[entity]
@@ -140,12 +150,14 @@ class Bag:
         )
 
 
-def to_dict(objects):
+def to_dict(
+    objects: Entity | Sequence[Entity],
+) -> dict[str, dict[Any, dict[str, Any]]]:
     if isinstance(objects, Entity):
         objects = [objects]
-    objects = iter(objects)
+    objects_iter = iter(objects)
     try:
-        first_object = next(objects)
+        first_object = next(objects_iter)
     except StopIteration:
         return {}
     if not isinstance(first_object, Entity):
@@ -157,7 +169,7 @@ def to_dict(objects):
     database = first_object._database_
     bag = Bag(database)
     bag.put(first_object)
-    bag.put(objects)
+    bag.put(objects_iter)
     return dict(bag.to_dict())
 
 

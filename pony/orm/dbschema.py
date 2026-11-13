@@ -1,17 +1,46 @@
+from __future__ import annotations
+
 from operator import attrgetter
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, cast
 
 from pony.orm import core
 from pony.orm.core import DBSchemaError, MappingError, log_sql
 from pony.py23compat import int_types
 from pony.utils import throw
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import _typeshed
+    from typing_extensions import Self
+
+    from pony.orm.core import (
+        Attribute,
+        DbConnection,
+        EntityMeta,
+        TableName,
+    )
+    from pony.orm.dbapiprovider import Converter, DBAPIProvider
+
 
 class DBSchema:
-    dialect = None
-    inline_fk_syntax = True
-    named_foreign_keys = True
+    provider: DBAPIProvider
+    tables: dict[TableName, Table]
+    constraints: dict[str, Constraint]
+    indent: str
+    command_separator: str
+    uppercase: bool
+    names: dict[TableName, Table]
 
-    def __init__(self, provider, uppercase=True):
+    dialect: ClassVar[str | _typeshed.MaybeNone] = None
+    inline_fk_syntax: ClassVar[bool] = True
+    named_foreign_keys: ClassVar[bool] = True
+    table_class: ClassVar[type[Table]]
+    column_class: ClassVar[type[Column]]
+    index_class: ClassVar[type[DBIndex]]
+    fk_class: ClassVar[type[ForeignKey]]
+
+    def __init__(self, provider: DBAPIProvider, uppercase: bool = True) -> None:
         self.provider = provider
         self.tables = {}
         self.constraints = {}
@@ -20,11 +49,11 @@ class DBSchema:
         self.uppercase = uppercase
         self.names = {}
 
-    def column_list(self, columns):
+    def column_list(self, columns: Sequence[Column]) -> str:
         quote_name = self.provider.quote_name
         return "(%s)" % ", ".join(quote_name(column.name) for column in columns)
 
-    def case(self, s):
+    def case(self, s: str) -> str:
         if self.uppercase:
             return (
                 s.upper()
@@ -36,12 +65,14 @@ class DBSchema:
         else:
             return s.lower()
 
-    def add_table(self, table_name, entity=None):
+    def add_table(
+        self, table_name: TableName, entity: EntityMeta | None = None
+    ) -> Table:
         return self.table_class(table_name, self, entity)
 
-    def order_tables_to_create(self):
+    def order_tables_to_create(self) -> list[Table | Any]:
         tables = []
-        created_tables = set()
+        created_tables: set[Table] = set()
         split = self.provider.split_table_name
         tables_to_create = sorted(
             self.tables.values(), key=lambda table: split(table.name)
@@ -57,25 +88,25 @@ class DBSchema:
             tables.append(table)
         return tables
 
-    def generate_create_script(self):
-        created_tables = set()
+    def generate_create_script(self) -> str:
+        created_tables: set[Table] = set()
         commands = []
         for table in self.order_tables_to_create():
             for db_object in table.get_objects_to_create(created_tables):
                 commands.append(db_object.get_create_command())
         return self.command_separator.join(commands)
 
-    def create_tables(self, provider, connection):
-        created_tables = set()
+    def create_tables(self, provider: DBAPIProvider, connection: DbConnection) -> None:
+        created_tables: set[Table] = set()
         for table in self.order_tables_to_create():
             for db_object in table.get_objects_to_create(created_tables):
-                base_name = provider.base_name(db_object.name)
+                base_name = provider.base_name(db_object.name)  # pyright: ignore[reportArgumentType]
                 name = db_object.exists(provider, connection, case_sensitive=False)
                 if name is None:
                     db_object.create(provider, connection)
                 elif name != base_name:
                     quote_name = self.provider.quote_name
-                    n1, n2 = quote_name(db_object.name), quote_name(name)
+                    n1, n2 = quote_name(db_object.name), quote_name(name)  # pyright: ignore[reportArgumentType]
                     tn1, tn2 = db_object.typename, db_object.typename.lower()
                     throw(
                         DBSchemaError,
@@ -84,7 +115,7 @@ class DBSchema:
                         "Try to delete %s %s first." % (tn1, n1, tn2, n2, n2, tn2),
                     )
 
-    def check_tables(self, provider, connection):
+    def check_tables(self, provider: DBAPIProvider, connection: DbConnection) -> None:
         cursor = connection.cursor()
         split = provider.split_table_name
         for table in sorted(self.tables.values(), key=lambda table: split(table.name)):
@@ -104,9 +135,13 @@ class DBSchema:
             provider.execute(cursor, sql)
 
 
+class _DBObjectWithCreateCommand(Protocol):
+    def get_create_command(self) -> str: ...
+
+
 class DBObject:
-    def create(self, provider, connection):
-        sql = self.get_create_command()
+    def create(self, provider: DBAPIProvider, connection: DbConnection) -> None:
+        sql = cast("_DBObjectWithCreateCommand", self).get_create_command()
         if core.local.debug:
             log_sql(sql)
         cursor = connection.cursor()
@@ -116,7 +151,11 @@ class DBObject:
 class Table(DBObject):
     typename = "Table"
 
-    def __init__(self, name, schema, entity=None):
+    pk_index: DBIndex | None
+
+    def __init__(
+        self, name: TableName, schema: DBSchema, entity: EntityMeta | None = None
+    ) -> None:
         if name in schema.tables:
             throw(DBSchemaError, "Table %r already exists in database schema" % name)
         if name in schema.names:
@@ -128,24 +167,24 @@ class Table(DBObject):
         schema.names[name] = self
         self.schema = schema
         self.name = name
-        self.column_list = []
-        self.column_dict = {}
-        self.indexes = {}
+        self.column_list: list[Column] = []
+        self.column_dict: dict[str, Column] = {}
+        self.indexes: dict[tuple[Column, ...], DBIndex] = {}
         self.pk_index = None
-        self.foreign_keys = {}
-        self.parent_tables = set()
-        self.child_tables = set()
-        self.entities = set()
-        self.options = {}
+        self.foreign_keys: dict[tuple[Column, ...], ForeignKey] = {}
+        self.parent_tables: set[Table] = set()
+        self.child_tables: set[Table] = set()
+        self.entities: set[EntityMeta] = set()
+        self.options: dict[str, object] = {}
         if entity is not None:
             self.entities.add(entity)
             self.options = entity._table_options_
-        self.m2m = set()
+        self.m2m: set[Attribute] = set()
 
     def __repr__(self):
         return "<Table(%s)>" % self.schema.provider.format_table_name(self.name)
 
-    def add_entity(self, entity):
+    def add_entity(self, entity: EntityMeta) -> None:
         for e in self.entities:
             if e._root_ is not entity._root_:
                 throw(
@@ -157,10 +196,15 @@ class Table(DBObject):
         assert "_table_options_" not in entity.__dict__
         self.entities.add(entity)
 
-    def exists(self, provider, connection, case_sensitive=True):
+    def exists(
+        self,
+        provider: DBAPIProvider,
+        connection: DbConnection,
+        case_sensitive: bool = True,
+    ) -> str | None:
         return provider.table_exists(connection, self.name, case_sensitive)
 
-    def get_create_command(self):
+    def get_create_command(self) -> str:
         schema = self.schema
         case = schema.case
         provider = schema.provider
@@ -173,7 +217,7 @@ class Table(DBObject):
             cmd.append(case("CREATE TABLE IF NOT EXISTS %s (") % quote_name(self.name))
         for column in self.column_list:
             cmd.append(schema.indent + column.get_sql() + ",")
-        if len(self.pk_index.columns) > 1:
+        if self.pk_index and len(self.pk_index.columns) > 1:
             cmd.append(schema.indent + self.pk_index.get_sql() + ",")
         indexes = [
             index
@@ -187,7 +231,7 @@ class Table(DBObject):
             cmd.append(schema.indent + index.get_sql() + ",")
         if not schema.named_foreign_keys:
             for foreign_key in sorted(
-                self.foreign_keys.values(), key=lambda fk: fk.name
+                self.foreign_keys.values(), key=lambda fk: fk.name or ""
             ):
                 if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1:
                     continue
@@ -220,11 +264,13 @@ class Table(DBObject):
             return None
         return "%s %s" % (name, value)
 
-    def get_objects_to_create(self, created_tables=None):
+    def get_objects_to_create(
+        self, created_tables: set[Self] | None = None
+    ) -> Sequence[Table | DBIndex | ForeignKey]:
         if created_tables is None:
             created_tables = set()
         created_tables.add(self)
-        result = [self]
+        result: list[Self | DBIndex | ForeignKey] = [self]
         indexes = [
             index
             for index in self.indexes.values()
@@ -237,7 +283,7 @@ class Table(DBObject):
         schema = self.schema
         if schema.named_foreign_keys:
             for foreign_key in sorted(
-                self.foreign_keys.values(), key=lambda fk: fk.name
+                self.foreign_keys.values(), key=lambda fk: fk.name or ""
             ):
                 if foreign_key.parent_table not in created_tables:
                     continue
@@ -246,7 +292,7 @@ class Table(DBObject):
                 if child_table not in created_tables:
                     continue
                 for foreign_key in sorted(
-                    child_table.foreign_keys.values(), key=lambda fk: fk.name
+                    child_table.foreign_keys.values(), key=lambda fk: fk.name or ""
                 ):
                     if foreign_key.parent_table is not self:
                         continue
@@ -254,13 +300,25 @@ class Table(DBObject):
         return result
 
     def add_column(
-        self, column_name, sql_type, converter, is_not_null=None, sql_default=None
-    ):
+        self,
+        column_name: str,
+        sql_type: str,
+        converter: Converter,
+        is_not_null: bool | None = None,
+        sql_default: str | bool | None = None,
+    ) -> Column:
         return self.schema.column_class(
             column_name, self, sql_type, converter, is_not_null, sql_default
         )
 
-    def add_index(self, index_name, columns, is_pk=False, is_unique=None, m2m=False):
+    def add_index(
+        self,
+        index_name: str | bool | None,
+        columns: tuple[Column, ...],
+        is_pk: bool | Literal["auto"] = False,
+        is_unique: bool | None = None,
+        m2m: bool = False,
+    ) -> DBIndex:
         assert index_name is not False
         if index_name is True:
             index_name = None
@@ -285,14 +343,14 @@ class Table(DBObject):
 
     def add_foreign_key(
         self,
-        fk_name,
-        child_columns,
-        parent_table,
-        parent_columns,
-        index_name=None,
-        on_delete=False,
-        interleave=False,
-    ):
+        fk_name: str | None,
+        child_columns: tuple[Column, ...],
+        parent_table: Self,
+        parent_columns: tuple[Column, ...],
+        index_name: str | bool | None = None,
+        on_delete: str | bool | None = False,
+        interleave: bool | None = False,
+    ) -> ForeignKey:
         if fk_name is None:
             provider = self.schema.provider
             child_column_names = tuple(column.name for column in child_columns)
@@ -312,11 +370,27 @@ class Table(DBObject):
 
 
 class Column:
-    auto_template = "%(type)s PRIMARY KEY AUTOINCREMENT"
+    table: Table
+    name: str
+    sql_type: str
+    converter: Converter
+    is_not_null: bool | None
+    sql_default: str | bool | None
+    is_pk: bool | Literal["auto"]
+    is_pk_part: bool
+    is_unique: bool
+
+    auto_template: ClassVar[str | None] = "%(type)s PRIMARY KEY AUTOINCREMENT"
 
     def __init__(
-        self, name, table, sql_type, converter, is_not_null=None, sql_default=None
-    ):
+        self,
+        name: str,
+        table: Table,
+        sql_type: str,
+        converter: Converter,
+        is_not_null: bool | None = None,
+        sql_default: str | bool | None = None,
+    ) -> None:
         if name in table.column_dict:
             throw(
                 DBSchemaError,
@@ -337,12 +411,12 @@ class Column:
     def __repr__(self):
         return "<Column(%s.%s)>" % (self.table.name, self.name)
 
-    def get_sql(self):
+    def get_sql(self) -> str:
         table = self.table
         schema = table.schema
         quote_name = schema.provider.quote_name
         case = schema.case
-        result = []
+        result: list[str] = []
         append = result.append
         append(quote_name(self.name))
 
@@ -383,21 +457,28 @@ class Column:
 
 
 class Constraint(DBObject):
-    def __init__(self, name, schema):
+    def __init__(self, name: str | None, schema: DBSchema) -> None:
         if name is not None:
             assert name not in schema.names
             if name in schema.constraints:
                 throw(DBSchemaError, "Constraint with name %r already exists" % name)
-            schema.names[name] = self
+            schema.names[name] = self  # pyright: ignore[reportArgumentType]
             schema.constraints[name] = self
         self.schema = schema
         self.name = name
 
 
 class DBIndex(Constraint):
-    typename = "Index"
+    typename: ClassVar[str] = "Index"
 
-    def __init__(self, name, table, columns, is_pk=False, is_unique=None):
+    def __init__(
+        self,
+        name: str | None,
+        table: Table,
+        columns: tuple[Column, ...],
+        is_pk: bool | Literal["auto"] = False,
+        is_unique: bool | None = None,
+    ) -> None:
         assert len(columns) > 0
         for column in columns:
             if column.table is not table:
@@ -451,22 +532,30 @@ class DBIndex(Constraint):
         self.is_pk = is_pk
         self.is_unique = is_unique
 
-    def exists(self, provider, connection, case_sensitive=True):
+    def exists(
+        self,
+        provider: DBAPIProvider,
+        connection: DbConnection,
+        case_sensitive: bool = True,
+    ) -> str | None:
         return provider.index_exists(
-            connection, self.table.name, self.name, case_sensitive
+            connection,
+            self.table.name,
+            self.name,  # pyright: ignore[reportArgumentType]
+            case_sensitive,
         )
 
-    def get_sql(self):
+    def get_sql(self) -> str:
         return self._get_create_sql(inside_table=True)
 
-    def get_create_command(self):
+    def get_create_command(self) -> str:
         return self._get_create_sql(inside_table=False)
 
-    def _get_create_sql(self, inside_table):
+    def _get_create_sql(self, inside_table: bool) -> str:
         schema = self.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        cmd = []
+        cmd: list[str] = []
         append = cmd.append
         if not inside_table:
             if self.is_pk:
@@ -480,7 +569,7 @@ class DBIndex(Constraint):
             append(case("INDEX"))
             # if schema.provider.index_if_not_exists_syntax:
             #     append(case('IF NOT EXISTS'))
-            append(quote_name(self.name))
+            append(quote_name(self.name))  # pyright: ignore[reportArgumentType]
             append(case("ON"))
             append(quote_name(self.table.name))
             converter = self.columns[0].converter
@@ -504,19 +593,19 @@ class DBIndex(Constraint):
 
 
 class ForeignKey(Constraint):
-    typename = "Foreign key"
+    typename: ClassVar[str] = "Foreign key"
 
     def __init__(
         self,
-        name,
-        child_table,
-        child_columns,
-        parent_table,
-        parent_columns,
-        index_name,
-        on_delete,
-        interleave=False,
-    ):
+        name: str,
+        child_table: Table,
+        child_columns: tuple[Column, ...],
+        parent_table: Table,
+        parent_columns: tuple[Column, ...],
+        index_name: str | bool | None,
+        on_delete: str | bool | None,
+        interleave: bool | None = False,
+    ) -> None:
         schema = parent_table.schema
         if schema is not child_table.schema:
             throw(
@@ -587,17 +676,17 @@ class ForeignKey(Constraint):
             connection, self.child_table.name, self.name, case_sensitive
         )
 
-    def get_sql(self):
+    def get_sql(self) -> str:
         return self._get_create_sql(inside_table=True)
 
-    def get_create_command(self):
+    def get_create_command(self) -> str:
         return self._get_create_sql(inside_table=False)
 
-    def _get_create_sql(self, inside_table):
+    def _get_create_sql(self, inside_table: bool) -> str:
         schema = self.schema
         case = schema.case
         quote_name = schema.provider.quote_name
-        cmd = []
+        cmd: list[str] = []
         append = cmd.append
         if not inside_table:
             append(case("ALTER TABLE"))
