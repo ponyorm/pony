@@ -352,7 +352,8 @@ class MySQLProvider(DBAPIProvider):
                 conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]  # pyright: ignore[reportArgumentType]
 
             def encode_timedelta(val, encoders=None):
-                return string_literal(timedelta2str(val), encoders)  # pyright: ignore[reportCallIssue]
+                # MySQLdb's string_literal takes exactly one argument
+                return string_literal(timedelta2str(val))
 
             conv[timedelta] = encode_timedelta
             conv[FIELD_TYPE.TIMESTAMP] = str2datetime
