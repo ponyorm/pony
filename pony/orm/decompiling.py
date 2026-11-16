@@ -1308,8 +1308,8 @@ class Decompiler:
     def UNARY_NOT(self) -> ast_module.UnaryOp:
         return ast.UnaryOp(op=ast.Not(), operand=self.stack.pop())
 
-    def UNARY_INVERT(self) -> ast_module.Invert:
-        return ast.Invert(self.stack.pop())  # type: ignore[call-arg]
+    def UNARY_INVERT(self) -> ast_module.UnaryOp:
+        return ast.UnaryOp(op=ast.Invert(), operand=self.stack.pop())
 
     def UNPACK_SEQUENCE(self, count: int) -> ast_module.Assign:
         ass_tuple = ast.Assign(
@@ -1413,6 +1413,7 @@ test_lines: str = """
     (a for a in T if a.b is not None or a.b == c)
     (a for a in T if a.b is None and a.c == d)
     (a for a in T if a.b is not None and a.c == d)
+    (a for b in T if ~b == 5)
 """
 ##   should throw InvalidQuery due to using [] inside of a query
 ##   (a for a in T1 if a in [b for b in T2 if b in [(c, d) for c in T3]])

@@ -296,8 +296,8 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         return unaryop_src("+", node)
 
     @priority(4)
-    def postInvert(self, node):
-        return "~" + node.expr.src
+    def postInvert(self, node: ast.UnaryOp) -> str:
+        return "~" + node.operand.src  # type: ignore[attr-defined]
 
     @priority(3)
     def postPow(self, node: ast.BinOp) -> str:
@@ -393,7 +393,7 @@ class PythonTranslator(ASTTranslator[ast.AST]):
 
     def postSet(self, node):
         node.priority = 1
-        return "{%s}" % ", ".join(item.src for item in node.nodes)
+        return "{%s}" % ", ".join(item.src for item in node.elts)
 
     def postName(self, node: ast.Name) -> str:
         node.priority = 1  # type: ignore[attr-defined]

@@ -1291,7 +1291,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             throw(
                 TranslationError,
                 "Delete query should be applied to a single entity. Got: %s"
-                % ast2src(self.tree.expr),  # type: ignore[attr-defined]
+                % ast2src(self.tree.elt),
             )
         assert isinstance(entity, EntityMeta)
         force_in = False
@@ -1687,11 +1687,12 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         for arg in node.args:
             if isinstance(arg, ast.Starred):
                 throw(NotImplementedError, "%s is not supported" % ast2src(arg))
-        if any(kwarg.arg is None for kwarg in node.keywords):
-            throw(
-                NotImplementedError,
-                "**%s is not supported" % ast2src(node.dstar_args),  # type: ignore[attr-defined]
-            )
+        for kwarg in node.keywords:
+            if kwarg.arg is None:
+                throw(
+                    NotImplementedError,
+                    "**%s is not supported" % ast2src(kwarg.value),
+                )
         func_node = node.func
         if isinstance(func_node, ast.Call):
             if isinstance(func_node.func, ast.Name) and func_node.func.id == "getattr":

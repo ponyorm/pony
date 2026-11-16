@@ -296,6 +296,11 @@ class TestSQLTranslator(unittest.TestCase):
         result = select(s for s in Student if s.name in (n1, n2))[:]
         self.assertEqual(result, [Student[1], Student[2]])
 
+    def test_set_literal_with_variable(self):
+        n1 = "S1"
+        result = select(s for s in Student if s.name in {n1, "S2"})[:]
+        self.assertEqual(result, [Student[1], Student[2]])
+
     def test_None_value(self):
         result = select(s for s in Student if s.name is None)[:]
         self.assertEqual(result, [])
