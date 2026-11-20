@@ -195,8 +195,8 @@ def get_lambda_args(func: Callable | ast.Lambda) -> list[str]:
     if names is not None:
         return names
 
-    argsname: str | ast.arg | None
-    kwname: str | ast.arg | None
+    argsname: str | None
+    kwname: str | None
     if type(func) is types.FunctionType:
         if hasattr(inspect, "signature"):
             names, argsname, kwname, defaults = [], None, None, []
@@ -225,8 +225,8 @@ def get_lambda_args(func: Callable | ast.Lambda) -> list[str]:
         else:
             names, argsname, kwname, defaults = inspect.getargspec(func)  # type: ignore[assignment]
     elif isinstance(func, ast.Lambda):
-        argsname = func.args.vararg
-        kwname = func.args.kwarg
+        argsname = func.args.vararg.arg if func.args.vararg else None
+        kwname = func.args.kwarg.arg if func.args.kwarg else None
         defaults = func.args.defaults + func.args.kw_defaults
         names = [arg.arg for arg in func.args.args]
     else:

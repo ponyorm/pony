@@ -337,7 +337,7 @@ class DBAPIProvider:
         if isinstance(table_name, str):
             return self.default_schema_name, table_name
         if not table_name:
-            throw(TypeError, "Invalid table name: %r" % table_name)
+            throw(TypeError, "Invalid table name: %r" % (table_name,))
         if len(table_name) != 2:
             size = len(table_name)
             throw(

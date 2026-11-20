@@ -6518,7 +6518,7 @@ class EntityMeta(type):
                 throw(
                     TypeError,
                     "Interleave attribute should be part of relationship. Got: %r"
-                    % attr,  # pyright: ignore[reportPossiblyUnboundVariable]
+                    % interleave,
                 )
             setattr(cls, "_interleave_", interleave)  # noqa: B010
 

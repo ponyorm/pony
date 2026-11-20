@@ -157,14 +157,11 @@ class Table(DBObject):
         self, name: TableName, schema: DBSchema, entity: EntityMeta | None = None
     ) -> None:
         if name in schema.tables:
-            throw(
-                DBSchemaError,
-                "Table %r already exists in database schema" % name,  # type: ignore[str-format]
-            )
+            throw(DBSchemaError, "Table %r already exists in database schema" % (name,))
         if name in schema.names:
             throw(
                 DBSchemaError,
-                "Table %r cannot be created, name is already in use" % name,  # type: ignore[str-format]
+                "Table %r cannot be created, name is already in use" % (name,),
             )
         schema.tables[name] = self
         schema.names[name] = self
@@ -506,7 +503,7 @@ class DBIndex(Constraint):
             if table.pk_index is not None:
                 throw(
                     DBSchemaError,
-                    "Primary key for table %r is already defined" % table.name,  # type: ignore[str-format]
+                    "Primary key for table %r is already defined" % (table.name,),
                 )
             table.pk_index = self
             if is_unique is None:
