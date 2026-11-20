@@ -3,6 +3,7 @@ import re
 import sys
 import textwrap
 import unittest
+import warnings
 
 from pony.orm.asttranslation import ast2src
 from pony.orm.decompiling import Decompiler, test_lines
@@ -355,6 +356,13 @@ class TestDecompiler(unittest.TestCase):
 
         self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
         self.assertDecompilesTo(expr, expected_result)
+
+    def test_slice_has_no_deprecated_ctx(self):
+        # ast.Slice has no ctx field; passing one is deprecated since Python 3.13
+        code = compile("(a[1:2:3] for b in [])", "<?>", "eval").co_consts[0]
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            Decompiler(code)
 
     def test_f_string_conversion_and_format_spec(self):
         conversions = {"": -1, "!s": ord("s"), "!r": ord("r"), "!a": ord("a")}

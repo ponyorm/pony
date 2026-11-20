@@ -1,7 +1,8 @@
 import unittest
+import warnings
 
 from pony.orm.core import *
-from pony.orm.core import SessionCache, local
+from pony.orm.core import SessionCache, local, sql_debugging
 from pony.orm.tests import setup_database, teardown_database
 from pony.orm.tests.testutils import *
 
@@ -213,6 +214,39 @@ class TestGeneratorDbSession(unittest.TestCase):
         gen = f(1)
         next(gen)
         gen.throw(TypeError("error message"))
+
+    def test14(self):
+        # throw() must not use the deprecated (type, value, traceback) signature
+        @db_session
+        def f(id1):
+            assert self.Account is not None
+            a1 = self.Account[id1]
+            try:
+                yield a1.amount
+            except ValueError:
+                yield -1
+
+        gen = f(1)
+        next(gen)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            self.assertEqual(gen.throw(ValueError("error message")), -1)
+        gen.close()
+
+    def test15(self):
+        @sql_debugging
+        def f():
+            try:
+                yield 1
+            except ValueError:
+                yield -1
+
+        gen = f()
+        next(gen)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            self.assertEqual(gen.throw(ValueError("error message")), -1)
+        gen.close()
 
 
 if __name__ == "__main__":
