@@ -9,11 +9,6 @@ class Comparable(Protocol):
 
 
 PYPY: bool = platform.python_implementation() == "PyPy"
-PY36: bool = sys.version_info[:2] >= (3, 6)
-PY37: bool = sys.version_info[:2] >= (3, 7)
-PY38: bool = sys.version_info[:2] >= (3, 8)
-PY39: bool = sys.version_info[:2] >= (3, 9)
-PY310: bool = sys.version_info[:2] >= (3, 10)
 PY311: bool = sys.version_info[:2] >= (3, 11)
 PY312: bool = sys.version_info[:2] >= (3, 12)
 PY313: bool = sys.version_info[:2] >= (3, 13)

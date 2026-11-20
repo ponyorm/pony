@@ -20,11 +20,6 @@ from opcode import opname as opnames
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from pony.py23compat import (
-    PY36,
-    PY37,
-    PY38,
-    PY39,
-    PY310,
     PY311,
     PY312,
     PY313,
@@ -163,57 +158,17 @@ def clean_assign(node: ast.expr | ast.Assign) -> ast.expr:
 
 def make_const(
     value: _ConstValue | tuple[_ConstValue, ...] | tuple[tuple, ...] | slice,
-) -> ast.Constant | ast.Tuple | ast.Slice:
-    if is_const(value):  # type: ignore[arg-type]
-        assert isinstance(value, ast.Constant)
-        return value
-    if PY314:
-        if isinstance(value, slice):
-            return slice_to_ast(value)
-    if PY39:
-        return ast.Constant(value)  # type: ignore[arg-type]
-    elif PY38:
-        return ast.Constant(value, kind=None)  # type: ignore[arg-type]
-    elif isinstance(value, (int, float)):
-        return ast.Num(value)
-    elif isinstance(value, str):
-        return ast.Str(value)
-    elif isinstance(value, bytes):
-        return ast.Bytes(value)
-    elif isinstance(value, tuple):
-        return ast.Tuple([make_const(elt) for elt in value], ast.Load())
-    elif value in (True, False, None):
-        return ast.NameConstant(value)  # type: ignore[call-arg]
-    elif isinstance(value, types.CodeType):
-        return ast.Constant(value)
-    elif value is Ellipsis:
-        if PY39:
-            return ast.Constant(value)  # pyright: ignore[reportArgumentType]
-        elif PY38:
-            return ast.Constant(value, kind=None)  # pyright: ignore[reportArgumentType]
-        else:
-            return ast.Constant(value)  # pyright: ignore[reportArgumentType]
-    assert False, value
-
-
-def is_const(value: _ConstValue | tuple[_ConstValue, ...] | tuple[tuple, ...]) -> bool:
+) -> ast.Constant | ast.Slice:
     if isinstance(value, ast.Constant):
-        return True
-    if PY38:
-        return False
-    if isinstance(value, (ast.Num, ast.Str, ast.Bytes)):
-        return True
-    if isinstance(value, ast.Tuple):
-        return all(is_const(elt) for elt in value.elts)  # pyright: ignore[reportArgumentType]
-    return False
+        return value
+    if PY314 and isinstance(value, slice):
+        return slice_to_ast(value)
+    return ast.Constant(value)  # type: ignore[arg-type]
 
 
-def unwrap_str(key: str | ast.Str) -> str | ast._ConstantValue:
-    if PY38:
-        assert isinstance(key, str)
-        return key
-    assert isinstance(key, ast.Str)
-    return key.s
+def unwrap_str(key: object) -> str:
+    assert isinstance(key, str)
+    return key
 
 
 def slice_to_ast(value: slice) -> ast.Slice:
@@ -274,33 +229,21 @@ class Decompiler:
     def get_instructions(self) -> None:
         before_yield = True
         code = self.code
-        co_code = code.co_code
         free = code.co_cellvars + code.co_freevars
         self.abs_jump_to_top = self.for_iter_pos = -1
         while self.pos < self.end:
             i = self.pos
             op = code.co_code[i]
             oparg: int | None = None
-            if PY36:
-                extended_arg = 0
-                oparg = code.co_code[i + 1]
-                while op == EXTENDED_ARG:
-                    extended_arg = (extended_arg | oparg) << 8
-                    i += 2
-                    op = code.co_code[i]
-                    oparg = code.co_code[i + 1]
-                oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
+            extended_arg = 0
+            oparg = code.co_code[i + 1]
+            while op == EXTENDED_ARG:
+                extended_arg = (extended_arg | oparg) << 8
                 i += 2
-            else:
-                i += 1
-                if op >= HAVE_ARGUMENT:
-                    oparg = co_code[i] + co_code[i + 1] * 256
-                    i += 2
-                    if op == EXTENDED_ARG:
-                        op = code.co_code[i]
-                        i += 1
-                        oparg = co_code[i] + co_code[i + 1] * 256 + oparg * 65536
-                        i += 2
+                op = code.co_code[i]
+                oparg = code.co_code[i + 1]
+            oparg = None if op < HAVE_ARGUMENT else oparg | extended_arg
+            i += 2
 
             # CACHE bytes have inconvenient placement in py3.13, so we need to skip them
             while i < len(code.co_code) and opnames[code.co_code[i]] == "CACHE":
@@ -327,12 +270,7 @@ class Decompiler:
                     else:
                         arg = [code.co_names[oparg]]
                 elif op in hasjrel:
-                    arg = [
-                        i
-                        + oparg
-                        * (2 if PY310 else 1)
-                        * (-1 if "BACKWARD" in opname else 1)
-                    ]
+                    arg = [i + oparg * 2 * (-1 if "BACKWARD" in opname else 1)]
                 elif op in haslocal:
                     if opname in double_load_store_ops:
                         # py3.13: 2 4bit args
@@ -356,7 +294,7 @@ class Decompiler:
                         oparg -= len(code.co_varnames)
                     arg = [free[oparg]]
                 elif op in hasjabs:
-                    arg = [oparg * (2 if PY310 else 1)]
+                    arg = [oparg * 2]
                 else:
                     arg = [oparg]
             elif (
@@ -600,24 +538,13 @@ class Decompiler:
         ):
             # py3.14 has a different format for constant tuple of slices
             node2 = ast.Tuple(elts=[slice_to_ast(value) for value in node2.value])  # pyright: ignore[reportArgumentType]
-        elif not PY38:
-            if isinstance(node2, ast.Tuple) and any(
-                isinstance(item, ast.Slice) for item in node2.elts
-            ):
-                node2 = ast.ExtSlice(node2.elts)  # type: ignore[arg-type]
-            else:
-                node2 = ast.Index(node2)
-        return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())  # pyright: ignore[reportArgumentType]
+        return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
     def BUILD_CONST_KEY_MAP(self, length: int) -> ast_module.Dict:
         keys = self.stack.pop()
-        if PY38:
-            assert isinstance(keys, ast.Constant), keys
-            assert isinstance(keys.value, (tuple, list))
-            keys = [make_const(key) for key in keys.value]
-        else:
-            assert isinstance(keys, ast.Tuple) and is_const(keys), keys  # type: ignore[arg-type]
-            keys = [make_const(key) for key in keys.elts]  # type: ignore[arg-type]
+        assert isinstance(keys, ast.Constant), keys
+        assert isinstance(keys.value, (tuple, list))
+        keys = [make_const(key) for key in keys.value]
 
         values = self.pop_items(length)
         return ast.Dict(keys=keys, values=values)  # pyright: ignore[reportArgumentType]
@@ -639,13 +566,6 @@ class Decompiler:
 
     def BUILD_SLICE(self, size: int) -> ast_module.Slice:
         items = cast("list[ast.expr | None]", self.pop_items(size))
-        if not PY38:
-            items = [
-                None
-                if isinstance(item, ast.NameConstant) and item.value is None
-                else item
-                for item in items
-            ]
         items += [None] * (3 - len(items))
         return ast.Slice(*items)
 
@@ -674,7 +594,7 @@ class Decompiler:
         for _i in range(kwarg):
             arg = pop()
             key = cast("ast.Constant", pop()).value
-            keywords.append(ast.keyword(unwrap_str(key), arg))  # type: ignore[arg-type]
+            keywords.append(ast.keyword(unwrap_str(key), arg))
         keywords.reverse()
         args = []
         for _i in range(posarg):
@@ -739,18 +659,13 @@ class Decompiler:
 
     def CALL_FUNCTION_KW(self, argc: int) -> ast_module.Call | ast_module.GeneratorExp:
         keys = self.stack.pop()
-        assert is_const(keys), keys  # type: ignore[arg-type]
-        if PY38:
-            assert isinstance(keys, ast.Constant)
-            keys = keys.value
-        else:
-            assert isinstance(keys, ast.Tuple)
-            keys = keys.elts
+        assert isinstance(keys, ast.Constant), keys
+        keys = keys.value
         values = self.pop_items(argc)
         assert len(keys) <= len(values)  # type: ignore[arg-type]
         args = values[: -len(keys)]  # type: ignore[arg-type]
         keywords = [
-            ast.keyword(unwrap_str(k), v)  # type: ignore[arg-type]
+            ast.keyword(unwrap_str(k), v)
             for k, v in zip(keys, values[-len(keys) :])  # type: ignore[arg-type]
         ]
         return self._call_function(args, keywords)
@@ -890,22 +805,6 @@ class Decompiler:
     JUMP_IF_TRUE_OR_POP = JUMP_IF_TRUE
 
     def conditional_jump(self, endpos: int, if_true: bool) -> ast_module.BoolOp:
-        if PY37 or PYPY:
-            return self.conditional_jump_new(endpos, if_true)
-        return self.conditional_jump_old(endpos, if_true)
-
-    def conditional_jump_old(self, endpos: int, if_true: bool) -> ast_module.BoolOp:
-        i = self.next_pos
-        if i in self.targets:
-            self.process_target(i)
-        expr = self.stack.pop()
-        clausetype = ast.Or if if_true else ast.And
-        clause = ast.BoolOp(op=clausetype(), values=[expr])
-        clause.endpos = endpos  # type: ignore[attr-defined]
-        self.targets.setdefault(endpos, clause)
-        return clause
-
-    def conditional_jump_new(self, endpos: int, if_true: bool) -> ast_module.BoolOp:
         expr = self.stack.pop()
         if self.pos >= self.conditions_end:
             clausetype = ast.Or if if_true else ast.And
@@ -1418,13 +1317,9 @@ test_lines: str = """
 
 
 def test(test_line: int | None = None) -> None:
-    import sys
-
-    if sys.version[:3] > "2.4":
-        outmost_iterable_name = ".0"
-    else:
-        outmost_iterable_name = "[outmost-iterable]"
     import dis
+
+    outmost_iterable_name = ".0"
 
     for i, line in enumerate(test_lines.split("\n")):
         if test_line is not None and i != test_line:

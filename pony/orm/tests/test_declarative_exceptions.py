@@ -1,4 +1,3 @@
-import sys
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -260,10 +259,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         ExprEvalError,
         "`max()` raises TypeError: max() expects at least one argument"
         if PYPY
-        else "`max()` raises TypeError: max expected 1 arguments, got 0"
-        if sys.version_info[:2] < (3, 8)
-        else "`max()` raises TypeError: max expected 1 argument, got 0"
-        if sys.version_info[:2] < (3, 9)
         else "`max()` raises TypeError: max expected at least 1 argument, got 0",
     )
     def test31(self):

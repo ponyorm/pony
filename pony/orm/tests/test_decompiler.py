@@ -1,6 +1,5 @@
 import ast
 import re
-import sys
 import textwrap
 import unittest
 import warnings
@@ -124,10 +123,6 @@ class TestDecompiler(unittest.TestCase):
         self.assertEqual(ast.dump(expected), ast.dump(actual))
 
     def assertDecompilesTo(self, src, expected):
-        # skip test due to ast.dump has no indent parameter
-        if sys.version_info[:2] <= (3, 8):  # noqa: UP036
-            return
-
         code = compile(src, "<?>", "eval").co_consts[0]
         # import dis
         # print(dis.dis(code))

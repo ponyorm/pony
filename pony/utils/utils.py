@@ -198,32 +198,29 @@ def get_lambda_args(func: Callable | ast.Lambda) -> list[str]:
     argsname: str | None
     kwname: str | None
     if type(func) is types.FunctionType:
-        if hasattr(inspect, "signature"):
-            names, argsname, kwname, defaults = [], None, None, []
-            for p in inspect.signature(func).parameters.values():
-                if p.default is not p.empty:
-                    defaults.append(p.default)
+        names, argsname, kwname, defaults = [], None, None, []
+        for p in inspect.signature(func).parameters.values():
+            if p.default is not p.empty:
+                defaults.append(p.default)
 
-                if p.kind == p.POSITIONAL_OR_KEYWORD:
-                    names.append(p.name)
-                elif p.kind == p.VAR_POSITIONAL:
-                    argsname = p.name
-                elif p.kind == p.VAR_KEYWORD:
-                    kwname = p.name
-                elif p.kind == p.POSITIONAL_ONLY:
-                    throw(
-                        TypeError,
-                        "Positional-only arguments like %s are not supported" % p.name,
-                    )
-                elif p.kind == p.KEYWORD_ONLY:
-                    throw(
-                        TypeError,
-                        "Keyword-only arguments like %s are not supported" % p.name,
-                    )
-                else:
-                    assert False
-        else:
-            names, argsname, kwname, defaults = inspect.getargspec(func)  # type: ignore[assignment]
+            if p.kind == p.POSITIONAL_OR_KEYWORD:
+                names.append(p.name)
+            elif p.kind == p.VAR_POSITIONAL:
+                argsname = p.name
+            elif p.kind == p.VAR_KEYWORD:
+                kwname = p.name
+            elif p.kind == p.POSITIONAL_ONLY:
+                throw(
+                    TypeError,
+                    "Positional-only arguments like %s are not supported" % p.name,
+                )
+            elif p.kind == p.KEYWORD_ONLY:
+                throw(
+                    TypeError,
+                    "Keyword-only arguments like %s are not supported" % p.name,
+                )
+            else:
+                assert False
     elif isinstance(func, ast.Lambda):
         argsname = func.args.vararg.arg if func.args.vararg else None
         kwname = func.args.kwarg.arg if func.args.kwarg else None

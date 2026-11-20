@@ -79,7 +79,7 @@ from pony.orm.ormtypes import (
     numeric_types,
     raw_sql,
 )
-from pony.py23compat import PY310, buffer, int_types
+from pony.py23compat import buffer, int_types
 from pony.utils import (
     IntegerGenerator,
     between,
@@ -1584,20 +1584,6 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             value = tuple(sorted(value))
         return ConstMonad.new(cast("Any", value))
 
-    def postNameConstant(self, node: ast.NameConstant) -> ConstMonad:  # Python <= 3.7
-        if node.value is None:
-            return ConstMonad.new(None)
-        return ConstMonad.new(cast("bool", node.value))
-
-    def postNum(self, node: ast.Num) -> NumericConstMonad:  # Python <= 3.7
-        return ConstMonad.new(cast("int | float", node.n))
-
-    def postStr(self, node: ast.Str) -> StringConstMonad:  # Python <= 3.7
-        return ConstMonad.new(cast("str", node.s))
-
-    def postBytes(self, node: ast.Bytes) -> BufferConstMonad:  # Python <= 3.7
-        return ConstMonad.new(cast("bytes", node.s))
-
     def postList(self, node: ast.List) -> ListMonad:
         return ListMonad([item.monad for item in node.elts])  # type: ignore[attr-defined]
 
@@ -1797,9 +1783,6 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
 
     def postSlice(self, node: ast.Slice) -> None:
         return None
-
-    def postIndex(self, node):
-        return node.value.monad
 
     def postIfExp(self, node: ast.IfExp) -> ExprMonad:
         test_monad, then_monad, else_monad = (
@@ -2628,9 +2611,8 @@ def reraise_improved_typeerror(
     if not exc.args:
         throw(exc)
     msg = exc.args[0]
-    if PY310:
-        dot_index = msg.find(".") + 1
-        msg = msg[dot_index:]
+    dot_index = msg.find(".") + 1
+    msg = msg[dot_index:]
     if not msg.startswith(func_name):
         throw(exc)
     msg = msg[len(func_name) :]

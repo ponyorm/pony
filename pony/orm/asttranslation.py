@@ -4,7 +4,6 @@ import ast
 from functools import update_wrapper
 from typing import TYPE_CHECKING, Any, Generic, NoReturn, TypeVar, cast
 
-from pony.py23compat import PY38
 from pony.utils import throw
 
 if TYPE_CHECKING:
@@ -155,9 +154,6 @@ class PythonTranslator(ASTTranslator[ast.AST]):
             ifs = " ".join("if " + if_.src for if_ in node.ifs)  # type: ignore[attr-defined]
             src += " " + ifs
         return src
-
-    def postGenExprIf(self, node):
-        return "if %s" % node.test.src
 
     def postExpr(self, node: ast.Expr) -> str:
         return node.value.src  # type: ignore[attr-defined]
@@ -325,8 +321,6 @@ class PythonTranslator(ASTTranslator[ast.AST]):
     def postSubscript(self, node: ast.Subscript) -> str:
         node.priority = 2  # type: ignore[attr-defined]
         x = node.slice
-        if isinstance(x, ast.Index):
-            x = x.value  # type: ignore[attr-defined]
         if isinstance(x, ast.Tuple):
             key = ", ".join([elt.src for elt in x.elts])  # type: ignore[attr-defined]
         elif isinstance(x, ast.Constant) and isinstance(x.value, tuple):
@@ -334,9 +328,6 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         else:
             key = x.src  # type: ignore[attr-defined]
         return "%s[%s]" % (node.value.src, key)  # type: ignore[attr-defined]
-
-    def postIndex(self, node):  # Python <= 3.7
-        return node.value.src
 
     def postSlice(self, node: ast.Slice) -> str:
         result = []
@@ -358,21 +349,6 @@ class PythonTranslator(ASTTranslator[ast.AST]):
             if float(s) == value:
                 return s
         return repr(value)
-
-    def postNameConstant(self, node):  # Python <= 3.7
-        return repr(node.value)
-
-    def postNum(self, node):  # Python <= 3.7
-        node.priority = 1
-        return repr(node.n)
-
-    def postStr(self, node):  # Python <= 3.7
-        node.priority = 1
-        return repr(node.s)
-
-    def postBytes(self, node):  # Python <= 3.7
-        node.priority = 1
-        return repr(node.s)
 
     def postList(self, node: ast.List) -> str:
         node.priority = 1  # type: ignore[attr-defined]
@@ -405,8 +381,6 @@ class PythonTranslator(ASTTranslator[ast.AST]):
             if isinstance(item, ast.Constant):
                 assert isinstance(item.value, str)
                 result.append(item.value)
-            elif not PY38 and isinstance(item, ast.Str):  # Python 3.7
-                result.append(item.s)  # type: ignore[arg-type]
             elif isinstance(item, ast.FormattedValue):
                 if item.conversion == -1:
                     src = "{%s}" % item.value.src  # type: ignore[attr-defined]
@@ -536,15 +510,6 @@ class PreTranslator(ASTTranslator[ast.AST]):
     def postConstant(self, node: ast.Constant) -> None:
         node.external = node.constant = True  # type: ignore[attr-defined]
 
-    def postNum(self, node):  # Python <= 3.7
-        node.external = node.constant = True
-
-    def postStr(self, node):  # Python <= 3.7
-        node.external = node.constant = True
-
-    def postBytes(self, node):  # Python <= 3.7
-        node.external = node.constant = True
-
     def postDict(self, node: ast.Dict) -> None:
         node.external = True  # type: ignore[attr-defined]
 
@@ -553,9 +518,6 @@ class PreTranslator(ASTTranslator[ast.AST]):
 
     def postkeyword(self, node: ast.keyword) -> None:
         node.constant = node.value.constant  # type: ignore[attr-defined]
-
-    def postIndex(self, node):  # Python <= 3.7
-        node.constant = node.value.constant
 
     def postCall(self, node: ast.Call) -> None:
         func_node = node.func
