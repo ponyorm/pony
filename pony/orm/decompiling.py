@@ -840,23 +840,13 @@ class Decompiler:
         return ast.comprehension(target, iter, ifs, 0)
 
     def FORMAT_VALUE(self, flags: int) -> ast_module.FormattedValue:
-        conversion = -1
-        format_spec = None
-        if flags in (0, 1, 2, 3):
-            value = self.stack.pop()
-            if flags == 0:
-                conversion = -1
-            elif flags == 1:
-                conversion = ord("s")  # str conversion
-            elif flags == 2:
-                conversion = ord("r")  # repr conversion
-            elif flags == 3:
-                conversion = ord("a")  # ascii conversion
-        elif flags == 4:
-            format_spec = self.stack.pop()
-            value = self.stack.pop()
+        # The low two bits select the conversion, bit 2 tells that a format
+        # spec was pushed on top of the value.
+        conversion = (-1, ord("s"), ord("r"), ord("a"))[flags & 0x03]
+        format_spec = self.stack.pop() if flags & 0x04 else None
+        value = self.stack.pop()
         return ast.FormattedValue(
-            value=value,  # pyright: ignore[reportPossiblyUnboundVariable]
+            value=value,
             conversion=conversion,
             format_spec=format_spec,
         )

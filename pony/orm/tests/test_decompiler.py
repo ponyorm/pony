@@ -356,6 +356,24 @@ class TestDecompiler(unittest.TestCase):
         self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
         self.assertDecompilesTo(expr, expected_result)
 
+    def test_f_string_conversion_and_format_spec(self):
+        conversions = {"": -1, "!s": ord("s"), "!r": ord("r"), "!a": ord("a")}
+        for suffix, conversion in conversions.items():
+            for spec in ("", ":>5"):
+                src = '(f"{x%s%s}" for x in [])' % (suffix, spec)
+                with self.subTest(src=src):
+                    code = compile(src, "<?>", "eval").co_consts[0]
+                    node = Decompiler(code).ast
+                    assert isinstance(node, ast.GeneratorExp)
+                    value = node.elt
+                    assert isinstance(value, ast.FormattedValue)
+                    self.assertEqual(value.conversion, conversion)
+                    if spec:
+                        assert isinstance(value.format_spec, ast.Constant)
+                        self.assertEqual(value.format_spec.value, ">5")
+                    else:
+                        self.assertIsNone(value.format_spec)
+
 
 for i, gen in enumerate(generate_gens()):
     generated_test = create_test(gen)
