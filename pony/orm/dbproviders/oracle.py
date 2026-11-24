@@ -262,7 +262,8 @@ class OraBuilder(SQLBuilder):
         self.suppress_aliases = False
         try:
             last_section = sections[-1]
-            limit = offset = None
+            limit: Any = None
+            offset: Any = None
             if last_section[0] == "LIMIT":
                 limit = last_section[1]
                 if len(last_section) > 2:
@@ -863,7 +864,7 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
 class OraPool(Pool):
     forked_pools: list[tuple[cx_Oracle.SessionPool, int]] = []
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         self.kwargs: dict[str, Any] = kwargs
         self.cx_pool: cx_Oracle.SessionPool = cx_Oracle.SessionPool(**kwargs)
         self.pid: int = os.getpid()
@@ -905,7 +906,7 @@ def set_input_sizes(cursor, arguments) -> None:
                 input_sizes[name] = size
         cursor.setinputsizes(**input_sizes)
     elif type(arguments) is tuple:
-        input_sizes = map(get_inputsize, arguments)
-        cursor.setinputsizes(*input_sizes)
+        sizes = map(get_inputsize, arguments)
+        cursor.setinputsizes(*sizes)
     else:
         assert False, type(arguments)  # pragma: no cover

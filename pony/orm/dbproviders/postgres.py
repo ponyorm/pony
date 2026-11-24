@@ -65,7 +65,7 @@ class PGTranslator(SQLTranslator):
 
 
 class PGValue(Value):
-    __slots__ = []
+    __slots__: list[str] = []
 
     def __str__(self):
         value = self.value
@@ -213,10 +213,8 @@ class PGSQLBuilder(SQLBuilder):
             "::text",
         )
         if sep is not None:
-            result = result, ", ", self(sep)
-        else:
-            result = result, ", ','"
-        return result, ")"
+            return (result, ", ", self(sep)), ")"
+        return (result, ", ','"), ")"
 
     def ARRAY_INDEX(self, col, index):
         return self(col), "[", self(index), "]"
@@ -402,6 +400,7 @@ class PGProvider(DBAPIProvider):
             if returning_id:
                 row = cursor.fetchone()
                 return cast("int", row[0]) if row is not None else None
+        return None
 
     def table_exists(
         self,

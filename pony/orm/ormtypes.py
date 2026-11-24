@@ -23,6 +23,7 @@ from pony.utils import deref_proxy, parse_expr, throw
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
+    from types import CodeType
 
     from typing_extensions import Self
 
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
     from pony.orm.sqltranslation import SQLTranslator
 
 _FuncType: TypeAlias = "types.FunctionType | types.BuiltinFunctionType"
+_RawSQLItems: TypeAlias = "tuple[str | tuple[str, CodeType], ...]"
 
 _T = TypeVar("_T")
 _FT = TypeVar("_FT", bound=_FuncType)
@@ -140,19 +142,19 @@ class MethodType:
         return hash(self.obj) ^ hash(self.func)
 
 
-raw_sql_cache = {}
+raw_sql_cache: dict[str, tuple[_RawSQLItems, tuple[CodeType, ...]]] = {}
 
 
 def parse_raw_sql(
     sql: str,
-) -> tuple[tuple[str | tuple[str, types.CodeType], ...], tuple[types.CodeType, ...]]:
+) -> tuple[_RawSQLItems, tuple[CodeType, ...]]:
     result = raw_sql_cache.get(sql)
     if result is not None:
         return result
     if not isinstance(sql, str) or not sql:
         throw(TypeError, "Raw SQL string fragment expected. Got: %r" % sql)
-    items = []
-    codes = []
+    items: list[str | tuple[str, CodeType]] = []
+    codes: list[CodeType] = []
     pos = 0
     while True:
         try:
@@ -188,8 +190,8 @@ def raw_sql(sql: str, result_type: PyType | None = None) -> RawSQL:
 
 class RawSQL:
     sql: str
-    items: tuple[str | tuple[str, types.CodeType], ...]
-    codes: tuple[types.CodeType, ...]
+    items: _RawSQLItems
+    codes: tuple[CodeType, ...]
     types: tuple[type, ...]
     values: tuple[Any, ...]
     result_type: PyType | None
@@ -225,7 +227,7 @@ class RawSQL:
 
 class RawSQLType:
     sql: str
-    items: tuple[str | tuple[str, types.CodeType], ...]
+    items: _RawSQLItems
     types: tuple[type, ...]
     result_type: PyType | None
 
@@ -235,7 +237,7 @@ class RawSQLType:
     def __init__(
         self,
         sql: str,
-        items: tuple[str | tuple[str, types.CodeType], ...],
+        items: _RawSQLItems,
         types: tuple[type, ...],
         result_type: PyType | None,
     ) -> None:
@@ -397,7 +399,7 @@ def coerce_types(t1: type | SetType, t2: type | SetType) -> type | SetType | Non
     assert not isinstance(t1, SetType) and not isinstance(t2, SetType)
     result = coercions.get((t1, t2))
     if result is not None and is_set_type:
-        result = SetType(result)
+        return SetType(result)
     return result
 
 
@@ -449,6 +451,8 @@ def are_comparable_types(
                 return True
             if tt1 is not type or tt2 is not type:
                 return False
+            if TYPE_CHECKING:
+                assert isinstance(t1, type)
             assert isinstance(t2, type)
             if issubclass(t1, int_types) and issubclass(t2, str):
                 return True
@@ -456,10 +460,8 @@ def are_comparable_types(
                 return True
             return False
         if tt1.__name__ == tt2.__name__ == "EntityMeta":
-            if TYPE_CHECKING:
-                assert isinstance(t1, EntityMeta) and isinstance(t2, EntityMeta)
-
-            return t1._root_ is t2._root_
+            # mypy cannot narrow type[...] items to EntityMeta instances
+            return cast("EntityMeta", t1)._root_ is cast("EntityMeta", t2)._root_
         return False
     if t1 is t2 and t1 in comparable_types:
         return True
@@ -524,8 +526,8 @@ class TrackedDict(TrackedValue, dict):
     _update = tracked_method(dict.update)
 
     def update(self, *args, **kwargs) -> None:
-        args = [arg if isinstance(arg, dict) else dict(arg) for arg in args]
-        return self._update(*args, **kwargs)
+        dicts = [arg if isinstance(arg, dict) else dict(arg) for arg in args]
+        return self._update(*dicts, **kwargs)
 
     setdefault = tracked_method(dict.setdefault)
     pop = tracked_method(dict.pop)

@@ -43,6 +43,7 @@ class ASTTranslator(Generic[_TreeT]):
         translator_cls = self.__class__
         pre_methods = pre_method_caches[translator_cls]
         post_methods = post_method_caches[translator_cls]
+        node_cls: type[ast.AST]
         if isinstance(node, (ast.BoolOp, ast.BinOp, ast.UnaryOp)):
             node_cls = node.op.__class__
         else:
@@ -88,7 +89,7 @@ def priority(p: int) -> Callable[[_VisitorT], _VisitorT]:
             node.priority = p
             for child in get_child_nodes(node):
                 if getattr(child, "priority", 0) >= p:
-                    child.src = "(%s)" % child.src  # pyright: ignore[reportAttributeAccessIssue]
+                    child.src = "(%s)" % child.src  # type: ignore[attr-defined]
             return func(self, node)
 
         return cast("_VisitorT", update_wrapper(new_func, func))
@@ -97,11 +98,11 @@ def priority(p: int) -> Callable[[_VisitorT], _VisitorT]:
 
 
 def binop_src(op: str, node: ast.BinOp) -> str:
-    return op.join((node.left.src, node.right.src))  # pyright: ignore[reportAttributeAccessIssue]
+    return op.join((node.left.src, node.right.src))  # type: ignore[attr-defined]
 
 
 def unaryop_src(op: str, node: ast.UnaryOp) -> str:
-    return op + node.operand.src  # pyright: ignore[reportAttributeAccessIssue]
+    return op + node.operand.src  # type: ignore[attr-defined]
 
 
 def ast2src(tree: ast.AST) -> str:
@@ -109,7 +110,7 @@ def ast2src(tree: ast.AST) -> str:
     if src is not None:
         return src
     PythonTranslator(tree)
-    return tree.src  # pyright: ignore[reportAttributeAccessIssue]
+    return tree.src  # type: ignore[attr-defined]
 
 
 def get_child_nodes(node: ast.AST) -> Iterator[ast.AST]:
@@ -129,11 +130,12 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         self.dispatch(tree)
 
     def call(self, method: Callable[[Any, ast.AST], Any], node: ast.AST) -> None:
-        node.src = method(self, node)  # pyright: ignore[reportAttributeAccessIssue]
+        node.src = method(self, node)  # type: ignore[attr-defined]
 
     def default_pre(self, node: ast.AST) -> bool | None:
         if getattr(node, "src", None) is not None:
             return True  # node.src is already calculated, stop dispatching
+        return None
 
     def default_post(self, node: ast.AST) -> NoReturn:
         throw(NotImplementedError, node)
@@ -141,16 +143,16 @@ class PythonTranslator(ASTTranslator[ast.AST]):
     def postGeneratorExp(self, node: ast.GeneratorExp) -> str:
         return (
             "("
-            + node.elt.src  # pyright: ignore[reportAttributeAccessIssue]
+            + node.elt.src  # type: ignore[attr-defined]
             + " "
-            + " ".join(gen.src for gen in node.generators)  # pyright: ignore[reportAttributeAccessIssue]
+            + " ".join(gen.src for gen in node.generators)  # type: ignore[attr-defined]
             + ")"
         )
 
     def postcomprehension(self, node: ast.comprehension) -> str:
-        src = "for %s in %s" % (node.target.src, node.iter.src)  # pyright: ignore[reportAttributeAccessIssue]
+        src = "for %s in %s" % (node.target.src, node.iter.src)  # type: ignore[attr-defined]
         if node.ifs:
-            ifs = " ".join("if " + if_.src for if_ in node.ifs)  # pyright: ignore[reportAttributeAccessIssue]
+            ifs = " ".join("if " + if_.src for if_ in node.ifs)  # type: ignore[attr-defined]
             src += " " + ifs
         return src
 
@@ -158,13 +160,13 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         return "if %s" % node.test.src
 
     def postExpr(self, node: ast.Expr) -> str:
-        return node.value.src  # pyright: ignore[reportAttributeAccessIssue]
+        return node.value.src  # type: ignore[attr-defined]
 
     def postIfExp(self, node: ast.IfExp) -> str:
-        return "%s if %s else %s" % (node.body.src, node.test.src, node.orelse.src)  # pyright: ignore[reportAttributeAccessIssue]
+        return "%s if %s else %s" % (node.body.src, node.test.src, node.orelse.src)  # type: ignore[attr-defined]
 
     def postLambda(self, node: ast.Lambda) -> str:
-        return "lambda %s: %s" % (node.args.src, node.body.src)  # pyright: ignore[reportAttributeAccessIssue]
+        return "lambda %s: %s" % (node.args.src, node.body.src)  # type: ignore[attr-defined]
 
     def postarguments(self, node: ast.arguments) -> str:
         if node.defaults:
@@ -176,7 +178,7 @@ class PythonTranslator(ASTTranslator[ast.AST]):
 
         result = [arg.arg for arg in nodef_args]
         result.extend(
-            "%s=%s" % (arg.arg, default.src)  # pyright: ignore[reportAttributeAccessIssue]
+            "%s=%s" % (arg.arg, default.src)  # type: ignore[attr-defined]
             for arg, default in zip(def_args, node.defaults)
         )
         if node.vararg:
@@ -190,11 +192,11 @@ class PythonTranslator(ASTTranslator[ast.AST]):
 
     @priority(14)
     def postOr(self, node: ast.BoolOp) -> str:
-        return " or ".join(expr.src for expr in node.values)  # pyright: ignore[reportAttributeAccessIssue]
+        return " or ".join(expr.src for expr in node.values)  # type: ignore[attr-defined]
 
     @priority(13)
     def postAnd(self, node: ast.BoolOp) -> str:
-        return " and ".join(expr.src for expr in node.values)  # pyright: ignore[reportAttributeAccessIssue]
+        return " and ".join(expr.src for expr in node.values)  # type: ignore[attr-defined]
 
     @priority(12)
     def postNot(self, node: ast.UnaryOp) -> str:
@@ -202,9 +204,9 @@ class PythonTranslator(ASTTranslator[ast.AST]):
 
     @priority(11)
     def postCompare(self, node: ast.Compare) -> str:
-        result = [node.left.src]  # pyright: ignore[reportAttributeAccessIssue]
+        result = [node.left.src]  # type: ignore[attr-defined]
         for op, expr in zip(node.ops, node.comparators):
-            result.extend((op.src, expr.src))  # pyright: ignore[reportAttributeAccessIssue]
+            result.extend((op.src, expr.src))  # type: ignore[attr-defined]
         return " ".join(result)
 
     def postEq(self, node: ast.Eq) -> str:
@@ -302,36 +304,36 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         return binop_src(" ** ", node)
 
     def postAttribute(self, node: ast.Attribute) -> str:
-        node.priority = 2  # pyright: ignore[reportAttributeAccessIssue]
-        return ".".join((node.value.src, node.attr))  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 2  # type: ignore[attr-defined]
+        return ".".join((node.value.src, node.attr))  # type: ignore[attr-defined]
 
     def postCall(self, node: ast.Call) -> str:
-        node.priority = 2  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 2  # type: ignore[attr-defined]
         if len(node.args) == 1 and isinstance(node.args[0], ast.GeneratorExp):
-            return node.func.src + node.args[0].src  # pyright: ignore[reportAttributeAccessIssue]
-        args = [arg.src for arg in node.args] + [kw.src for kw in node.keywords]  # pyright: ignore[reportAttributeAccessIssue]
-        return "%s(%s)" % (node.func.src, ", ".join(args))  # pyright: ignore[reportAttributeAccessIssue]
+            return node.func.src + node.args[0].src  # type: ignore[attr-defined]
+        args = [arg.src for arg in node.args] + [kw.src for kw in node.keywords]  # type: ignore[attr-defined]
+        return "%s(%s)" % (node.func.src, ", ".join(args))  # type: ignore[attr-defined]
 
     def postkeyword(self, node: ast.keyword) -> str:
         if node.arg is None:
-            return "**" + node.value.src  # pyright: ignore[reportAttributeAccessIssue]
-        return "%s=%s" % (node.arg, node.value.src)  # pyright: ignore[reportAttributeAccessIssue]
+            return "**" + node.value.src  # type: ignore[attr-defined]
+        return "%s=%s" % (node.arg, node.value.src)  # type: ignore[attr-defined]
 
     def postStarred(self, node: ast.Starred) -> str:
-        return "*" + node.value.src  # pyright: ignore[reportAttributeAccessIssue]
+        return "*" + node.value.src  # type: ignore[attr-defined]
 
     def postSubscript(self, node: ast.Subscript) -> str:
-        node.priority = 2  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 2  # type: ignore[attr-defined]
         x = node.slice
         if isinstance(x, ast.Index):
-            x = x.value  # pyright: ignore[reportAttributeAccessIssue]
+            x = x.value  # type: ignore[attr-defined]
         if isinstance(x, ast.Tuple):
-            key = ", ".join([elt.src for elt in x.elts])  # pyright: ignore[reportAttributeAccessIssue]
+            key = ", ".join([elt.src for elt in x.elts])  # type: ignore[attr-defined]
         elif isinstance(x, ast.Constant) and isinstance(x.value, tuple):
             key = repr(x.value)[1:-1]
         else:
-            key = x.src  # pyright: ignore[reportAttributeAccessIssue]
-        return "%s[%s]" % (node.value.src, key)  # pyright: ignore[reportAttributeAccessIssue]
+            key = x.src  # type: ignore[attr-defined]
+        return "%s[%s]" % (node.value.src, key)  # type: ignore[attr-defined]
 
     def postIndex(self, node):  # Python <= 3.7
         return node.value.src
@@ -339,17 +341,17 @@ class PythonTranslator(ASTTranslator[ast.AST]):
     def postSlice(self, node: ast.Slice) -> str:
         result = []
         if node.lower:
-            result.append(node.lower.src)  # pyright: ignore[reportAttributeAccessIssue]
+            result.append(node.lower.src)  # type: ignore[attr-defined]
         result.append(":")
         if node.upper:
-            result.append(node.upper.src)  # pyright: ignore[reportAttributeAccessIssue]
+            result.append(node.upper.src)  # type: ignore[attr-defined]
         if node.step:
             result.append(":")
-            result.append(node.step.src)  # pyright: ignore[reportAttributeAccessIssue]
+            result.append(node.step.src)  # type: ignore[attr-defined]
         return "".join(result)
 
     def postConstant(self, node: ast.Constant) -> str:
-        node.priority = 1  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 1  # type: ignore[attr-defined]
         value = node.value
         if type(value) is float:  # for Python < 2.7
             s = str(value)
@@ -373,19 +375,19 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         return repr(node.s)
 
     def postList(self, node: ast.List) -> str:
-        node.priority = 1  # pyright: ignore[reportAttributeAccessIssue]
-        return "[%s]" % ", ".join(item.src for item in node.elts)  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 1  # type: ignore[attr-defined]
+        return "[%s]" % ", ".join(item.src for item in node.elts)  # type: ignore[attr-defined]
 
     def postTuple(self, node: ast.Tuple) -> str:
-        node.priority = 1  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 1  # type: ignore[attr-defined]
         if len(node.elts) == 1:
-            return "(%s,)" % node.elts[0].src  # pyright: ignore[reportAttributeAccessIssue]
-        return "(%s)" % ", ".join(elt.src for elt in node.elts)  # pyright: ignore[reportAttributeAccessIssue]
+            return "(%s,)" % node.elts[0].src  # type: ignore[attr-defined]
+        return "(%s)" % ", ".join(elt.src for elt in node.elts)  # type: ignore[attr-defined]
 
     def postDict(self, node: ast.Dict) -> str:
-        node.priority = 1  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 1  # type: ignore[attr-defined]
         return "{%s}" % ", ".join(
-            "%s:%s" % (key.src, value.src)  # pyright: ignore[reportAttributeAccessIssue]
+            "%s:%s" % (key.src, value.src)  # type: ignore[attr-defined]
             for key, value in zip(cast("list[ast.expr]", node.keys), node.values)
         )
 
@@ -394,7 +396,7 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         return "{%s}" % ", ".join(item.src for item in node.nodes)
 
     def postName(self, node: ast.Name) -> str:
-        node.priority = 1  # pyright: ignore[reportAttributeAccessIssue]
+        node.priority = 1  # type: ignore[attr-defined]
         return node.id
 
     def postJoinedStr(self, node: ast.JoinedStr) -> str:
@@ -404,19 +406,19 @@ class PythonTranslator(ASTTranslator[ast.AST]):
                 assert isinstance(item.value, str)
                 result.append(item.value)
             elif not PY38 and isinstance(item, ast.Str):  # Python 3.7
-                result.append(item.s)
+                result.append(item.s)  # type: ignore[arg-type]
             elif isinstance(item, ast.FormattedValue):
                 if item.conversion == -1:
-                    src = "{%s}" % item.value.src  # pyright: ignore[reportAttributeAccessIssue]
+                    src = "{%s}" % item.value.src  # type: ignore[attr-defined]
                 else:
-                    src = "{%s!%s}" % (item.value.src, chr(item.conversion))  # pyright: ignore[reportAttributeAccessIssue]
+                    src = "{%s!%s}" % (item.value.src, chr(item.conversion))  # type: ignore[attr-defined]
                 result.append(src)
             else:
                 assert False
         return "f%r" % "".join(result)
 
     def postFormattedValue(self, node: ast.FormattedValue) -> str:
-        return node.value.src  # pyright: ignore[reportAttributeAccessIssue]
+        return node.value.src  # type: ignore[attr-defined]
 
 
 nonexternalizable_types = (ast.keyword, ast.Starred, ast.Slice, ast.List, ast.Tuple)
@@ -447,28 +449,29 @@ class PreTranslator(ASTTranslator[ast.AST]):
         self.contexts = []
         if outer_names:
             self.contexts.append(outer_names)
-        self.externals = externals = set()
+        externals: set[ast.AST] = set()
+        self.externals = externals
         self.dispatch(tree)
         for node in externals.copy():
             if (
                 isinstance(node, nonexternalizable_types)
-                or node.constant
+                or node.constant  # type: ignore[attr-defined]
                 and not isinstance(node, ast.Constant)
             ):
-                node.external = False  # pyright: ignore[reportAttributeAccessIssue]
+                node.external = False  # type: ignore[attr-defined]
                 externals.remove(node)
                 externals.update(
                     node
                     for node in get_child_nodes(node)
-                    if node.external and not node.constant  # pyright: ignore[reportAttributeAccessIssue]
+                    if node.external and not node.constant  # type: ignore[attr-defined]
                 )
 
     def dispatch(self, node: ast.AST) -> None:
-        node.external = node.constant = None  # pyright: ignore[reportAttributeAccessIssue]
+        node.external = node.constant = None  # type: ignore[attr-defined]
         ASTTranslator.dispatch(self, node)
         children = list(get_child_nodes(node))
         if (
-            node.external is None  # pyright: ignore[reportAttributeAccessIssue]
+            node.external is None  # type: ignore[attr-defined]
             and children
             and all(
                 getattr(child, "external", False)
@@ -476,8 +479,8 @@ class PreTranslator(ASTTranslator[ast.AST]):
                 for child in children
             )
         ):
-            node.external = True  # pyright: ignore[reportAttributeAccessIssue]
-        if node.external and not node.constant:  # pyright: ignore[reportAttributeAccessIssue]
+            node.external = True  # type: ignore[attr-defined]
+        if node.external and not node.constant:  # type: ignore[attr-defined]
             externals = self.externals
             externals.difference_update(children)
             externals.add(node)
@@ -519,19 +522,19 @@ class PreTranslator(ASTTranslator[ast.AST]):
             for context in self.contexts:
                 if name in context:
                     return
-            node.external = True  # pyright: ignore[reportAttributeAccessIssue]
+            node.external = True  # type: ignore[attr-defined]
         else:
             assert False, type(node.ctx)
 
     def postSlice(self, node: ast.Slice) -> None:
         if node.lower is None and node.upper is None and node.step is None:
-            node.external = node.constant = True  # pyright: ignore[reportAttributeAccessIssue]
+            node.external = node.constant = True  # type: ignore[attr-defined]
 
     def postStarred(self, node: ast.Starred) -> None:
-        node.external = True  # pyright: ignore[reportAttributeAccessIssue]
+        node.external = True  # type: ignore[attr-defined]
 
     def postConstant(self, node: ast.Constant) -> None:
-        node.external = node.constant = True  # pyright: ignore[reportAttributeAccessIssue]
+        node.external = node.constant = True  # type: ignore[attr-defined]
 
     def postNum(self, node):  # Python <= 3.7
         node.external = node.constant = True
@@ -543,20 +546,20 @@ class PreTranslator(ASTTranslator[ast.AST]):
         node.external = node.constant = True
 
     def postDict(self, node: ast.Dict) -> None:
-        node.external = True  # pyright: ignore[reportAttributeAccessIssue]
+        node.external = True  # type: ignore[attr-defined]
 
     def postList(self, node: ast.List) -> None:
-        node.external = True  # pyright: ignore[reportAttributeAccessIssue]
+        node.external = True  # type: ignore[attr-defined]
 
     def postkeyword(self, node: ast.keyword) -> None:
-        node.constant = node.value.constant  # pyright: ignore[reportAttributeAccessIssue]
+        node.constant = node.value.constant  # type: ignore[attr-defined]
 
     def postIndex(self, node):  # Python <= 3.7
         node.constant = node.value.constant
 
     def postCall(self, node: ast.Call) -> None:
         func_node = node.func
-        if not func_node.external:  # pyright: ignore[reportAttributeAccessIssue]
+        if not func_node.external:  # type: ignore[attr-defined]
             return
         attrs = []
         while isinstance(func_node, ast.Attribute):
@@ -574,29 +577,29 @@ class PreTranslator(ASTTranslator[ast.AST]):
 
         if x in self.special_functions:
             if x.__name__ == "raw_sql":
-                node.raw_sql = True  # pyright: ignore[reportAttributeAccessIssue]
+                node.raw_sql = True  # type: ignore[attr-defined]
             elif x is getattr:
                 attr_node = node.args[1]
-                attr_node.parent_node = node  # pyright: ignore[reportAttributeAccessIssue]
+                attr_node.parent_node = node  # type: ignore[attr-defined]
             else:
-                node.external = False  # pyright: ignore[reportAttributeAccessIssue]
+                node.external = False  # type: ignore[attr-defined]
         elif x in self.const_functions:
             for arg in node.args:
-                if not arg.constant:  # pyright: ignore[reportAttributeAccessIssue]
+                if not arg.constant:  # type: ignore[attr-defined]
                     return
             if any(
-                not arg.constant  # pyright: ignore[reportAttributeAccessIssue]
+                not arg.constant  # type: ignore[attr-defined]
                 for arg in node.args
                 if isinstance(arg, ast.Starred)
             ):
                 return
-            if any(not kwarg.constant for kwarg in node.keywords if kwarg.arg is None):  # pyright: ignore[reportAttributeAccessIssue]
+            if any(not kwarg.constant for kwarg in node.keywords if kwarg.arg is None):  # type: ignore[attr-defined]
                 return
-            node.constant = True  # pyright: ignore[reportAttributeAccessIssue]
+            node.constant = True  # type: ignore[attr-defined]
 
     def postCompare(self, node: ast.Compare) -> None:
         for op in node.ops:
-            op.external = op.constant = True  # pyright: ignore[reportAttributeAccessIssue]
+            op.external = op.constant = True  # type: ignore[attr-defined]
 
     def post_binop(self, node: ast.BinOp) -> None:
         pass
@@ -606,7 +609,7 @@ class PreTranslator(ASTTranslator[ast.AST]):
     ) = postMult = postMatMult = postDiv = postFloorDiv = postMod = post_binop
 
 
-extractors_cache = {}
+extractors_cache: dict[CodeKey, tuple[Any, dict[str, Callable]]] = {}
 
 
 def create_extractors(
@@ -625,7 +628,7 @@ def create_extractors(
         )
         extractors = {}
         for node in pretranslator.externals:
-            src = node.src = ast2src(node)  # pyright: ignore[reportAttributeAccessIssue]
+            src = node.src = ast2src(node)  # type: ignore[attr-defined]
             if src == ".0":
 
                 def dot_zero_extractor(globals, locals):

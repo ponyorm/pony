@@ -51,7 +51,7 @@ def detect_mode() -> str:
 
 MODE = detect_mode()
 
-MAIN_FILE = None
+MAIN_FILE: str | None = None
 if MODE == "MOD_WSGI":
     for module_name, module in sys.modules.items():
         if module_name.startswith("_mod_wsgi_"):
@@ -60,6 +60,7 @@ if MODE == "MOD_WSGI":
 elif MODE != "INTERACTIVE":
     MAIN_FILE = sys.modules["__main__"].__file__
 
+MAIN_DIR: str | None
 if MAIN_FILE is not None:
     MAIN_DIR = dirname(MAIN_FILE)
 else:

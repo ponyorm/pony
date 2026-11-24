@@ -96,11 +96,11 @@ class Bag:
                 dicts = self.dicts[entity]
                 if obj not in dicts:
                     self._process_object(obj)
-        result = defaultdict(dict)
+        result: defaultdict[str, dict[Any, dict[str, Any]]] = defaultdict(dict)
         for entity, dicts in self.dicts.items():
             composite_pk = len(entity._pk_columns_) > 1
             for obj, d in dicts.items():
-                pk = obj._get_raw_pkval_()
+                pk: Any = obj._get_raw_pkval_()
                 if composite_pk:
                     pk = self._reduce_composite_pk(pk)
                 else:

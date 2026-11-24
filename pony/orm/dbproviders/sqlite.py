@@ -109,7 +109,7 @@ class SQLiteTranslator(SQLTranslator):
 
 
 class SQLiteValue(Value):
-    __slots__ = []
+    __slots__: list[str] = []
 
     def __str__(self):
         value = self.value
@@ -366,10 +366,10 @@ class SQLiteBuilder(SQLBuilder):
     ):
         func_name = "json_extract" if self.json1_available else "py_json_extract"
         path_sql, has_params, has_wildcards = self.build_json_path(path)
-        type_name = self.json_value_type_mapping.get(type)  # pyright: ignore[reportArgumentType]
+        type_name = self.json_value_type_mapping.get(type)  # type: ignore[arg-type]
         result = func_name, "(", self(expr), ", ", path_sql, ")"
         if type_name is not None:
-            result = "CAST(", result, " as ", type_name, ")"
+            return "CAST(", result, " as ", type_name, ")"
         return result
 
     def JSON_NONZERO(
@@ -541,7 +541,7 @@ class SQLiteTimedeltaConverter(dbapiprovider.TimedeltaConverter):
 class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
     def sql2py(self, val: str | datetime.datetime) -> datetime.datetime:
         try:
-            return timestamp2datetime(val)  # pyright: ignore[reportArgumentType]
+            return timestamp2datetime(val)  # type: ignore[arg-type]
         except BaseException:
             return cast("datetime.datetime", val)
 
@@ -569,10 +569,10 @@ class SQLiteArrayConverter(dbapiprovider.ArrayConverter):
     ) -> TrackedArray | list[str | int | float] | None:
         if not dbval:
             return None
-        items = json.loads(dbval)  # pyright: ignore[reportArgumentType]
+        items = json.loads(dbval)  # type: ignore[arg-type]
         if obj is None:
             return items
-        return TrackedArray(obj, self.attr, items)  # pyright: ignore[reportArgumentType]
+        return TrackedArray(obj, self.attr, items)  # type: ignore[arg-type]
 
     def val2dbval(
         self, val: TrackedValue | OptAttrValue, obj: Entity | None = None
@@ -689,9 +689,8 @@ class SQLiteProvider(DBAPIProvider):
             db_session = cache.db_session
             if db_session is not None and db_session.ddl:
                 cursor.execute("PRAGMA foreign_keys")
-                fk = cursor.fetchone()
-                if fk is not None:
-                    fk = fk[0]
+                fk_row = cursor.fetchone()
+                fk = fk_row[0] if fk_row is not None else None
                 if fk:
                     sql = "PRAGMA foreign_keys = false"
                     if core.local.debug:
@@ -793,7 +792,7 @@ class SQLiteProvider(DBAPIProvider):
         table_name: TableName,
         case_sensitive: bool = True,
     ) -> str | None:
-        return self._exists(connection, table_name, None, case_sensitive)  # pyright: ignore[reportArgumentType]
+        return self._exists(connection, table_name, None, case_sensitive)  # type: ignore[arg-type]
 
     def index_exists(
         self,
@@ -802,7 +801,7 @@ class SQLiteProvider(DBAPIProvider):
         index_name: str,
         case_sensitive: bool = True,
     ) -> str | None:
-        return self._exists(connection, table_name, index_name, case_sensitive)  # pyright: ignore[reportArgumentType]
+        return self._exists(connection, table_name, index_name, case_sensitive)  # type: ignore[arg-type]
 
     def _exists(
         self,
@@ -813,6 +812,7 @@ class SQLiteProvider(DBAPIProvider):
     ) -> str | None:
         db_name, table_name = self.split_table_name(table_name)
 
+        catalog_name: str | tuple[str, str]
         if db_name is None:
             catalog_name = "sqlite_master"
         else:
@@ -873,8 +873,8 @@ def make_string_function(
     return func
 
 
-py_upper: Callable[[str], Any] = make_string_function("py_upper", str.upper)  # pyright: ignore[reportArgumentType]
-py_lower: Callable[[str], Any] = make_string_function("py_lower", str.lower)  # pyright: ignore[reportArgumentType]
+py_upper: Callable[[str], Any] = make_string_function("py_upper", str.upper)  # type: ignore[arg-type]
+py_lower: Callable[[str], Any] = make_string_function("py_lower", str.lower)  # type: ignore[arg-type]
 
 
 def py_json_unwrap(value: str) -> str | None:
@@ -894,22 +894,21 @@ json_path_re: re.Pattern[str] = re.compile(
 def _parse_path(path: str) -> tuple[int | str, ...] | None:
     if path in path_cache:
         return path_cache[path]
-    keys = None
+    keys: tuple[int | str, ...] | None = None
     if isinstance(path, str) and path.startswith("$"):
-        keys = []
+        parsed: list[int | str] = []
         pos = 1
         path_len = len(path)
         while pos < path_len:
             match = json_path_re.match(path, pos)
             if match is not None:
                 g1, g2, g3 = match.groups()
-                keys.append(int(g1) if g1 else g2 or g3)
+                parsed.append(int(g1) if g1 else g2 or g3)
                 pos = match.end()
             else:
-                keys = None
                 break
         else:
-            keys = tuple(keys)
+            keys = tuple(parsed)
     path_cache[path] = keys
     return keys
 

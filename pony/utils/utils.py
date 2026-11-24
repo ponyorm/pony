@@ -33,7 +33,9 @@ _F = TypeVar("_F", bound="Callable[..., Any]")
 _KT = TypeVar("_KT")
 _VT = TypeVar("_VT")
 
-if pony.MODE.startswith("GAE-"):
+if TYPE_CHECKING:
+    from threading import local as localbase
+elif pony.MODE.startswith("GAE-"):
     localbase = object
 else:
     from threading import local
@@ -193,6 +195,8 @@ def get_lambda_args(func: Callable | ast.Lambda) -> list[str]:
     if names is not None:
         return names
 
+    argsname: str | ast.arg | None
+    kwname: str | ast.arg | None
     if type(func) is types.FunctionType:
         if hasattr(inspect, "signature"):
             names, argsname, kwname, defaults = [], None, None, []
@@ -219,7 +223,7 @@ def get_lambda_args(func: Callable | ast.Lambda) -> list[str]:
                 else:
                     assert False
         else:
-            names, argsname, kwname, defaults = inspect.getargspec(func)
+            names, argsname, kwname, defaults = inspect.getargspec(func)  # type: ignore[assignment]
     elif isinstance(func, ast.Lambda):
         argsname = func.args.vararg
         kwname = func.args.kwarg

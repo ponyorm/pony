@@ -100,13 +100,13 @@ class DBSchema:
         created_tables: set[Table] = set()
         for table in self.order_tables_to_create():
             for db_object in table.get_objects_to_create(created_tables):
-                base_name = provider.base_name(db_object.name)  # pyright: ignore[reportArgumentType]
+                base_name = provider.base_name(db_object.name)  # type: ignore[arg-type]
                 name = db_object.exists(provider, connection, case_sensitive=False)
                 if name is None:
                     db_object.create(provider, connection)
                 elif name != base_name:
                     quote_name = self.provider.quote_name
-                    n1, n2 = quote_name(db_object.name), quote_name(name)  # pyright: ignore[reportArgumentType]
+                    n1, n2 = quote_name(db_object.name), quote_name(name)  # type: ignore[arg-type]
                     tn1, tn2 = db_object.typename, db_object.typename.lower()
                     throw(
                         DBSchemaError,
@@ -157,11 +157,14 @@ class Table(DBObject):
         self, name: TableName, schema: DBSchema, entity: EntityMeta | None = None
     ) -> None:
         if name in schema.tables:
-            throw(DBSchemaError, "Table %r already exists in database schema" % name)
+            throw(
+                DBSchemaError,
+                "Table %r already exists in database schema" % name,  # type: ignore[str-format]
+            )
         if name in schema.names:
             throw(
                 DBSchemaError,
-                "Table %r cannot be created, name is already in use" % name,
+                "Table %r cannot be created, name is already in use" % name,  # type: ignore[str-format]
             )
         schema.tables[name] = self
         schema.names[name] = self
@@ -462,7 +465,7 @@ class Constraint(DBObject):
             assert name not in schema.names
             if name in schema.constraints:
                 throw(DBSchemaError, "Constraint with name %r already exists" % name)
-            schema.names[name] = self  # pyright: ignore[reportArgumentType]
+            schema.names[name] = self  # type: ignore[assignment]
             schema.constraints[name] = self
         self.schema = schema
         self.name = name
@@ -503,7 +506,7 @@ class DBIndex(Constraint):
             if table.pk_index is not None:
                 throw(
                     DBSchemaError,
-                    "Primary key for table %r is already defined" % table.name,
+                    "Primary key for table %r is already defined" % table.name,  # type: ignore[str-format]
                 )
             table.pk_index = self
             if is_unique is None:
@@ -541,7 +544,7 @@ class DBIndex(Constraint):
         return provider.index_exists(
             connection,
             self.table.name,
-            self.name,  # pyright: ignore[reportArgumentType]
+            self.name,  # type: ignore[arg-type]
             case_sensitive,
         )
 
@@ -569,7 +572,7 @@ class DBIndex(Constraint):
             append(case("INDEX"))
             # if schema.provider.index_if_not_exists_syntax:
             #     append(case('IF NOT EXISTS'))
-            append(quote_name(self.name))  # pyright: ignore[reportArgumentType]
+            append(quote_name(self.name))  # type: ignore[arg-type]
             append(case("ON"))
             append(quote_name(self.table.name))
             converter = self.columns[0].converter

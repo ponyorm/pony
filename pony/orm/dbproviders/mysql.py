@@ -16,7 +16,7 @@ from pony.orm.dbapiprovider import (
     get_version_tuple,
     wrap_dbapi_exceptions,
 )
-from pony.orm.sqlbuilding import Param, SQLBuilder, Value, join
+from pony.orm.sqlbuilding import CompositeParam, Param, SQLBuilder, Value, join
 from pony.orm.sqltranslation import SQLTranslator
 from pony.py23compat import buffer, int_types
 from pony.utils import throw
@@ -69,7 +69,7 @@ class MySQLTranslator(SQLTranslator):
 
 
 class MySQLValue(Value):
-    __slots__ = []
+    __slots__: list[str] = []
 
     def __str__(self):
         value = self.value
@@ -192,6 +192,7 @@ class MySQLBuilder(SQLBuilder):
         self, expr: Sequence[str], path: list[Sequence[str]], key: Sequence
     ) -> list[str | Param | Value | Any]:
         key_sql = self(key)
+        wrapped_key: Value | CompositeParam
         if isinstance(key_sql, Value):
             wrapped_key = self.value_class(self.paramstyle, json.dumps([key_sql.value]))
         elif isinstance(key_sql, Param):

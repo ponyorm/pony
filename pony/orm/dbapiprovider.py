@@ -459,6 +459,7 @@ class DBAPIProvider:
                 cursor.execute(sql, arguments)
             if returning_id:
                 return cursor.lastrowid
+        return None
 
     converter_classes: list[
         tuple[PyType | type[None] | tuple[type[int]], type[Converter]]  # noqa: Y090
@@ -486,7 +487,7 @@ class DBAPIProvider:
 
     def get_converter_by_py_type(self, py_type: _ExtPyType) -> Converter:
         converter_cls = self._get_converter_type_by_py_type(py_type)
-        return converter_cls(self, py_type)  # pyright: ignore[reportArgumentType]
+        return converter_cls(self, py_type)  # type: ignore[arg-type]
 
     def get_converter_by_attr(self, attr: Attribute) -> Converter:
         py_type = attr.py_type
@@ -1017,7 +1018,7 @@ class DecimalConverter(Converter):
         py_type: type[Decimal],
         attr: Attribute | None = None,
     ) -> None:
-        self.exp = None  # for the case when attr is None
+        self.exp: Decimal | None = None  # for the case when attr is None
         Converter.__init__(self, provider, py_type, attr)
 
     def init(self, kwargs: dict[str, Any]) -> None:
@@ -1137,7 +1138,7 @@ class BlobConverter(Converter):
         if isinstance(val, buffer):
             return val
         if isinstance(val, str):
-            return buffer(val)  # pyright: ignore[reportArgumentType]
+            return buffer(val)  # type: ignore[arg-type]
         throw(
             TypeError,
             "Attribute %r: expected type is 'buffer'. Got: %r" % (self.attr, type(val)),
@@ -1146,7 +1147,7 @@ class BlobConverter(Converter):
     def sql2py(self, val: bytes | str | Any) -> bytes:
         if not isinstance(val, buffer):
             try:
-                val = buffer(val)  # pyright: ignore[reportArgumentType]
+                val = buffer(val)  # type: ignore[arg-type]
             except BaseException:
                 pass
         return cast("bytes", val)
@@ -1258,6 +1259,8 @@ class ConverterWithMicroseconds(Converter):
             or precision == attr.entity._database_.provider.default_time_precision
         ):
             return self.sql_type_name
+        if TYPE_CHECKING:
+            assert precision is not None
         return self.sql_type_name + "(%d)" % precision
 
 
@@ -1276,7 +1279,7 @@ class TimeConverter(ConverterWithMicroseconds):
                 TypeError,
                 "Attribute %r: expected type is 'time'. Got: %r" % (self.attr, val),
             )
-        mcs = self.round_microseconds_to_precision(val.microsecond, self.precision)  # pyright: ignore[reportArgumentType]
+        mcs = self.round_microseconds_to_precision(val.microsecond, self.precision)  # type: ignore[arg-type]
         if mcs is not None:
             val = val.replace(microsecond=mcs)
         return val
@@ -1307,7 +1310,7 @@ class TimedeltaConverter(ConverterWithMicroseconds):
                 "Attribute %r: expected type is 'timedelta'. Got: %r"
                 % (self.attr, val),
             )
-        mcs = self.round_microseconds_to_precision(val.microseconds, self.precision)  # pyright: ignore[reportArgumentType]
+        mcs = self.round_microseconds_to_precision(val.microseconds, self.precision)  # type: ignore[arg-type]
         if mcs is not None:
             val = timedelta(val.days, val.seconds, mcs)
         return val
@@ -1337,7 +1340,7 @@ class DatetimeConverter(ConverterWithMicroseconds):
                 TypeError,
                 "Attribute %r: expected type is 'datetime'. Got: %r" % (self.attr, val),
             )
-        mcs = self.round_microseconds_to_precision(val.microsecond, self.precision)  # pyright: ignore[reportArgumentType]
+        mcs = self.round_microseconds_to_precision(val.microsecond, self.precision)  # type: ignore[arg-type]
         if mcs is not None:
             val = val.replace(microsecond=mcs)
         return val
@@ -1371,7 +1374,7 @@ class UuidConverter(Converter):
             return UUID(bytes=val)
         if isinstance(val, str):
             if len(val) == 16:
-                return UUID(bytes=val)  # pyright: ignore[reportArgumentType]
+                return UUID(bytes=val)  # type: ignore[arg-type]
             return UUID(hex=val)
         if isinstance(val, int):
             return UUID(int=val)
@@ -1469,7 +1472,7 @@ class ArrayConverter(Converter):
         if isinstance(val, str) or not hasattr(val, "__len__"):
             items = [val]
         else:
-            items = list(val)  # pyright: ignore[reportArgumentType]
+            items = list(val)  # type: ignore[call-overload]
         item_type = self.py_type.item_type
         if item_type == float:
             item_type = (float, int)
@@ -1491,7 +1494,7 @@ class ArrayConverter(Converter):
     def dbval2val(self, dbval: OptAttrValue | Entity, obj: Entity | None = None) -> Any:
         if obj is None or dbval is None:
             return dbval
-        return TrackedArray(obj, self.attr, dbval)  # pyright: ignore[reportArgumentType]
+        return TrackedArray(obj, self.attr, dbval)  # type: ignore[arg-type]
 
     def val2dbval(
         self, val: TrackedValue | OptAttrValue, obj: Entity | None = None
@@ -1499,7 +1502,7 @@ class ArrayConverter(Converter):
         assert self.attr is not None
         if self.attr.nullable and val is None:
             return val
-        return list(val)  # pyright: ignore[reportArgumentType]
+        return list(val)  # type: ignore[arg-type]
 
     def sql_type(self) -> str:
         return "%s[]" % self.array_types[self.py_type.item_type][0]

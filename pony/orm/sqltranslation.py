@@ -105,13 +105,11 @@ if TYPE_CHECKING:
     from pony.orm.sqlbuilding import SqlAst
 
 _Ast: TypeAlias = list[Any]
-_Conditions: TypeAlias = list["list[list[Sequence[str]]]"]
+_Conditions: TypeAlias = list[Any]
 _ExprMonadType: TypeAlias = (
     "type[Numeric | str | datetime | date | time | timedelta | Json | Array | Entity]"
 )
-_Sql: TypeAlias = list[
-    "str | bool | type[str | int | float | bool | None] | list | None"
-]
+_Sql: TypeAlias = "Sequence[Any]"
 
 _T = TypeVar("_T")
 _CT = TypeVar("_CT", bound=Constant)
@@ -194,7 +192,7 @@ def type2str(t: ExprType) -> str:
         assert isinstance(t, SetType)
         return "Set of " + type2str(t.item_type)
     try:
-        return t.__name__  # pyright: ignore[reportAttributeAccessIssue]
+        return t.__name__  # type: ignore[union-attr]
     except BaseException:
         return str(t)
 
@@ -292,7 +290,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         self.call(self.__class__.dispatch_external, node)
 
     def dispatch_external(self, node: ast.AST) -> None:
-        varkey = self.filter_num, node.src, self.code_key  # pyright: ignore[reportAttributeAccessIssue]
+        varkey = self.filter_num, node.src, self.code_key  # type: ignore[attr-defined]
         t = self.root_translator.vartypes[varkey]
         tt = type(t)
         if t is NoneType:
@@ -316,7 +314,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         elif tt is FuncType:
             assert isinstance(t, FuncType)
             func = t.func
-            func_monad_class = self.registered_functions.get(func)  # pyright: ignore[reportArgumentType]
+            func_monad_class = self.registered_functions.get(func)  # type: ignore[call-overload]
             if func_monad_class is not None:
                 monad = func_monad_class(func)  # pyright: ignore[reportArgumentType]
             else:
@@ -328,9 +326,9 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 entity_monad = EntityMonad(obj)
                 if obj.__class__.__dict__.get(func.__name__) is not func:
                     throw(NotImplementedError)
-                monad = MethodMonad(entity_monad, func.__name__)  # pyright: ignore[reportArgumentType]
-            elif node.src == "random":  # For PyPy  # pyright: ignore[reportAttributeAccessIssue]
-                monad = FuncRandomMonad(t)  # pyright: ignore[reportArgumentType]
+                monad = MethodMonad(entity_monad, func.__name__)  # type: ignore[arg-type]
+            elif node.src == "random":  # type: ignore[attr-defined]  # For PyPy
+                monad = FuncRandomMonad(t)  # type: ignore[arg-type]
             else:
                 throw(NotImplementedError)
         elif tt is tuple:
@@ -340,7 +338,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             if t and self.database.provider.array_converter_cls is not None:
                 types = set(t)
                 if len(types) == 1 and str in types:
-                    item_type = str
+                    item_type: Any = str
                     is_array = True
                 else:
                     item_type = int
@@ -356,7 +354,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 if item_type is NoneType:
                     throw(
                         TypeError,
-                        "Expression `%s` should not contain None values" % node.src,  # pyright: ignore[reportAttributeAccessIssue]
+                        "Expression `%s` should not contain None values" % node.src,  # type: ignore[attr-defined]
                     )
                 param = ParamMonad.new(
                     cast("PyType | EntityMeta", item_type), (varkey, i, None)
@@ -369,15 +367,15 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                     None,
                 )
                 monad = ArrayParamMonad(
-                    array_type,  # pyright: ignore[reportArgumentType]
+                    array_type,  # type: ignore[arg-type]
                     (varkey, None, None),
                     list_monad=monad,
                 )
         elif isinstance(t, RawSQLType):
-            monad = RawSQLMonad(t, varkey)  # pyright: ignore[reportArgumentType]
+            monad = RawSQLMonad(t, varkey)  # type: ignore[arg-type]
         else:
             monad = ParamMonad.new(cast("PyType | EntityMeta", t), (varkey, None, None))
-        node.monad = monad  # pyright: ignore[reportAttributeAccessIssue]
+        node.monad = monad  # type: ignore[attr-defined]
         monad.node = node
         monad.aggregated = monad.nogroup = False
 
@@ -399,8 +397,8 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 del exc, tb
         else:
             if monad is None:
-                return
-            node.monad = monad  # pyright: ignore[reportAttributeAccessIssue]
+                return None
+            node.monad = monad  # type: ignore[attr-defined]
             monad.node = node
             if not hasattr(monad, "aggregated"):
                 if isinstance(monad, QuerySetMonad):
@@ -537,7 +535,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         self.aggregated_subquery_paths = set()
         for i, generator in enumerate(tree.generators):
             target = generator.target
-            ass_names = ()
+            ass_names: tuple[ast.expr, ...] = ()
             if isinstance(target, ast.Tuple):
                 ass_names = tuple(target.elts)
             elif isinstance(target, ast.Name):
@@ -555,6 +553,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             names = tuple(
                 ass_name.id for ass_name in cast("tuple[ast.Name, ...]", ass_names)
             )
+            name: str | None
             for name in names:
                 if name in self.namespace and name in self.sqlquery.tablerefs:
                     throw(TranslationError, "Duplicate name: %r" % name)
@@ -587,12 +586,12 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                     self.sqlquery = iter_monad._subselect(
                         self.sqlquery, extract_outer_conditions=False
                     )
-                    tableref = iter_monad.tableref
+                    tableref = iter_monad.tableref  # type: ignore[assignment]
                 else:
                     assert False  # pragma: no cover
                 self.namespace[name] = ObjectIterMonad(tableref, entity)
-            elif node.external:  # pyright: ignore[reportAttributeAccessIssue]
-                varkey = self.filter_num, node.src, self.code_key  # pyright: ignore[reportAttributeAccessIssue]
+            elif node.external:  # type: ignore[attr-defined]
+                varkey = self.filter_num, node.src, self.code_key  # type: ignore[attr-defined]
                 iterable = self.root_translator.vartypes[varkey]
                 if isinstance(iterable, SetType):
                     check_name_is_single()
@@ -614,7 +613,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                     tableref = TableRef(self.sqlquery, name, entity)
                     self.sqlquery.tablerefs[name] = tableref
                     tableref.make_join()
-                    self.namespace[name] = node.monad = ObjectIterMonad(  # pyright: ignore[reportAttributeAccessIssue]
+                    self.namespace[name] = node.monad = ObjectIterMonad(  # type: ignore[attr-defined]
                         tableref, entity
                     )
                 elif isinstance(iterable, QueryType):
@@ -643,7 +642,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
 
             else:
                 self.dispatch(node)
-                monad = node.monad  # pyright: ignore[reportAttributeAccessIssue]
+                monad = node.monad  # type: ignore[attr-defined]
 
                 if isinstance(monad, QuerySetMonad):
                     subtranslator = monad.subtranslator
@@ -702,7 +701,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                                 self.distinct = True
                             elif (
                                 parent_tableref.alias
-                                != tree.generators[i - 1].target.id  # pyright: ignore[reportAttributeAccessIssue]
+                                != tree.generators[i - 1].target.id  # type: ignore[attr-defined]
                             ):
                                 self.distinct = True
                             else:
@@ -711,9 +710,9 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                             name_path = name
                         else:
                             name_path += "-" + attr.name
-                        tableref = self.sqlquery.add_tableref(
+                        tableref = self.sqlquery.add_tableref(  # type: ignore[assignment]
                             name_path,
-                            parent_tableref,  # pyright: ignore[reportArgumentType]
+                            parent_tableref,  # type: ignore[arg-type]
                             attr,
                         )
                         tableref.make_join(pk_only=True)
@@ -740,12 +739,12 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
 
             for if_ in generator.ifs:
                 self.dispatch(if_)
-                if if_.monad.type is not bool:  # pyright: ignore[reportAttributeAccessIssue]
-                    if_.monad = if_.monad.nonzero()  # pyright: ignore[reportAttributeAccessIssue]
+                if if_.monad.type is not bool:  # type: ignore[attr-defined]
+                    if_.monad = if_.monad.nonzero()  # type: ignore[attr-defined]
                 cond_monads = (
-                    if_.monad.operands  # pyright: ignore[reportAttributeAccessIssue]
-                    if isinstance(if_.monad, AndMonad)  # pyright: ignore[reportAttributeAccessIssue]
-                    else [if_.monad]  # pyright: ignore[reportAttributeAccessIssue]
+                    if_.monad.operands  # type: ignore[attr-defined]
+                    if isinstance(if_.monad, AndMonad)  # type: ignore[attr-defined]
+                    else [if_.monad]  # type: ignore[attr-defined]
                 )
                 for m in cond_monads:
                     if not getattr(m, "aggregated", False):
@@ -755,7 +754,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
 
         self.dispatch(tree.elt)
         assert not self.hint_join
-        monad: Monad = tree.elt.monad  # pyright: ignore[reportAttributeAccessIssue]
+        monad: Monad = tree.elt.monad  # type: ignore[attr-defined, no-redef]
         if isinstance(monad, ParamMonad):
             throw(
                 TranslationError,
@@ -777,9 +776,9 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             if isinstance(monad, QuerySetMonad):
                 throw(NotImplementedError)
             elif isinstance(monad, ObjectMixin):
-                tableref = monad.tableref
+                tableref = monad.tableref  # type: ignore[assignment]
             elif isinstance(monad, AttrSetMonad):
-                tableref = monad.make_tableref(self.sqlquery)
+                tableref = monad.make_tableref(self.sqlquery)  # type: ignore[assignment]
             else:
                 assert False  # pragma: no cover
             if self.aggregated:
@@ -822,7 +821,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                     elif isinstance(m, AttrMonad) and isinstance(
                         m.parent, ObjectIterMonad
                     ):
-                        expr_set.add((m.parent.tableref.name_path, m.attr))
+                        expr_set.add((m.parent.tableref.name_path, m.attr))  # type: ignore[arg-type]
                 for tr in self.sqlquery.tablerefs.values():
                     if tr.entity is None:
                         continue
@@ -868,7 +867,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                         value = converter.dbval2val(value)
                         return value
 
-                    row_layout.append((func, offset, ast2src(m.node)))
+                    row_layout.append((func, offset, ast2src(m.node)))  # type: ignore[arg-type]
                     m.orderby_columns = (offset + 1,) if not m.disable_ordering else ()
                     offset += 1
             self.row_layout = row_layout
@@ -976,7 +975,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             and not prev_translator.distinct
         ):
             name = names[0]
-            entity = prev_translator.expr_type
+            entity = cast("EntityMeta", prev_translator.expr_type)
             [expr_monad] = prev_translator.expr_monads
             entity_alias = expr_monad.tableref.alias
             subquery_ast = prev_translator.construct_subquery_ast(
@@ -993,19 +992,19 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 t = base_expr_monad.type
                 if isinstance(t, EntityMeta):
                     t_aliases = []
-                    for suffix in t._pk_paths_:
+                    for suffix in t._pk_paths_:  # type: ignore[union-attr]
                         alias = "%s-%s" % (name, suffix)
                         t_aliases.append(alias)
                     aliases.extend(t_aliases)
                     aliases_dict[base_expr_monad] = t_aliases
                 else:
                     aliases.append(name)
-                    aliases_dict[base_expr_monad] = name
+                    aliases_dict[base_expr_monad] = name  # type: ignore[assignment]
 
             subquery_ast = prev_translator.construct_subquery_ast(
                 prev_limit, prev_offset, aliases=aliases
             )
-            tableref = ExprTableRef(sqlquery, "t", subquery_ast, names, aliases)
+            tableref = ExprTableRef(sqlquery, "t", subquery_ast, names, aliases)  # type: ignore[assignment]
             for name in names:
                 tablerefs[name] = tableref
             tableref.make_join()
@@ -1015,9 +1014,13 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 if isinstance(t, EntityMeta):
                     columns = aliases_dict[base_expr_monad]
                     expr_tableref = ExprJoinedTableRef(
-                        sqlquery, tableref, columns, name, t
+                        sqlquery,
+                        tableref,  # type: ignore[arg-type]
+                        columns,
+                        name,
+                        t,  # type: ignore[arg-type]
                     )
-                    expr_monad = ObjectIterMonad(expr_tableref, t)
+                    expr_monad = ObjectIterMonad(expr_tableref, t)  # type: ignore[arg-type]
                 else:
                     column = aliases_dict[base_expr_monad]
                     expr_ast = ["COLUMN", tableref.alias, column]
@@ -1108,14 +1111,16 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             sql_ast: list[Any] = ["SELECT_FOR_UPDATE", nowait, skip_locked]
             self.query_result_is_cacheable = False
         else:
-            sql_ast: list[Any] = ["SELECT"]
+            sql_ast = ["SELECT"]
 
-        select_ast = ["DISTINCT" if distinct else "ALL"] + self.expr_columns
+        select_ast: Sequence[Any] = [
+            "DISTINCT" if distinct else "ALL"
+        ] + self.expr_columns
         if aggr_func_name:
             expr_type = self.expr_type
             if isinstance(expr_type, EntityMeta):
                 if aggr_func_name == "GROUP_CONCAT":
-                    if expr_type._pk_is_composite_:
+                    if expr_type._pk_is_composite_:  # type: ignore[union-attr]
                         throw(
                             TypeError,
                             "`group_concat` cannot be used with entity with composite primary key",
@@ -1141,7 +1146,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                         % aggr_func_name.lower(),
                     )
                 assert len(self.expr_columns) == 1
-            aggr_ast = None
+            aggr_ast: list[Any] | None = None
             if self.groupby_monads or (
                 aggr_func_name == "COUNT"
                 and distinct
@@ -1150,7 +1155,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             ):
                 outer_alias = "t"
                 if aggr_func_name == "COUNT" and not aggr_func_distinct:
-                    outer_aggr_ast = ["COUNT", None]
+                    outer_aggr_ast: list[Any] = ["COUNT", None]
                 else:
                     assert len(self.expr_columns) == 1
                     expr_ast = self.expr_columns[0]
@@ -1213,10 +1218,10 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             and not self.aggregated
             and not self.optimize
         ):
-            select_ast, attr_offsets = self.expr_type._construct_select_clause_(
+            select_ast, attr_offsets = self.expr_type._construct_select_clause_(  # type: ignore[union-attr]
                 self.alias,
-                distinct,  # pyright: ignore[reportArgumentType]
-                self.tableref.used_attrs,  # pyright: ignore[reportArgumentType]
+                distinct,  # type: ignore[arg-type]
+                self.tableref.used_attrs,  # type: ignore[arg-type]
             )
         sql_ast.append(select_ast)
         sql_ast.append(self.sqlquery.from_ast)
@@ -1281,12 +1286,12 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         self,
     ) -> list[str | list[str | list[str | int | None | list]]] | None:
         entity = self.expr_type
-        expr_monad = self.tree.elt.monad  # pyright: ignore[reportAttributeAccessIssue]
+        expr_monad = self.tree.elt.monad  # type: ignore[attr-defined]
         if not isinstance(entity, EntityMeta):
             throw(
                 TranslationError,
                 "Delete query should be applied to a single entity. Got: %s"
-                % ast2src(self.tree.expr),  # pyright: ignore[reportAttributeAccessIssue]
+                % ast2src(self.tree.expr),  # type: ignore[attr-defined]
             )
         assert isinstance(entity, EntityMeta)
         force_in = False
@@ -1308,17 +1313,21 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             if self.conditions:
                 sql_ast.append(["WHERE"] + self.conditions)
         else:
-            delete_from_ast = ["FROM", [None, "TABLE", entity._table_]]
-            if len(entity._pk_columns_) == 1:
+            delete_from_ast = ["FROM", [None, "TABLE", entity._table_]]  # type: ignore[union-attr]
+            if len(entity._pk_columns_) == 1:  # type: ignore[union-attr]
                 inner_expr = expr_monad.getsql()
-                outer_expr = ["COLUMN", None, entity._pk_columns_[0]]
+                outer_expr = ["COLUMN", None, entity._pk_columns_[0]]  # type: ignore[union-attr]
             elif self.rowid_support:
                 inner_expr = [["COLUMN", tableref.alias, "ROWID"]]
                 outer_expr = ["COLUMN", None, "ROWID"]
             elif self.row_value_syntax:
                 inner_expr = expr_monad.getsql()
-                outer_expr = ["ROW"] + [
-                    ["COLUMN", None, column_name] for column_name in entity._pk_columns_
+                outer_expr = [
+                    "ROW",
+                    *(
+                        ["COLUMN", None, column_name]
+                        for column_name in entity._pk_columns_  # type: ignore[union-attr]
+                    ),
                 ]
             else:
                 throw(NotImplementedError)
@@ -1327,7 +1336,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 subquery_ast.append(["WHERE"] + self.conditions)
             delete_where_ast = ["WHERE", ["IN", outer_expr, subquery_ast]]
             sql_ast = ["DELETE", None, delete_from_ast, delete_where_ast]
-        return sql_ast
+        return sql_ast  # type: ignore[return-value]
 
     def get_used_attrs(self) -> set[Attribute] | Any:
         if (
@@ -1349,7 +1358,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         self = self.deepcopy()
         order = self.order = self.order[:]  # only order will be changed
         expr_monads = self.expr_monads
-        new_order = []
+        new_order: list[Any] = []
         for i in numbers:
             try:
                 monad = expr_monads[abs(i) - 1]
@@ -1386,7 +1395,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         self = self.deepcopy()
         order = self.order = self.order[:]  # only order will be changed
         alias = self.alias
-        new_order = []
+        new_order: list[Any] = []
         for x in attrs:
             if isinstance(x, DescWrapper):
                 attr = x.attr
@@ -1396,7 +1405,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 desc_wrapper = lambda column: column
             else:
                 assert False, x  # pragma: no cover
-            if entity._adict_.get(attr.name) is not attr:
+            if entity._adict_.get(attr.name) is not attr:  # type: ignore[union-attr]
                 throw(
                     TypeError,
                     "Attribute %s does not belong to entity %s"
@@ -1420,10 +1429,10 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         self = self.deepcopy()
         with self:
             if original_names:
-                object_monad = self.tree.generators[0].iter.monad  # pyright: ignore[reportAttributeAccessIssue]
+                object_monad = self.tree.generators[0].iter.monad  # type: ignore[attr-defined]
                 assert isinstance(object_monad.type, EntityMeta)
             else:
-                object_monad = self.tree.elt.monad  # pyright: ignore[reportAttributeAccessIssue]
+                object_monad = self.tree.elt.monad  # type: ignore[attr-defined]
                 if not isinstance(object_monad.type, EntityMeta):
                     throw(
                         TypeError,
@@ -1464,6 +1473,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         self.vartypes = self.vartypes.copy()  # make HashableDict mutable again
         self.vartypes.update(vartypes)
 
+        namespace: dict[str, Monad | MonadMixin] | None
         if not original_names:
             assert argnames
             namespace = {name: monad for name, monad in zip(argnames, self.expr_monads)}
@@ -1472,34 +1482,34 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         else:
             namespace = None
         if namespace is not None:
-            self.namespace_stack.append(namespace)  # pyright: ignore[reportArgumentType]
+            self.namespace_stack.append(namespace)
         try:
             with self:
                 self.dispatch(func_ast)
                 if isinstance(func_ast, ast.Tuple):
-                    nodes = func_ast.elts
+                    nodes: Sequence[ast.expr] = func_ast.elts
                 else:
                     nodes = (func_ast,)
                 if order_by:
                     self.inside_order_by = True
                     new_order = []
                     for node in nodes:
-                        monad = node.monad.to_single_cell_value()  # pyright: ignore[reportAttributeAccessIssue]
+                        monad = node.monad.to_single_cell_value()  # type: ignore[attr-defined]
                         if isinstance(monad, SetMixin):
                             t = monad.type.item_type
                             if isinstance(type(t), type):
-                                t = t.__name__
+                                t = t.__name__  # type: ignore[assignment]
                             throw(
                                 TranslationError,
                                 "Set of %s (%s) cannot be used for ordering"
                                 % (t, ast2src(node)),
                             )
-                        new_order.extend(node.monad.getsql())  # pyright: ignore[reportAttributeAccessIssue]
+                        new_order.extend(node.monad.getsql())  # type: ignore[attr-defined]
                     self.order[:0] = new_order
                     self.inside_order_by = False
                 else:
                     for node in nodes:
-                        monad = node.monad  # pyright: ignore[reportAttributeAccessIssue]
+                        monad = node.monad  # type: ignore[attr-defined]
                         if isinstance(monad, AndMonad):
                             cond_monads = monad.operands
                         else:
@@ -1525,7 +1535,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         return QuerySetMonad(subtranslator)
 
     def postExpr(self, node: ast.Expr) -> ExprMonad:
-        return node.value.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return node.value.monad  # type: ignore[attr-defined]
 
     def preCompare(self, node: ast.Compare) -> BoolMonad:
         monads = []
@@ -1542,18 +1552,18 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 assert False, str(op_node)
             self.dispatch(right)
             if op.endswith("in"):
-                monad = right.monad.contains(left.monad, op == "not in")  # pyright: ignore[reportAttributeAccessIssue]
+                monad = right.monad.contains(left.monad, op == "not in")  # type: ignore[attr-defined]
             else:
-                monad = left.monad.cmp(op, right.monad)  # pyright: ignore[reportAttributeAccessIssue]
+                monad = left.monad.cmp(op, right.monad)  # type: ignore[attr-defined]
             if not hasattr(monad, "aggregated"):
-                monad.aggregated = getattr(left.monad, "aggregated", False) or getattr(  # pyright: ignore[reportAttributeAccessIssue]
-                    right.monad,  # pyright: ignore[reportAttributeAccessIssue]
+                monad.aggregated = getattr(left.monad, "aggregated", False) or getattr(  # type: ignore[attr-defined]
+                    right.monad,  # type: ignore[attr-defined]
                     "aggregated",
                     False,
                 )
             if not hasattr(monad, "nogroup"):
-                monad.nogroup = getattr(left.monad, "nogroup", False) or getattr(  # pyright: ignore[reportAttributeAccessIssue]
-                    right.monad,  # pyright: ignore[reportAttributeAccessIssue]
+                monad.nogroup = getattr(left.monad, "nogroup", False) or getattr(  # type: ignore[attr-defined]
+                    right.monad,  # type: ignore[attr-defined]
                     "nogroup",
                     False,
                 )
@@ -1589,10 +1599,10 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         return ConstMonad.new(cast("bytes", node.s))
 
     def postList(self, node: ast.List) -> ListMonad:
-        return ListMonad([item.monad for item in node.elts])  # pyright: ignore[reportAttributeAccessIssue]
+        return ListMonad([item.monad for item in node.elts])  # type: ignore[attr-defined]
 
     def postTuple(self, node: ast.Tuple) -> ListMonad:
-        return ListMonad([item.monad for item in node.elts])  # pyright: ignore[reportAttributeAccessIssue]
+        return ListMonad([item.monad for item in node.elts])  # type: ignore[attr-defined]
 
     def postName(self, node: ast.Name) -> Monad:
         monad = self.resolve_name(node.id)
@@ -1618,21 +1628,21 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         return monad
 
     def postAdd(self, node: ast.BinOp) -> ExprMonad:
-        return node.left.monad + node.right.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return node.left.monad + node.right.monad  # type: ignore[attr-defined]
 
     def postSub(
         self, node: ast.BinOp
     ) -> NumericExprMonad | TimedeltaExprMonad | DatetimeExprMonad | DateExprMonad:
-        return node.left.monad - node.right.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return node.left.monad - node.right.monad  # type: ignore[attr-defined]
 
     def postMult(self, node: ast.BinOp) -> NumericExprMonad:
-        return node.left.monad * node.right.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return node.left.monad * node.right.monad  # type: ignore[attr-defined]
 
     def postMatMult(self, node):
         throw(NotImplementedError)
 
     def postDiv(self, node: ast.BinOp) -> NumericExprMonad:
-        return node.left.monad / node.right.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return node.left.monad / node.right.monad  # type: ignore[attr-defined]
 
     def postFloorDiv(self, node):
         return node.left.monad // node.right.monad
@@ -1647,19 +1657,19 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         throw(NotImplementedError)
 
     def postPow(self, node: ast.BinOp) -> NumericExprMonad:
-        return node.left.monad**node.right.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return node.left.monad**node.right.monad  # type: ignore[attr-defined]
 
     def postUSub(self, node: ast.UnaryOp) -> NumericExprMonad:
-        return -node.operand.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return -node.operand.monad  # type: ignore[attr-defined]
 
     def postAttribute(self, node: ast.Attribute) -> Monad:
-        return node.value.monad.getattr(node.attr)  # pyright: ignore[reportAttributeAccessIssue]
+        return node.value.monad.getattr(node.attr)  # type: ignore[attr-defined]
 
     def postAnd(self, node: ast.BoolOp) -> AndMonad:
-        return AndMonad([expr.monad for expr in node.values])  # pyright: ignore[reportAttributeAccessIssue]
+        return AndMonad([expr.monad for expr in node.values])  # type: ignore[attr-defined]
 
     def postOr(self, node: ast.BoolOp) -> OrMonad:
-        return OrMonad([expr.monad for expr in node.values])  # pyright: ignore[reportAttributeAccessIssue]
+        return OrMonad([expr.monad for expr in node.values])  # type: ignore[attr-defined]
 
     def postBitOr(self, node):
         return node.left.monad | node.right.monad
@@ -1671,7 +1681,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         return node.left.monad ^ node.right.monad
 
     def postNot(self, node: ast.UnaryOp) -> BoolMonad:
-        return node.operand.monad.negate()  # pyright: ignore[reportAttributeAccessIssue]
+        return node.operand.monad.negate()  # type: ignore[attr-defined]
 
     def preCall(self, node: ast.Call) -> Monad | None:
         for arg in node.args:
@@ -1680,30 +1690,30 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         if any(kwarg.arg is None for kwarg in node.keywords):
             throw(
                 NotImplementedError,
-                "**%s is not supported" % ast2src(node.dstar_args),  # pyright: ignore[reportAttributeAccessIssue]
+                "**%s is not supported" % ast2src(node.dstar_args),  # type: ignore[attr-defined]
             )
         func_node = node.func
         if isinstance(func_node, ast.Call):
             if isinstance(func_node.func, ast.Name) and func_node.func.id == "getattr":
-                return
+                return None
         if not isinstance(func_node, (ast.Name, ast.Attribute)):
             throw(NotImplementedError)
         if len(node.args) > 1:
-            return
+            return None
         if not node.args:
-            return
+            return None
         arg = node.args[0]
         if isinstance(arg, ast.GeneratorExp):
             self.dispatch(func_node)
-            func_monad = func_node.monad  # pyright: ignore[reportAttributeAccessIssue]
+            func_monad = func_node.monad  # type: ignore[union-attr]
             self.dispatch(arg)
-            query_set_monad = arg.monad  # pyright: ignore[reportAttributeAccessIssue]
+            query_set_monad = arg.monad  # type: ignore[attr-defined]
             return func_monad(query_set_monad)
         if not isinstance(arg, ast.Lambda):
-            return
+            return None
         lambda_expr = arg
         self.dispatch(func_node)
-        method_monad = func_node.monad  # pyright: ignore[reportAttributeAccessIssue]
+        method_monad = func_node.monad  # type: ignore[union-attr]
         if not isinstance(method_monad, MethodMonad):
             throw(NotImplementedError)
         entity_monad = method_monad.parent
@@ -1746,13 +1756,13 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         kwargs = {}
         for arg in node.args:
             if isinstance(arg, ast.Starred):
-                throw(NotImplementedError, arg.src)  # pyright: ignore[reportAttributeAccessIssue]
-            args.append(arg.monad)  # pyright: ignore[reportAttributeAccessIssue]
+                throw(NotImplementedError, arg.src)  # type: ignore[attr-defined]
+            args.append(arg.monad)  # type: ignore[attr-defined]
         for kw in node.keywords:
             if kw.arg is None:
-                throw(NotImplementedError, kw.src)  # pyright: ignore[reportAttributeAccessIssue]
-            kwargs[kw.arg] = kw.value.monad  # pyright: ignore[reportAttributeAccessIssue]
-        func_monad = node.func.monad  # pyright: ignore[reportAttributeAccessIssue]
+                throw(NotImplementedError, kw.src)  # type: ignore[attr-defined]
+            kwargs[kw.arg] = kw.value.monad  # type: ignore[attr-defined]
+        func_monad = node.func.monad  # type: ignore[attr-defined]
         return func_monad(*args, **kwargs)
 
     def postkeyword(self, node: ast.keyword) -> None:
@@ -1765,24 +1775,24 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
             for x in sub.elts:
                 if isinstance(x, ast.Slice):
                     throw(TypeError)
-            key = ListMonad([item.monad for item in sub.elts])  # pyright: ignore[reportAttributeAccessIssue]
-            return node.value.monad[key]  # pyright: ignore[reportAttributeAccessIssue]
+            key = ListMonad([item.monad for item in sub.elts])  # type: ignore[attr-defined]
+            return node.value.monad[key]  # type: ignore[attr-defined]
         if isinstance(sub, ast.Slice):
             start, stop, step = sub.lower, sub.upper, sub.step
             if start is not None:
-                start = start.monad  # pyright: ignore[reportAttributeAccessIssue]
+                start = start.monad  # type: ignore[attr-defined]
             if isinstance(start, NoneMonad):
                 start = None
             if stop is not None:
-                stop = stop.monad  # pyright: ignore[reportAttributeAccessIssue]
+                stop = stop.monad  # type: ignore[attr-defined]
             if isinstance(stop, NoneMonad):
                 stop = None
             if step is not None:
-                step = step.monad  # pyright: ignore[reportAttributeAccessIssue]
+                step = step.monad  # type: ignore[attr-defined]
             if isinstance(step, NoneMonad):
                 step = None
-            return node.value.monad[start:stop:step]  # pyright: ignore[reportAttributeAccessIssue]
-        return node.value.monad[sub.monad]  # pyright: ignore[reportAttributeAccessIssue]
+            return node.value.monad[start:stop:step]  # type: ignore[attr-defined]
+        return node.value.monad[sub.monad]  # type: ignore[attr-defined]
 
     def postSlice(self, node: ast.Slice) -> None:
         return None
@@ -1792,9 +1802,9 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
 
     def postIfExp(self, node: ast.IfExp) -> ExprMonad:
         test_monad, then_monad, else_monad = (
-            node.test.monad,  # pyright: ignore[reportAttributeAccessIssue]
-            node.body.monad,  # pyright: ignore[reportAttributeAccessIssue]
-            node.orelse.monad,  # pyright: ignore[reportAttributeAccessIssue]
+            node.test.monad,  # type: ignore[attr-defined]
+            node.body.monad,  # type: ignore[attr-defined]
+            node.orelse.monad,  # type: ignore[attr-defined]
         )
         if test_monad.type is not bool:
             test_monad = test_monad.nonzero()
@@ -1827,13 +1837,13 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
         nullable = False
         sql = ["CONCAT"]
         for item in node.values:
-            monad = item.monad  # pyright: ignore[reportAttributeAccessIssue]
+            monad = item.monad  # type: ignore[attr-defined]
             if not isinstance(monad, StringMixin):
                 monad = monad.to_str()
             if monad.nullable:
                 nullable = True
             sql.append(monad.getsql()[0])
-        return StringExprMonad(str, sql, nullable=nullable)  # pyright: ignore[reportArgumentType]
+        return StringExprMonad(str, sql, nullable=nullable)
 
     def postFormattedValue(self, node: ast.FormattedValue) -> AttrMonad:
         if node.format_spec is not None:
@@ -1846,7 +1856,7 @@ class SQLTranslator(ASTTranslator[ast.GeneratorExp]):
                 NotImplementedError,
                 "You cannot specify conversion type for f-string expression in query",
             )
-        return node.value.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return node.value.monad  # type: ignore[attr-defined]
 
 
 def combine_limit_and_offset(
@@ -1875,7 +1885,7 @@ def combine_limit_and_offset(
 def coerce_monads(
     m1: Monad, m2: Monad, for_comparison: bool = False
 ) -> tuple[EntityMeta | type[AttrValue] | SetType | None, Monad, Monad]:
-    result_type = coerce_types(m1.type, m2.type)
+    result_type = coerce_types(m1.type, m2.type)  # type: ignore[arg-type]
     if (
         result_type in numeric_types
         and bool in (m1.type, m2.type)
@@ -2015,7 +2025,7 @@ class TableRef:
             if entity._discriminator_attr_:
                 discr_criteria = entity._construct_discriminator_criteria_(self.alias)
                 assert discr_criteria is not None
-                sqlquery.conditions.append(discr_criteria)  # pyright: ignore[reportArgumentType]
+                sqlquery.conditions.append(discr_criteria)
             self.joined = True
         return self.alias, entity._pk_columns_
 
@@ -2033,7 +2043,7 @@ class ExprTableRef(TableRef):
         expr_names: tuple[str, ...],
         expr_aliases: list[str],
     ) -> None:
-        TableRef.__init__(self, sqlquery, name, None)  # pyright: ignore[reportArgumentType]
+        TableRef.__init__(self, sqlquery, name, None)  # type: ignore[arg-type]
         self.subquery_ast = subquery_ast
         self.expr_names = expr_names
         self.expr_aliases = expr_aliases
@@ -2065,7 +2075,7 @@ class StarTableRef(TableRef):
             if entity._discriminator_attr_:  # ???
                 discr_criteria = entity._construct_discriminator_criteria_(self.alias)
                 assert discr_criteria is not None
-                sqlquery.conditions.append(discr_criteria)  # pyright: ignore[reportArgumentType]
+                sqlquery.conditions.append(discr_criteria)
             self.joined = True
         return self.alias, entity._pk_columns_
 
@@ -2116,7 +2126,7 @@ class ExprJoinedTableRef:
         join_cond = join_tables(
             parent_alias, self.alias, self.parent_columns, self.pk_columns
         )
-        sqlquery.join_table(parent_alias, self.alias, entity._table_, join_cond)  # pyright: ignore[reportArgumentType]
+        sqlquery.join_table(parent_alias, self.alias, entity._table_, join_cond)  # type: ignore[arg-type]
         self.joined = True
         return self.alias, self.pk_columns
 
@@ -2148,7 +2158,7 @@ class JoinedTableRef:
         self.optimized = None
         self.parent_tableref = parent_tableref
         self.attr = attr
-        self.entity = attr.py_type
+        self.entity = cast("EntityMeta", attr.py_type)
         assert isinstance(self.entity, EntityMeta)
         self.joined = False
         self.can_affect_distinct = False
@@ -2213,7 +2223,7 @@ class JoinedTableRef:
                 m2m_join_cond = join_tables(
                     parent_alias, m2m_alias, left_pk_columns, reverse_columns
                 )
-                sqlquery.join_table(parent_alias, m2m_alias, m2m_table, m2m_join_cond)  # pyright: ignore[reportArgumentType]
+                sqlquery.join_table(parent_alias, m2m_alias, m2m_table, m2m_join_cond)  # type: ignore[arg-type]
                 if pk_only:
                     self.alias = m2m_alias
                     self.pk_columns = right_m2m_columns
@@ -2228,7 +2238,7 @@ class JoinedTableRef:
         if not pk_only and entity._discriminator_attr_:
             discr_criteria = entity._construct_discriminator_criteria_(alias)
             assert discr_criteria is not None
-            join_cond.append(discr_criteria)  # pyright: ignore[reportArgumentType]
+            join_cond.append(discr_criteria)
 
         translator = self.sqlquery.translator.root_translator
         if (
@@ -2238,7 +2248,7 @@ class JoinedTableRef:
         ):
             pass
         else:
-            sqlquery.join_table(parent_alias, alias, entity._table_, join_cond)  # pyright: ignore[reportArgumentType]
+            sqlquery.join_table(parent_alias, alias, entity._table_, join_cond)  # type: ignore[arg-type]
         self.alias = alias
         self.pk_columns = pk_columns
         self.optimized = False
@@ -2254,6 +2264,16 @@ def wrap_monad_method(cls_name: str, func: Callable[..., _T]) -> Callable[..., _
         return method(monad, *args, **kwargs)
 
     return update_wrapper(wrapper, func)
+
+
+_ArrayType: TypeAlias = "type[Array]"
+_PyTypeObj: TypeAlias = type
+_NumericType: TypeAlias = "type[Numeric]"
+_DateType: TypeAlias = "type[date]"
+_DatetimeType: TypeAlias = "type[datetime]"
+_TimeType: TypeAlias = "type[time]"
+_TimedeltaType: TypeAlias = "type[timedelta]"
+_StringType: TypeAlias = "type[str]"
 
 
 class MonadMeta(type):
@@ -2280,7 +2300,7 @@ class MonadMeta(type):
             cls_dict[name] = wrap_monad_method(cls_name, func)
         return cast(
             "type[_typeshed.Self]",
-            super().__new__(mcs, cls_name, bases, cls_dict),  # pyright: ignore[reportArgumentType]
+            super().__new__(mcs, cls_name, bases, cls_dict),  # type: ignore[arg-type]
         )
 
 
@@ -2288,12 +2308,20 @@ class MonadMixin(metaclass=MonadMeta):
     if TYPE_CHECKING:
         # Declared for type checkers only: a runtime stub here would shadow the
         # real implementation of the concrete monad class later in the MRO.
+        aggregated: bool
+        nullable: bool
+        type: VarType
+
         def getsql(self, sqlquery: SqlQuery | None = None) -> Any: ...
 
 
 class Monad(metaclass=MonadMeta):
+    aggregated: bool
     node: ast.AST | _typeshed.MaybeNone
     nogroup: bool
+    nullable: bool
+    orderby_columns: Sequence[int]
+    tableref: TableRef | JoinedTableRef | ExprJoinedTableRef | _typeshed.MaybeNone
     translator: SQLTranslator
 
     disable_distinct: ClassVar[bool] = False
@@ -2324,7 +2352,7 @@ class Monad(metaclass=MonadMeta):
         return CmpMonad("is not", self, NoneMonad())
 
     def negate(self) -> BoolMonad | JsonItemMonad | NoneMonad:
-        return NotMonad(self)  # pyright: ignore[reportArgumentType]
+        return NotMonad(self)  # type: ignore[arg-type]
 
     def getattr(self, attrname: str) -> Monad:
         try:
@@ -2336,14 +2364,14 @@ class Monad(metaclass=MonadMeta):
                     "%r object has no attribute %r: {EXPR}"
                     % (type2str(self.type), attrname),
                 )
-            return MethodMonad(self, attrname)  # pyright: ignore[reportArgumentType]
+            return MethodMonad(self, attrname)  # type: ignore[arg-type]
         return property_method()
 
     def len(self) -> Any:
         throw(TypeError)
 
     def count(self, distinct: NumericConstMonad | None = None) -> ExprMonad:
-        distinct_value = distinct_from_monad(distinct, default=True)
+        distinct_value: bool | None = distinct_from_monad(distinct, default=True)
         translator = self.translator
         if self.aggregated:
             throw(
@@ -2412,7 +2440,7 @@ class Monad(metaclass=MonadMeta):
                     % (func_name, type2str(expr_type)),
                 )
         elif func_name == "GROUP_CONCAT":
-            if isinstance(expr_type, EntityMeta) and expr_type._pk_is_composite_:
+            if isinstance(expr_type, EntityMeta) and expr_type._pk_is_composite_:  # type: ignore[union-attr]
                 throw(
                     TypeError,
                     "`group_concat` cannot be used with entity with composite primary key",
@@ -2432,6 +2460,7 @@ class Monad(metaclass=MonadMeta):
                 "(you can suggest us how to write SQL for this query)"
                 % translator.dialect,
             )
+        result_type: _ExprMonadType
         if func_name == "AVG":
             result_type = float
         elif func_name == "GROUP_CONCAT":
@@ -2539,6 +2568,7 @@ class RawSQLMonad(Monad):
     def __init__(
         self, rawtype: RawSQLType, varkey: tuple[int, str, int], nullable: bool = True
     ) -> None:
+        type: VarType
         if rawtype.result_type is None:
             type = rawtype
         else:
@@ -2570,7 +2600,7 @@ class RawSQLMonad(Monad):
     def getsql(self, sqlquery: SqlQuery | None = None) -> list[list[str | list]]:
         provider = self.translator.database.provider
         rawtype = self.rawtype
-        result = []
+        result: list[Any] = []
         types = enumerate(rawtype.types)
         for item in self.rawtype.items:
             if isinstance(item, str):
@@ -2659,7 +2689,7 @@ class MethodMonad(Monad):
     attrname: str
 
     def __init__(self, parent: StringAttrMonad, attrname: str) -> None:
-        Monad.__init__(self, "METHOD", nullable=False)  # pyright: ignore[reportArgumentType]
+        Monad.__init__(self, "METHOD", nullable=False)  # type: ignore[arg-type]
         self.parent = parent
         self.attrname = attrname
 
@@ -2714,6 +2744,8 @@ class MethodMonad(Monad):
 
 
 class EntityMonad(Monad):
+    type: SetType
+
     def __init__(self, entity: EntityMeta) -> None:
         Monad.__init__(self, SetType(entity))
         translator = self.translator
@@ -2733,7 +2765,7 @@ class ListMonad(Monad):
     items: list
 
     def __init__(self, items: list) -> None:
-        Monad.__init__(self, tuple(item.type for item in items))  # pyright: ignore[reportArgumentType]
+        Monad.__init__(self, tuple(item.type for item in items))  # type: ignore[arg-type]
         self.items = items
 
     def contains(self, x: Monad, not_in: bool = False) -> BoolExprMonad:
@@ -2748,7 +2780,7 @@ class ListMonad(Monad):
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in:
-                sql = [
+                sql: Sequence[Any] = [
                     "NOT_IN",
                     left_sql[0],
                     [item.getsql()[0] for item in self.items],
@@ -2813,6 +2845,7 @@ def make_numeric_binop(
 
 
 class NumericMixin(MonadMixin):
+    type: _NumericType
     forced_distinct: bool
     translator: SQLTranslator
 
@@ -2906,6 +2939,8 @@ def make_datetime_binop(
 
 
 class DateMixin(MonadMixin):
+    type: _DateType
+
     def mixin_init(self) -> None:
         assert self.type is date
 
@@ -2952,6 +2987,8 @@ class DateMixin(MonadMixin):
 
 
 class TimeMixin(MonadMixin):
+    type: _TimeType
+
     def mixin_init(self) -> None:
         assert self.type is time
 
@@ -2967,11 +3004,15 @@ class TimeMixin(MonadMixin):
 
 
 class TimedeltaMixin(MonadMixin):
+    type: _TimedeltaType
+
     def mixin_init(self) -> None:
         assert self.type is timedelta
 
 
 class DatetimeMixin(DateMixin):
+    type: _DatetimeType
+
     def mixin_init(self) -> None:
         assert self.type is datetime
 
@@ -3055,6 +3096,7 @@ def make_string_func(sqlop: str) -> Callable[[Monad], StringExprMonad]:
 
 
 class StringMixin(MonadMixin):
+    type: _StringType
     translator: SQLTranslator
 
     def mixin_init(self) -> None:
@@ -3079,7 +3121,7 @@ class StringMixin(MonadMixin):
                     index_value = root_translator.fixed_param_values[key]
                 else:
                     assert root_translator.vars is not None
-                    index_value = root_translator.vars[key]
+                    index_value = root_translator.vars[key]  # type: ignore[assignment]
                     if index_value is None:
                         index_value = 0 if is_start else -1
                     root_translator.fixed_param_values[key] = index_value  # pyright: ignore[reportArgumentType]
@@ -3208,8 +3250,8 @@ class StringMixin(MonadMixin):
         return NumericExprMonad(int, ["LENGTH", sql])
 
     def contains(self, item: Monad, not_in: bool = False) -> BoolExprMonad:
-        check_comparable(item, self, "LIKE")  # pyright: ignore[reportArgumentType]
-        return self._like(item, before="%", after="%", not_like=not_in)  # pyright: ignore[reportArgumentType]
+        check_comparable(item, self, "LIKE")  # type: ignore[arg-type]
+        return self._like(item, before="%", after="%", not_like=not_in)  # type: ignore[arg-type]
 
     call_upper: ClassVar[Callable[[Monad], StringExprMonad]] = make_string_func("UPPER")
     call_lower: ClassVar[Callable[[Monad], StringExprMonad]] = make_string_func("LOWER")
@@ -3226,7 +3268,7 @@ class StringMixin(MonadMixin):
                 "Expected %r argument but got %r in expression {EXPR}"
                 % (type2str(self.type), type2str(arg.type)),
             )
-        return self._like(arg, after="%")  # pyright: ignore[reportArgumentType]
+        return self._like(arg, after="%")  # type: ignore[arg-type]
 
     def call_endswith(
         self, arg: NumericConstMonad | StringConstMonad | StringParamMonad
@@ -3239,7 +3281,7 @@ class StringMixin(MonadMixin):
                 "Expected %r argument but got %r in expression {EXPR}"
                 % (type2str(self.type), type2str(arg.type)),
             )
-        return self._like(arg, before="%")  # pyright: ignore[reportArgumentType]
+        return self._like(arg, before="%")  # type: ignore[arg-type]
 
     def _like(
         self,
@@ -3259,7 +3301,7 @@ class StringMixin(MonadMixin):
                 value = before + value
             if after:
                 value = value + after
-            item_sql = ["VALUE", value]
+            item_sql: Any = ["VALUE", value]
         else:
             escape = True
             item_sql = item.getsql()[0]
@@ -3324,7 +3366,7 @@ class StringMixin(MonadMixin):
 
 class JsonMixin:
     translator: SQLTranslator
-    type: type
+    type: _PyTypeObj
 
     if TYPE_CHECKING:
 
@@ -3346,7 +3388,7 @@ class JsonMixin:
     def __getitem__(
         self, key: EllipsisMonad | NumericMixin | slice | StringMixin
     ) -> JsonItemMonad:
-        return JsonItemMonad(self, key)  # pyright: ignore[reportArgumentType]
+        return JsonItemMonad(self, key)  # type: ignore[arg-type]
 
     def contains(self, key: Monad, not_in: bool = False) -> BoolExprMonad:
         translator = self.translator
@@ -3379,7 +3421,7 @@ class JsonMixin:
         sql = ["JSON_ARRAY_LENGTH", self.getsql()[0]]
         return NumericExprMonad(int, sql)
 
-    def cast_from_json(self, type: type) -> Self | ExprMonad:
+    def cast_from_json(self, type: _PyTypeObj) -> Self | ExprMonad:
         if type in (Json, NoneType):
             return self
         throw(
@@ -3392,11 +3434,12 @@ class JsonMixin:
 
 
 class ArrayMixin(MonadMixin):
+    type: _ArrayType
     translator: SQLTranslator
 
     def contains(self, key: Monad, not_in: bool = False) -> BoolExprMonad:
         if key.type is self.type.item_type:
-            sql = "ARRAY_CONTAINS", key.getsql()[0], not_in, self.getsql()[0]
+            sql: Any = "ARRAY_CONTAINS", key.getsql()[0], not_in, self.getsql()[0]
             return BoolExprMonad(sql)
         if isinstance(key, ListMonad):
             if not key.items:
@@ -3455,6 +3498,7 @@ class ArrayMixin(MonadMixin):
                 ["ADD", ["ARRAY_LENGTH", expr_sql], index1],
             ]
             return index_sql
+        return None
 
     def __getitem__(self, index: slice | NumericMixin) -> ExprMonad:
         dialect = self.translator.database.provider.dialect
@@ -3483,10 +3527,10 @@ class ObjectMixin(MonadMixin):
         assert isinstance(self.type, EntityMeta)
 
     def negate(self) -> BoolMonad:
-        return CmpMonad("is", self, NoneMonad())  # pyright: ignore[reportArgumentType]
+        return CmpMonad("is", self, NoneMonad())  # type: ignore[arg-type]
 
     def nonzero(self) -> CmpMonad:
-        return CmpMonad("is not", self, NoneMonad())  # pyright: ignore[reportArgumentType]
+        return CmpMonad("is not", self, NoneMonad())  # type: ignore[arg-type]
 
     def getattr(self, attrname: str) -> Monad:
         if isinstance(self, ParamMonad):
@@ -3501,12 +3545,12 @@ class ObjectMixin(MonadMixin):
             if hasattr(entity, attrname):
                 attr = getattr(entity, attrname, None)
                 if isinstance(attr, property):
-                    new_monad = HybridMethodMonad(self, attrname, attr.fget)  # pyright: ignore[reportArgumentType]
+                    new_monad = HybridMethodMonad(self, attrname, attr.fget)  # type: ignore[arg-type]
                     return new_monad()
                 if callable(attr):
                     func = attr
                     if func is not None:
-                        return HybridMethodMonad(self, attrname, func)  # pyright: ignore[reportArgumentType]
+                        return HybridMethodMonad(self, attrname, func)  # type: ignore[arg-type]
                 throw(NotImplementedError, "{EXPR} cannot be translated to SQL")
             throw(
                 AttributeError,
@@ -3518,16 +3562,16 @@ class ObjectMixin(MonadMixin):
         if not attr.is_collection:
             return AttrMonad.new(self, attr)
         else:
-            return AttrSetMonad(self, attr)  # pyright: ignore[reportArgumentType]
+            return AttrSetMonad(self, attr)  # type: ignore[arg-type]
 
     def requires_distinct(self, joined: bool = False) -> bool:
-        attr = self.attr  # pyright: ignore[reportAttributeAccessIssue]
+        attr = self.attr  # type: ignore[call-overload]
         return attr.reverse.is_collection or self.parent.requires_distinct(
             joined
         )  # parent ???
 
 
-class ObjectIterMonad(ObjectMixin, Monad):
+class ObjectIterMonad(ObjectMixin, Monad):  # type: ignore[misc]
     tableref: TableRef | JoinedTableRef | ExprJoinedTableRef
 
     def __init__(
@@ -3544,7 +3588,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
         return [["COLUMN", alias, column] for column in pk_columns]
 
     def requires_distinct(self, joined: bool = False) -> bool:
-        return self.tableref.name_path != self.translator.tree.generators[-1].target.id  # pyright: ignore[reportAttributeAccessIssue]
+        return self.tableref.name_path != self.translator.tree.generators[-1].target.id  # type: ignore[attr-defined]
 
 
 class AttrMonad(Monad):
@@ -3636,7 +3680,7 @@ class AttrMonad(Monad):
     ) -> AttrMonad:
         t = normalize_type(attr.py_type)
         if t in numeric_types:
-            cls = NumericAttrMonad
+            cls: type[AttrMonad] = NumericAttrMonad
         elif t is str:
             cls = StringAttrMonad
         elif t is date:
@@ -3659,7 +3703,7 @@ class AttrMonad(Monad):
             cls = ArrayAttrMonad
         else:
             throw(NotImplementedError, t)  # pragma: no cover
-        return cls(parent, attr, *args, **kwargs)  # pyright: ignore[reportArgumentType]
+        return cls(parent, attr, *args, **kwargs)  # type: ignore[arg-type]
 
     def __new__(cls, *args) -> Self:
         if cls is AttrMonad:
@@ -3694,14 +3738,14 @@ class AttrMonad(Monad):
             sqlquery = self.translator.sqlquery
             self.translator.left_join = sqlquery.left_join = True
             sqlquery.from_ast[0] = "LEFT_JOIN"
-            alias, columns = self.tableref.make_join()
+            alias, columns = self.tableref.make_join()  # type: ignore[assignment]
         else:
             columns = attr.columns
         assert columns is not None
         return [["COLUMN", alias, column] for column in columns]
 
 
-class ObjectAttrMonad(ObjectMixin, AttrMonad):
+class ObjectAttrMonad(ObjectMixin, AttrMonad):  # type: ignore[misc]
     tableref: TableRef | JoinedTableRef | _typeshed.MaybeNone
 
     def __init__(
@@ -3716,32 +3760,32 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             parent_sqlquery = parent_monad.tableref.sqlquery
             self.tableref = parent_sqlquery.add_tableref(
                 name_path,
-                parent_monad.tableref,  # pyright: ignore[reportArgumentType]
+                parent_monad.tableref,  # type: ignore[arg-type]
                 attr,
             )
 
 
-class StringAttrMonad(StringMixin, AttrMonad):
+class StringAttrMonad(StringMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
-class NumericAttrMonad(NumericMixin, AttrMonad):
+class NumericAttrMonad(NumericMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
-class DateAttrMonad(DateMixin, AttrMonad):
+class DateAttrMonad(DateMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
-class TimeAttrMonad(TimeMixin, AttrMonad):
+class TimeAttrMonad(TimeMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
-class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad):
+class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
-class DatetimeAttrMonad(DatetimeMixin, AttrMonad):
+class DatetimeAttrMonad(DatetimeMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
@@ -3753,11 +3797,11 @@ class UuidAttrMonad(UuidMixin, AttrMonad):
     pass
 
 
-class JsonAttrMonad(JsonMixin, AttrMonad):
+class JsonAttrMonad(JsonMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
-class ArrayAttrMonad(ArrayMixin, AttrMonad):
+class ArrayAttrMonad(ArrayMixin, AttrMonad):  # type: ignore[misc]
     pass
 
 
@@ -3766,33 +3810,33 @@ class ParamMonad(Monad):
 
     @overload
     @staticmethod
-    def new(t: type[Numeric], paramkey: ParamKey) -> NumericParamMonad: ...
+    def new(t: type[Numeric], paramkey: ParamKey) -> NumericParamMonad: ...  # type: ignore[overload-overlap]
     @overload
     @staticmethod
     def new(t: type[str], paramkey: ParamKey) -> StringParamMonad: ...
     @overload
     @staticmethod
-    def new(
+    def new(  # type: ignore[overload-overlap]
         t: type[date], paramkey: ParamKey
     ) -> DateParamMonad | DatetimeParamMonad: ...
     @overload
     @staticmethod
-    def new(t: type[time], paramkey: ParamKey) -> TimeParamMonad: ...
+    def new(t: type[time], paramkey: ParamKey) -> TimeParamMonad: ...  # type: ignore[overload-overlap]
     @overload
     @staticmethod
-    def new(t: type[timedelta], paramkey: ParamKey) -> TimedeltaParamMonad: ...
+    def new(t: type[timedelta], paramkey: ParamKey) -> TimedeltaParamMonad: ...  # type: ignore[overload-overlap]
     @overload
     @staticmethod
     def new(t: type[bytes], paramkey: ParamKey) -> BufferParamMonad: ...
     @overload
     @staticmethod
-    def new(t: type[UUID], paramkey: ParamKey) -> UuidParamMonad: ...
+    def new(t: type[UUID], paramkey: ParamKey) -> UuidParamMonad: ...  # type: ignore[overload-overlap]
     @overload
     @staticmethod
-    def new(t: type[Json], paramkey: ParamKey) -> JsonParamMonad: ...
+    def new(t: type[Json], paramkey: ParamKey) -> JsonParamMonad: ...  # type: ignore[overload-overlap]
     @overload
     @staticmethod
-    def new(t: type[Array], paramkey: ParamKey) -> ArrayParamMonad: ...
+    def new(t: type[Array], paramkey: ParamKey) -> ArrayParamMonad: ...  # type: ignore[overload-overlap]
     @overload
     @staticmethod
     def new(t: EntityMeta, paramkey: ParamKey) -> ObjectParamMonad: ...
@@ -3800,7 +3844,7 @@ class ParamMonad(Monad):
     def new(t: PyType | EntityMeta, paramkey: ParamKey) -> ParamMonad:
         t = normalize_type(t)
         if t in numeric_types:
-            cls = NumericParamMonad
+            cls: type[ParamMonad] = NumericParamMonad
         elif t is str:
             cls = StringParamMonad
         elif t is date:
@@ -3858,7 +3902,7 @@ class ParamMonad(Monad):
         return [["PARAM", self.paramkey, self.converter]]
 
 
-class ObjectParamMonad(ObjectMixin, ParamMonad):
+class ObjectParamMonad(ObjectMixin, ParamMonad):  # type: ignore[misc]
     params: tuple[ParamKey, ...]
 
     def __init__(
@@ -3891,27 +3935,27 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         assert False  # pragma: no cover
 
 
-class StringParamMonad(StringMixin, ParamMonad):
+class StringParamMonad(StringMixin, ParamMonad):  # type: ignore[misc]
     pass
 
 
-class NumericParamMonad(NumericMixin, ParamMonad):
+class NumericParamMonad(NumericMixin, ParamMonad):  # type: ignore[misc]
     pass
 
 
-class DateParamMonad(DateMixin, ParamMonad):
+class DateParamMonad(DateMixin, ParamMonad):  # type: ignore[misc]
     pass
 
 
-class TimeParamMonad(TimeMixin, ParamMonad):
+class TimeParamMonad(TimeMixin, ParamMonad):  # type: ignore[misc]
     pass
 
 
-class TimedeltaParamMonad(TimedeltaMixin, ParamMonad):
+class TimedeltaParamMonad(TimedeltaMixin, ParamMonad):  # type: ignore[misc]
     pass
 
 
-class DatetimeParamMonad(DatetimeMixin, ParamMonad):
+class DatetimeParamMonad(DatetimeMixin, ParamMonad):  # type: ignore[misc]
     pass
 
 
@@ -3923,7 +3967,7 @@ class UuidParamMonad(UuidMixin, ParamMonad):
     pass
 
 
-class ArrayParamMonad(ArrayMixin, ParamMonad):
+class ArrayParamMonad(ArrayMixin, ParamMonad):  # type: ignore[misc]
     list_monad: ListMonad | None
 
     def __init__(
@@ -3939,7 +3983,7 @@ class ArrayParamMonad(ArrayMixin, ParamMonad):
         return ArrayMixin.contains(self, key, not_in)
 
 
-class JsonParamMonad(JsonMixin, ParamMonad):
+class JsonParamMonad(JsonMixin, ParamMonad):  # type: ignore[misc]
     def getsql(
         self, sqlquery: SqlQuery | None = None
     ) -> Sequence[Sequence[str | Sequence[str | ParamKey | Converter | None]]]:
@@ -3988,7 +4032,7 @@ class ExprMonad(Monad):
     @staticmethod
     def new(t: _ExprMonadType, sql: _Sql, nullable: bool = True) -> ExprMonad:
         if t in numeric_types:
-            cls = NumericExprMonad
+            cls: type[ExprMonad] = NumericExprMonad
         elif t is str:
             cls = StringExprMonad
         elif t is date:
@@ -4007,7 +4051,7 @@ class ExprMonad(Monad):
             cls = ArrayExprMonad
         else:
             throw(NotImplementedError, t)  # pragma: no cover
-        return cls(t, sql, nullable=nullable)  # pyright: ignore[reportArgumentType]
+        return cls(t, sql, nullable=nullable)  # type: ignore[arg-type]
 
     def __new__(cls, *args, **kwargs) -> Self:
         if cls is ExprMonad:
@@ -4022,44 +4066,44 @@ class ExprMonad(Monad):
         return [self.sql]
 
 
-class ObjectExprMonad(ObjectMixin, ExprMonad):
+class ObjectExprMonad(ObjectMixin, ExprMonad):  # type: ignore[misc]
     def getsql(self, sqlquery: SqlQuery | None = None) -> _Sql:
         return self.sql
 
 
-class StringExprMonad(StringMixin, ExprMonad):
+class StringExprMonad(StringMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class NumericExprMonad(NumericMixin, ExprMonad):
+class NumericExprMonad(NumericMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class DateExprMonad(DateMixin, ExprMonad):
+class DateExprMonad(DateMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class TimeExprMonad(TimeMixin, ExprMonad):
+class TimeExprMonad(TimeMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class TimedeltaExprMonad(TimedeltaMixin, ExprMonad):
+class TimedeltaExprMonad(TimedeltaMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class DatetimeExprMonad(DatetimeMixin, ExprMonad):
+class DatetimeExprMonad(DatetimeMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class JsonExprMonad(JsonMixin, ExprMonad):
+class JsonExprMonad(JsonMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class ArrayExprMonad(ArrayMixin, ExprMonad):
+class ArrayExprMonad(ArrayMixin, ExprMonad):  # type: ignore[misc]
     pass
 
 
-class JsonItemMonad(JsonMixin, Monad):
+class JsonItemMonad(JsonMixin, Monad):  # type: ignore[misc]
     parent: JsonItemMonad | JsonAttrMonad
 
     def __init__(
@@ -4077,7 +4121,7 @@ class JsonItemMonad(JsonMixin, Monad):
         elif isinstance(
             key, (ParamMonad, StringConstMonad, NumericConstMonad, EllipsisMonad)
         ):
-            self.key_ast = key.getsql()[0]
+            self.key_ast = key.getsql()[0]  # type: ignore[assignment]
         else:
             assert isinstance(key, Monad)
             throw(TypeError, "Invalid JSON path item: %s" % ast2src(key.node))
@@ -4230,7 +4274,7 @@ class ConstMonad(Monad, Generic[_CT]):
 
     def __init__(self, value: _CT) -> None:
         value_type, value = normalize(value)
-        Monad.__init__(self, value_type, nullable=value_type is NoneType)  # pyright: ignore[reportArgumentType]
+        Monad.__init__(self, value_type, nullable=value_type is NoneType)  # type: ignore[arg-type]
         self.value = value
 
     def getsql(self, sqlquery: SqlQuery | None = None) -> list[Sequence[str | _CT]]:
@@ -4322,16 +4366,16 @@ class NoneMonad(ConstMonad[None]):
         return NoneMonad()
 
 
-class EllipsisMonad(ConstMonad[Ellipsis]):
+class EllipsisMonad(ConstMonad[types.EllipsisType]):
     pass
 
 
-class StringConstMonad(StringMixin, ConstMonad[str]):
+class StringConstMonad(StringMixin, ConstMonad[str]):  # type: ignore[misc]
     def len(self) -> NumericConstMonad:
         return ConstMonad.new(len(self.value))
 
 
-class JsonConstMonad(JsonMixin, ConstMonad[Json]):
+class JsonConstMonad(JsonMixin, ConstMonad[Json]):  # type: ignore[misc]
     pass
 
 
@@ -4339,29 +4383,29 @@ class BufferConstMonad(BufferMixin, ConstMonad[bytes]):
     pass
 
 
-class NumericConstMonad(NumericMixin, ConstMonad[Numeric]):
+class NumericConstMonad(NumericMixin, ConstMonad[Numeric]):  # type: ignore[misc]
     pass
 
 
-class DateConstMonad(DateMixin, ConstMonad[date]):
+class DateConstMonad(DateMixin, ConstMonad[date]):  # type: ignore[misc]
     pass
 
 
-class TimeConstMonad(TimeMixin, ConstMonad[time]):
+class TimeConstMonad(TimeMixin, ConstMonad[time]):  # type: ignore[misc]
     pass
 
 
-class TimedeltaConstMonad(TimedeltaMixin, ConstMonad[timedelta]):
+class TimedeltaConstMonad(TimedeltaMixin, ConstMonad[timedelta]):  # type: ignore[misc]
     pass
 
 
-class DatetimeConstMonad(DatetimeMixin, ConstMonad[datetime]):
+class DatetimeConstMonad(DatetimeMixin, ConstMonad[datetime]):  # type: ignore[misc]
     pass
 
 
 class BoolMonad(Monad):
     def __init__(self, nullable: bool | None = True) -> None:
-        Monad.__init__(self, bool, nullable=nullable)  # pyright: ignore[reportArgumentType]
+        Monad.__init__(self, bool, nullable=nullable)  # type: ignore[arg-type]
 
     def nonzero(self) -> Self:
         return self
@@ -4378,11 +4422,11 @@ sql_negation.update((value, key) for key, value in list(sql_negation.items()))
 
 
 class BoolExprMonad(BoolMonad):
-    sql: Sequence[str | bool | list]
+    sql: Sequence[Any]
 
     def __init__(
         self,
-        sql: Sequence[str | bool | list],
+        sql: Sequence[Any],
         nullable: bool = True,
     ) -> None:
         BoolMonad.__init__(self, nullable=nullable)
@@ -4397,7 +4441,7 @@ class BoolExprMonad(BoolMonad):
         sql = self.sql
         assert isinstance(sql, list)
         sqlop = sql[0]
-        negated_op = sql_negation.get(sqlop)  # pyright: ignore[reportArgumentType]
+        negated_op = sql_negation.get(sqlop)
         if negated_op is not None:
             negated_sql = [negated_op] + sql[1:]
         elif negated_op == "NOT":
@@ -4405,7 +4449,7 @@ class BoolExprMonad(BoolMonad):
             negated_sql = sql[1]
         else:
             return NotMonad(self)
-        return BoolExprMonad(negated_sql, nullable=self.nullable)  # pyright: ignore[reportArgumentType]
+        return BoolExprMonad(negated_sql, nullable=self.nullable)
 
 
 cmp_ops = {">=": "GE", ">": "GT", "<=": "LE", "<": "LT"}
@@ -4494,13 +4538,14 @@ class CmpMonad(BoolMonad):
 
 class LogicalBinOpMonad(BoolMonad):
     binop: LiteralString
+    operands: list[Any]
 
     def __init__(
         self,
         operands: Sequence[BoolMonad | NumericMixin],
     ) -> None:
         assert len(operands) >= 2
-        items = []
+        items: list[Any] = []
         for operand in operands:
             if operand.type is not bool:
                 items.append(operand.nonzero())
@@ -4586,7 +4631,7 @@ class HybridFuncMonad(Monad):
             {},
             special_functions,
             const_functions,
-            outer_names=name_mapping,  # pyright: ignore[reportArgumentType]
+            outer_names=name_mapping,  # type: ignore[arg-type]
         )
 
         root_translator = translator.root_translator
@@ -4626,7 +4671,7 @@ class HybridFuncMonad(Monad):
             raise
         finally:
             stack.pop()
-        return func_ast.monad  # pyright: ignore[reportAttributeAccessIssue]
+        return func_ast.monad  # type: ignore[attr-defined]
 
 
 class HybridMethodMonad(HybridFuncMonad):
@@ -4648,7 +4693,7 @@ class FuncMonadMeta(MonadMeta):
         cls_dict: dict[str, str | type[AttrValue] | Callable | tuple],
     ) -> type[_typeshed.Self]:
         func = cls_dict.get("func")
-        monad_cls = super().__new__(mcs, cls_name, bases, cls_dict)  # pyright: ignore[reportArgumentType]
+        monad_cls = super().__new__(mcs, cls_name, bases, cls_dict)  # type: ignore[misc]
         if func:
             if type(func) is tuple:
                 functions = func
@@ -4669,7 +4714,7 @@ class FuncMonad(Monad, metaclass=FuncMonadMeta):
         try:
             return self.call(*args, **kwargs)
         except TypeError as exc:
-            reraise_improved_typeerror(exc, "call", self.type.__name__)
+            reraise_improved_typeerror(exc, "call", self.type.__name__)  # type: ignore[union-attr]
 
     if TYPE_CHECKING:
 
@@ -4678,7 +4723,7 @@ class FuncMonad(Monad, metaclass=FuncMonadMeta):
 
 def get_classes(classinfo: EntityMonad | ListMonad) -> Iterator[EntityMeta]:
     if isinstance(classinfo, EntityMonad):
-        yield classinfo.type.item_type
+        yield cast("EntityMeta", classinfo.type.item_type)
     elif isinstance(classinfo, ListMonad):
         for item in classinfo.items:
             yield from get_classes(item)
@@ -4745,7 +4790,7 @@ class FuncBufferMonad(FuncMonad):
         elif encoding:
             value = buffer(source, encoding)
         else:
-            value = buffer(source)  # pyright: ignore[reportArgumentType]
+            value = buffer(source)  # type: ignore[arg-type]
         return ConstMonad.new(value)
 
 
@@ -4857,7 +4902,7 @@ class FuncTimedeltaMonad(FuncMonad):
                 )
             if not isinstance(arg, ConstMonad):
                 throw(NotImplementedError)
-        value = timedelta(*(arg.value if arg is not None else 0 for arg in args))  # pyright: ignore[reportArgumentType]
+        value = timedelta(*(arg.value if arg is not None else 0 for arg in args))  # type: ignore[arg-type]
         return ConstMonad.new(value)
 
 
@@ -4888,7 +4933,7 @@ class FuncDatetimeMonad(FuncDateMonad):
                 )
             if not isinstance(arg, ConstMonad):
                 throw(NotImplementedError)
-        value = datetime(*(arg.value if arg is not None else 0 for arg in args))  # pyright: ignore[reportArgumentType]
+        value = datetime(*(arg.value if arg is not None else 0 for arg in args))  # type: ignore[arg-type]
         return cast("DatetimeConstMonad", ConstMonad.new(value))
 
     def call_now(self):
@@ -4954,7 +4999,7 @@ class FuncGetattrMonad(FuncMonad):
         ),
     ) -> Monad:
         if isinstance(name_monad, ConstMonad):
-            attrname = name_monad.value
+            attrname: Any = name_monad.value
         elif isinstance(name_monad, ParamMonad):
             translator = self.translator.root_translator
             key = name_monad.paramkey[0]
@@ -4963,7 +5008,7 @@ class FuncGetattrMonad(FuncMonad):
             else:
                 assert translator.vars is not None
                 attrname = translator.vars[key]
-                translator.fixed_param_values[key] = attrname  # pyright: ignore[reportArgumentType]
+                translator.fixed_param_values[key] = attrname
         else:
             throw(
                 TranslationError,
@@ -5013,7 +5058,7 @@ class FuncCountMonad(FuncMonad):
         if isinstance(x, StringConstMonad) and x.value == "*":
             x = None
         if x is not None:
-            return x.count(distinct)  # pyright: ignore[reportArgumentType]
+            return x.count(distinct)  # type: ignore[arg-type]
         result = ExprMonad.new(int, ["COUNT", None], nullable=False)
         result.aggregated = True
         return result
@@ -5187,10 +5232,10 @@ def minmax(monad: FuncMaxMonad | FuncMinMonad, sqlop: str, *args) -> ExprMonad:
             throw(IncomparableTypesError, t, t2)
         t = t3
     if t3 in numeric_types and translator.dialect == "PostgreSQL":  # pyright: ignore[reportPossiblyUnboundVariable]
-        args = list(args)
+        args = list(args)  # type: ignore[assignment]
         for i, arg in enumerate(args):
             if arg.type is bool:
-                args[i] = NumericExprMonad(
+                args[i] = NumericExprMonad(  # type: ignore[index]
                     int, ["TO_INT", arg.getsql()[0]], nullable=arg.nullable
                 )
     sql = cast("_Sql", [sqlop, None] + [arg.getsql()[0] for arg in args])
@@ -5244,7 +5289,7 @@ class JoinMonad(Monad):
     hint_join_prev: bool
 
     def __init__(self, type: Callable) -> None:
-        Monad.__init__(self, type)  # pyright: ignore[reportArgumentType]
+        Monad.__init__(self, type)  # type: ignore[arg-type]
         translator = self.translator
         self.hint_join_prev = translator.hint_join
         translator.hint_join = True
@@ -5254,14 +5299,14 @@ class JoinMonad(Monad):
         return x
 
 
-registered_functions[JOIN] = JoinMonad  # pyright: ignore[reportArgumentType]
+registered_functions[JOIN] = JoinMonad  # type: ignore[index]
 
 
 class FuncRandomMonad(FuncMonad):
     func: ClassVar[Callable[[], float]] = random
 
     def __init__(self, type: Callable) -> None:
-        FuncMonad.__init__(self, type)  # pyright: ignore[reportArgumentType]
+        FuncMonad.__init__(self, type)  # type: ignore[arg-type]
         self.translator.query_result_is_cacheable = False
 
     def __call__(self) -> NumericExprMonad:
@@ -5269,6 +5314,7 @@ class FuncRandomMonad(FuncMonad):
 
 
 class SetMixin(MonadMixin):
+    type: SetType
     forced_distinct: bool = False
 
     def call_distinct(self) -> SetMixin:
@@ -5287,10 +5333,10 @@ def make_attrset_binop(
     return attrset_binop
 
 
-class AttrSetMonad(SetMixin, Monad):
+class AttrSetMonad(SetMixin, Monad):  # type: ignore[misc]
     parent: AttrSetMonad | ObjectIterMonad
     sqlquery: SqlQuery | None
-    tableref: TableRef | None
+    tableref: TableRef | JoinedTableRef | ExprJoinedTableRef | None
 
     def __init__(self, parent: AttrSetMonad | ObjectIterMonad, attr: Attribute) -> None:
         item_type = normalize_type(attr.py_type)
@@ -5359,7 +5405,7 @@ class AttrSetMonad(SetMixin, Monad):
             sqlquery = SqlQuery(translator, translator.sqlquery)
             tableref = self.make_tableref(sqlquery)
             attr = self.attr
-            alias, columns = tableref.make_join(pk_only=attr.reverse)  # pyright: ignore[reportArgumentType]
+            alias, columns = tableref.make_join(pk_only=attr.reverse)  # type: ignore[arg-type]
             expr_list = self.make_expr_list()
             if not attr.reverse:
                 columns = attr.columns
@@ -5368,7 +5414,7 @@ class AttrSetMonad(SetMixin, Monad):
             from_ast.extend(sqlquery.from_ast[1:])
             conditions = [
                 ["EQ", ["COLUMN", alias, column], expr]
-                for column, expr in zip(columns, item.getsql())  # pyright: ignore[reportArgumentType]
+                for column, expr in zip(columns, item.getsql())  # type: ignore[arg-type]
             ]
             conditions.extend(sqlquery.conditions)
             cast("list", from_ast[-1])[-1] = sqland([from_ast[-1][-1]] + conditions)
@@ -5424,7 +5470,8 @@ class AttrSetMonad(SetMixin, Monad):
         inner_conditions = sqlquery.conditions
         outer_conditions = sqlquery.outer_conditions
 
-        sql_ast = make_aggr = None
+        sql_ast: Any = None
+        make_aggr: Callable[[Any], list[Any]] | None = None
         extra_grouping = False
         assert self.tableref is not None
         if not distinct_value and self.tableref.name_path != translator.optimize:
@@ -5496,13 +5543,13 @@ class AttrSetMonad(SetMixin, Monad):
             optimized = False
         elif translator.hint_join:
             sql_ast, optimized = self._joined_subselect(
-                make_aggr,  # pyright: ignore[reportArgumentType]
+                make_aggr,  # type: ignore[arg-type]
                 extra_grouping,
                 coalesce_to_zero=True,
             )
         else:
             sql_ast, optimized = self._aggregated_scalar_subselect(
-                make_aggr,  # pyright: ignore[reportArgumentType]
+                make_aggr,  # type: ignore[arg-type]
                 extra_grouping,
             )
         translator.aggregated_subquery_paths.add(self.tableref.name_path)
@@ -5566,6 +5613,7 @@ class AttrSetMonad(SetMixin, Monad):
         else:
             sql_ast, optimized = self._aggregated_scalar_subselect(make_aggr)
 
+        result_type: _ExprMonadType
         if func_name == "AVG":
             result_type = float
         elif func_name == "GROUP_CONCAT":
@@ -5616,7 +5664,7 @@ class AttrSetMonad(SetMixin, Monad):
             name_path = parent_tableref.name_path + "-" + attr.name
             self.tableref = sqlquery.get_tableref(name_path) or sqlquery.add_tableref(
                 name_path,
-                parent_tableref,  # pyright: ignore[reportArgumentType]
+                parent_tableref,  # type: ignore[arg-type]
                 attr,
             )
         else:
@@ -5629,7 +5677,7 @@ class AttrSetMonad(SetMixin, Monad):
         attr = self.attr
         pk_only = attr.reverse or attr.pk_offset is not None
         assert self.tableref is not None
-        alias, columns = self.tableref.make_join(pk_only)  # pyright: ignore[reportArgumentType]
+        alias, columns = self.tableref.make_join(pk_only)  # type: ignore[arg-type]
         assert columns is not None
         if attr.reverse:
             pass
@@ -5742,7 +5790,7 @@ class AttrSetMonad(SetMixin, Monad):
         )
         expr_ast = ["COLUMN", alias, expr_name]
         if coalesce_to_zero:
-            expr_ast = ["COALESCE", expr_ast, ["VALUE", 0]]
+            expr_ast = ["COALESCE", expr_ast, ["VALUE", 0]]  # type: ignore[list-item]
         return expr_ast, False
 
     def _subselect(
@@ -5758,8 +5806,7 @@ class AttrSetMonad(SetMixin, Monad):
         sqlquery.expr_list = self.make_expr_list()
         if not attr.reverse and not attr.is_required:
             sqlquery.conditions.extend(
-                ["IS_NOT_NULL", expr]
-                for expr in sqlquery.expr_list  # pyright: ignore[reportArgumentType]
+                ["IS_NOT_NULL", expr] for expr in sqlquery.expr_list
             )
         if sqlquery is not translator.sqlquery and extract_outer_conditions:
             assert isinstance(sqlquery.from_ast[1], list)
@@ -5804,7 +5851,7 @@ def make_numericset_binop(
     return numericset_binop
 
 
-class NumericSetExprMonad(SetMixin, Monad):
+class NumericSetExprMonad(SetMixin, Monad):  # type: ignore[misc]
     op: str
     sqlop: str
     left: Monad
@@ -5845,12 +5892,13 @@ class NumericSetExprMonad(SetMixin, Monad):
             sqlquery.outer_conditions = outer_cond[1:]
         else:
             sqlquery.outer_conditions = [outer_cond]
+        result_type: _ExprMonadType
         if func_name == "AVG":
             result_type = float
         elif func_name == "GROUP_CONCAT":
             result_type = str
         else:
-            result_type = self.type.item_type
+            result_type = cast("_ExprMonadType", self.type.item_type)
         aggr_ast = [func_name, distinct_value, expr]
         if func_name == "GROUP_CONCAT":
             if sep is not None:
@@ -5872,7 +5920,7 @@ class NumericSetExprMonad(SetMixin, Monad):
                 ]
                 translator.sqlquery.from_ast.extend(from_ast)
                 translator.from_optimized = True
-            sql_ast = aggr_ast
+            sql_ast = aggr_ast  # type: ignore[assignment]
             result = ExprMonad.new(result_type, sql_ast, nullable=func_name != "SUM")
             result.aggregated = True
         return result
@@ -5920,7 +5968,7 @@ class NumericSetExprMonad(SetMixin, Monad):
     )
 
 
-class QuerySetMonad(SetMixin, Monad):
+class QuerySetMonad(SetMixin, Monad):  # type: ignore[misc]
     subtranslator: SQLTranslator
     item_type: ExprType
     limit: int | None
@@ -5929,7 +5977,7 @@ class QuerySetMonad(SetMixin, Monad):
 
     def __init__(self, subtranslator: SQLTranslator) -> None:
         item_type = subtranslator.expr_type
-        monad_type = SetType(item_type)  # pyright: ignore[reportArgumentType]
+        monad_type = SetType(item_type)  # type: ignore[arg-type]
         Monad.__init__(self, monad_type)
         self.subtranslator = subtranslator
         self.item_type = item_type
@@ -6124,7 +6172,7 @@ class QuerySetMonad(SetMixin, Monad):
             elif len(sub.expr_columns) == 1:
                 select_ast = [
                     "AGGREGATES",
-                    ["COUNT", True if distinct_value is None else distinct_value]
+                    ["COUNT", True if distinct_value is None else distinct_value]  # type: ignore[list-item]
                     + sub.expr_columns,
                 ]
             elif translator.dialect == "Oracle":
@@ -6138,7 +6186,7 @@ class QuerySetMonad(SetMixin, Monad):
             elif translator.row_value_syntax:
                 select_ast = [
                     "AGGREGATES",
-                    ["COUNT", True if distinct_value is None else distinct_value]
+                    ["COUNT", True if distinct_value is None else distinct_value]  # type: ignore[list-item]
                     + sub.expr_columns,
                 ]
             elif translator.dialect == "SQLite":
@@ -6192,8 +6240,8 @@ class QuerySetMonad(SetMixin, Monad):
                 "AGGREGATES",
                 [
                     "COUNT",
-                    True if distinct_value is None else distinct_value,
-                    sub.expr_columns[0],
+                    True if distinct_value is None else distinct_value,  # type: ignore[list-item]
+                    sub.expr_columns[0],  # type: ignore[list-item]
                 ],
             ]
         else:
@@ -6235,7 +6283,7 @@ class QuerySetMonad(SetMixin, Monad):
                     % (func_name.lower(), type2str(expr_type)),
                 )
         elif func_name == "GROUP_CONCAT":
-            if isinstance(expr_type, EntityMeta) and expr_type._pk_is_composite_:
+            if isinstance(expr_type, EntityMeta) and expr_type._pk_is_composite_:  # type: ignore[union-attr]
                 throw(
                     TypeError,
                     "`group_concat` cannot be used with entity with composite primary key",
@@ -6249,6 +6297,7 @@ class QuerySetMonad(SetMixin, Monad):
                 aggr_ast.append(["VALUE", sep])
         select_ast = ["AGGREGATES", aggr_ast]
         sql_ast = ["SELECT", select_ast, from_ast, where_ast]
+        result_type: _ExprMonadType
         if func_name == "AVG":
             result_type = float
         elif func_name == "GROUP_CONCAT":

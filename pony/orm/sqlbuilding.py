@@ -80,12 +80,12 @@ class Param:
 
     def eval(self, values: QueryVars) -> Any:
         varkey, i, j = self.paramkey
-        value = values[varkey]
+        value: Any = values[varkey]
         if i is not None:
             t = type(value)
             if t is tuple:
                 assert isinstance(value, tuple)
-                value = value[i]  # pyright: ignore[reportArgumentType]
+                value = value[i]
             elif t is RawSQL:
                 assert isinstance(value, RawSQL)
                 value = value.values[i]
@@ -101,7 +101,7 @@ class Param:
         converter = self.converter
         if value is not None and converter is not None:
             if converter.attr is None:
-                value = converter.val2dbval(value)  # pyright: ignore[reportArgumentType]
+                value = converter.val2dbval(value)
             value = converter.py2sql(value)
         return value
 
@@ -136,7 +136,7 @@ class CompositeParam(Param):
     ) -> None:
         for item in items:
             assert isinstance(item, (Param, Value)), item
-        Param.__init__(self, paramstyle, paramkey)  # pyright: ignore[reportArgumentType]
+        Param.__init__(self, paramstyle, paramkey)  # type: ignore[arg-type]
         self.items = items
         self.func = func
 
@@ -151,7 +151,7 @@ class CompositeParam(Param):
         ),
     ) -> str:
         args = [
-            item.eval(values) if isinstance(item, Param) else item.value  # pyright: ignore[reportArgumentType]
+            item.eval(values) if isinstance(item, Param) else item.value  # type: ignore[arg-type]
             for item in self.items
         ]
         return self.func(args)
@@ -195,7 +195,7 @@ class Value:
 
 def flat(tree: Any) -> list:
     stack = [tree]
-    result = []
+    result: list[Any] = []
     stack_pop = stack.pop
     stack_extend = stack.extend
     result_append = result.append
@@ -244,7 +244,7 @@ def flat_conditions(
     result = []
     for condition in conditions:
         if condition[0] == "AND":
-            result.extend(flat_conditions(condition[1:]))  # pyright: ignore[reportArgumentType]
+            result.extend(flat_conditions(condition[1:]))  # type: ignore[arg-type]
         else:
             result.append(condition)
     return result
@@ -253,11 +253,11 @@ def flat_conditions(
 def join(delimiter: str, items: Iterable[_T]) -> list[_T | str]:
     items = iter(items)
     try:
-        result = [next(items)]
+        result: list[_T | str] = [next(items)]
     except StopIteration:
         return []
     for item in items:
-        result.append(delimiter)  # pyright: ignore[reportArgumentType]
+        result.append(delimiter)
         result.append(item)
     return result
 
@@ -353,7 +353,7 @@ class SQLBuilder:
         self.suppress_aliases = False
         self.result = flat(self(ast))
         params = tuple(x for x in self.result if isinstance(x, Param))
-        layout = []
+        layout: list[str | ParamKey | tuple[ParamKey | str, ...]] = []
         for i, param in enumerate(params):
             if param.id is None:
                 param.id = i + 1
@@ -473,7 +473,7 @@ class SQLBuilder:
 
     def _subquery(self, *sections: SqlAst) -> list[str | list[str]]:
         self.indent += 1
-        new_sections = sections
+        new_sections: Sequence[SqlAst] = sections
         if not self.inner_join_syntax:
             new_sections = move_conditions_from_inner_join_to_where(sections)
         result = [self(s) for s in new_sections]
@@ -537,7 +537,8 @@ class SQLBuilder:
     ) -> list[str]:
         indent = self.indent_spaces * (self.indent - 1)
         indent2 = indent + self.indent_spaces
-        result = [indent, "FROM "]
+        result: list[Any] = [indent, "FROM "]
+        alias: str | list | None
         for i, source in enumerate(sources):
             if len(source) == 3:
                 alias, kind, x = source
@@ -591,24 +592,24 @@ class SQLBuilder:
     def WHERE(self, *conditions) -> str | list[str]:
         if not conditions:
             return ""
-        conditions = flat_conditions(conditions)
+        flat_conds = flat_conditions(conditions)
         indent = self.indent_spaces * (self.indent - 1)
         result = [indent, "WHERE "]
         extend = result.extend
-        extend((self(conditions[0]), "\n"))
-        for condition in conditions[1:]:
+        extend((self(flat_conds[0]), "\n"))
+        for condition in flat_conds[1:]:
             extend((indent, "  AND ", self(condition), "\n"))
         return result
 
     def HAVING(self, *conditions) -> str | list[str]:
         if not conditions:
             return ""
-        conditions = flat_conditions(conditions)
+        flat_conds = flat_conditions(conditions)
         indent = self.indent_spaces * (self.indent - 1)
         result = [indent, "HAVING "]
         extend = result.extend
-        extend((self(conditions[0]), "\n"))
-        for condition in conditions[1:]:
+        extend((self(flat_conds[0]), "\n"))
+        for condition in flat_conds[1:]:
             extend((indent, "  AND ", self(condition), "\n"))
         return result
 
@@ -675,7 +676,7 @@ class SQLBuilder:
         keys = self.keys
         param = keys.get(paramkey)
         if param is None:
-            param = param_class(self.paramstyle, paramkey, *args)  # pyright: ignore[reportArgumentType]
+            param = param_class(self.paramstyle, paramkey, *args)  # type: ignore[arg-type]
             keys[paramkey] = param
         return cast("_PT", param)
 
@@ -697,12 +698,12 @@ class SQLBuilder:
         return self.value_class(self.paramstyle, value)
 
     def AND(self, *cond_list) -> list[str | tuple[list[str], str]]:
-        cond_list = [self(condition) for condition in cond_list]
-        return join(" AND ", cond_list)
+        conds = [self(condition) for condition in cond_list]
+        return join(" AND ", conds)
 
     def OR(self, *cond_list) -> tuple[str, list[str | tuple[list[str], str]], str]:
-        cond_list = [self(condition) for condition in cond_list]
-        return "(", join(" OR ", cond_list), ")"
+        conds = [self(condition) for condition in cond_list]
+        return "(", join(" OR ", conds), ")"
 
     def NOT(self, condition: list[str | list]) -> tuple[str, tuple, str]:
         return "NOT (", self(condition), ")"
@@ -778,7 +779,7 @@ class SQLBuilder:
     ) -> tuple[Unpack[tuple], str, Value]:
         result = self(expr), " LIKE ", self(template)
         if escape:
-            result = result + (" ESCAPE ", self(escape))
+            return result + (" ESCAPE ", self(escape))
         return result
 
     def NOT_LIKE(
@@ -789,7 +790,7 @@ class SQLBuilder:
     ) -> tuple[Unpack[tuple], str, Value]:
         result = self(expr), " NOT LIKE ", self(template)
         if escape:
-            result = result + (" ESCAPE ", self(escape))
+            return result + (" ESCAPE ", self(escape))
         return result
 
     def BETWEEN(self, expr1, expr2, expr3):
@@ -874,7 +875,10 @@ class SQLBuilder:
         self, distinct: bool | None, expr: list[str], sep: list[str] | None = None
     ) -> tuple[tuple, str]:
         assert distinct in (None, True, False)
-        result = distinct and "GROUP_CONCAT(DISTINCT " or "GROUP_CONCAT(", self(expr)
+        result: tuple[Any, ...] = (
+            distinct and "GROUP_CONCAT(DISTINCT " or "GROUP_CONCAT(",
+            self(expr),
+        )
         if sep is not None:
             if self.provider.dialect == "MySQL":
                 result = result, " SEPARATOR ", self(sep)
@@ -936,6 +940,13 @@ class SQLBuilder:
         Value | list[str] | tuple,
         str,
     ]:
+        index_sql: list[Any]
+        len_sql: list[Any] | None
+        start_sql: list[Any]
+        stop_sql: list[Any]
+        stop_positive: list[Any]
+        stop_negative: list[Any]
+
         if start is None:
             start = ["VALUE", 0]
 
@@ -1082,13 +1093,13 @@ class SQLBuilder:
             and default[1] is None
         ):
             cases2, default2 = default[2:]
-            return self.CASE(None, tuple(cases) + tuple(cases2), default2)  # pyright: ignore[reportArgumentType]
+            return self.CASE(None, tuple(cases) + tuple(cases2), default2)  # type: ignore[arg-type]
         result = ["case"]
         if expr is not None:
             result.append(" ")
             result.extend(self(expr))
         for condition, expr in cases:
-            result.extend((" when ", self(condition), " then ", self(expr)))  # pyright: ignore[reportArgumentType]
+            result.extend((" when ", self(condition), " then ", self(expr)))  # type: ignore[arg-type]
         if default is not None:
             result.extend((" else ", self(default)))
         result.append(" end")
@@ -1187,6 +1198,7 @@ class SQLBuilder:
         has_params = False
         has_wildcards = False
         items = [self(element) for element in path]
+        path_sql: Param | Value
         for item in items:
             if isinstance(item, Param):
                 has_params = True
@@ -1209,7 +1221,7 @@ class SQLBuilder:
                 )
                 for item in items
             )
-            path_sql = self.make_composite_param(paramkey, items, self.eval_json_path)  # pyright: ignore[reportArgumentType]
+            path_sql = self.make_composite_param(paramkey, items, self.eval_json_path)  # type: ignore[arg-type]
         else:
             result_value = self.eval_json_path(item.value for item in items)
             path_sql = self.value_class(self.paramstyle, result_value)

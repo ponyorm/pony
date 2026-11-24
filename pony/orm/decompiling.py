@@ -17,7 +17,7 @@ from opcode import (
     hasname,
 )
 from opcode import opname as opnames
-from typing import TYPE_CHECKING, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from pony.py23compat import (
     PY36,
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     import _typeshed
 
 try:
-    from opcode import _nb_ops as nb_ops  # pyright: ignore[reportAttributeAccessIssue]
+    from opcode import _nb_ops as nb_ops  # type: ignore[attr-defined]
 except ImportError:
     nb_ops = None
 
@@ -103,8 +103,8 @@ def simplify(clause: ast.expr) -> ast.expr:
             return clause
     else:
         return clause
-    if getattr(result, "endpos", 0) < clause.endpos:  # pyright: ignore[reportAttributeAccessIssue]
-        result.endpos = clause.endpos  # pyright: ignore[reportAttributeAccessIssue]
+    if getattr(result, "endpos", 0) < clause.endpos:  # type: ignore[attr-defined]
+        result.endpos = clause.endpos  # type: ignore[attr-defined]
     return result
 
 
@@ -164,16 +164,16 @@ def clean_assign(node: ast.expr | ast.Assign) -> ast.expr:
 def make_const(
     value: _ConstValue | tuple[_ConstValue, ...] | tuple[tuple, ...] | slice,
 ) -> ast.Constant | ast.Tuple | ast.Slice:
-    if is_const(value):  # pyright: ignore[reportArgumentType]
+    if is_const(value):  # type: ignore[arg-type]
         assert isinstance(value, ast.Constant)
         return value
     if PY314:
         if isinstance(value, slice):
             return slice_to_ast(value)
     if PY39:
-        return ast.Constant(value)  # pyright: ignore[reportArgumentType]
+        return ast.Constant(value)  # type: ignore[arg-type]
     elif PY38:
-        return ast.Constant(value, kind=None)  # pyright: ignore[reportArgumentType]
+        return ast.Constant(value, kind=None)  # type: ignore[arg-type]
     elif isinstance(value, (int, float)):
         return ast.Num(value)
     elif isinstance(value, str):
@@ -183,7 +183,7 @@ def make_const(
     elif isinstance(value, tuple):
         return ast.Tuple([make_const(elt) for elt in value], ast.Load())
     elif value in (True, False, None):
-        return ast.NameConstant(value)  # pyright: ignore[reportCallIssue]
+        return ast.NameConstant(value)  # type: ignore[call-arg]
     elif isinstance(value, types.CodeType):
         return ast.Constant(value)
     elif value is Ellipsis:
@@ -224,7 +224,7 @@ def slice_to_ast(value: slice) -> ast.Slice:
 
 
 class Decompiler:
-    ast: ast.expr | _typeshed.MaybeNone
+    ast: ast_module.expr | _typeshed.MaybeNone
     abs_jump_to_top: int
     assnames: set[str]
     code: types.CodeType
@@ -240,9 +240,9 @@ class Decompiler:
     next_pos: int
     or_jumps: set[int]
     pos: int
-    stack: list[ast.expr | _typeshed.MaybeNone]  # None marks a pushed NULL
+    stack: list[ast_module.expr | _typeshed.MaybeNone]  # None marks a pushed NULL
     start: int
-    targets: dict[int, ast.expr]
+    targets: dict[int, ast_module.expr]
 
     def __init__(
         self, code: types.CodeType, start: int = 0, end: int | None = None
@@ -313,7 +313,7 @@ class Decompiler:
                     arg = [code.co_consts[oparg]]
                 elif op in hasname:
                     if opname == "LOAD_GLOBAL":
-                        push_null = False
+                        push_null: int = False
                         if PY311:
                             push_null = oparg & 1
                             oparg >>= 1
@@ -337,12 +337,12 @@ class Decompiler:
                     if opname in double_load_store_ops:
                         # py3.13: 2 4bit args
                         arg = [
-                            code._varname_from_oparg(oparg >> 4),  # pyright: ignore[reportAttributeAccessIssue]
-                            code._varname_from_oparg(oparg & 0x0F),  # pyright: ignore[reportAttributeAccessIssue]
+                            code._varname_from_oparg(oparg >> 4),  # type: ignore[attr-defined]
+                            code._varname_from_oparg(oparg & 0x0F),  # type: ignore[attr-defined]
                         ]
                     elif PY313:
                         # co_varnames is incomplete now
-                        arg = [code._varname_from_oparg(oparg)]  # pyright: ignore[reportAttributeAccessIssue]
+                        arg = [code._varname_from_oparg(oparg)]  # type: ignore[attr-defined]
                     else:
                         arg = [code.co_varnames[oparg]]
                 elif op in hascompare:
@@ -495,14 +495,14 @@ class Decompiler:
             if x is not None:
                 self.stack.append(x)
 
-    def pop_items(self, size: int) -> list[ast.expr]:
+    def pop_items(self, size: int) -> list[ast_module.expr]:
         if not size:
             return []
         result = self.stack[-size:]
         self.stack[-size:] = []
         return result
 
-    def store(self, node: ast.expr | ast.Assign) -> None:
+    def store(self, node: ast_module.expr | ast_module.Assign) -> None:
         stack = self.stack
         if not stack:
             stack.append(node)
@@ -512,10 +512,10 @@ class Decompiler:
             target = unpack_targets(top)
             if (
                 isinstance(target, (ast.Tuple, ast.List))
-                and len(target.elts) < top.count  # pyright: ignore[reportAttributeAccessIssue]
+                and len(target.elts) < top.count  # type: ignore[attr-defined]
             ):
                 target.elts.append(clean_assign(node))
-                if len(target.elts) == top.count:  # pyright: ignore[reportAttributeAccessIssue]
+                if len(target.elts) == top.count:  # type: ignore[attr-defined]
                     self.store(stack.pop())
             else:
                 stack.append(node)
@@ -539,7 +539,9 @@ class Decompiler:
     BINARY_TRUE_DIVIDE = BINARY_DIVIDE
     BINARY_MODULO = binop(ast_module.Mod)
 
-    def BINARY_OP(self, opcode: int | str) -> ast.BinOp | ast.Name | ast.Subscript:
+    def BINARY_OP(
+        self, opcode: int | str
+    ) -> ast_module.BinOp | ast_module.Name | ast_module.Subscript:
         assert nb_ops is not None
         opname, symbol = nb_ops[opcode]
         inplace = opname.startswith("NB_INPLACE_")
@@ -568,10 +570,10 @@ class Decompiler:
         oper1 = self.stack.pop()
         r = ast.BinOp(left=oper1, op=op(), right=oper2)
         if inplace:
-            r = ast.Name(oper1, r)  # pyright: ignore[reportArgumentType]
+            r = ast.Name(oper1, r)  # type: ignore[arg-type, assignment]
         return r
 
-    def BINARY_SLICE(self) -> ast.Subscript:
+    def BINARY_SLICE(self) -> ast_module.Subscript:
         # 3.12 optimized BUILD_SLICE + BINARY_SUBSCR
         end = self.stack.pop()
         start = self.stack.pop()
@@ -583,7 +585,7 @@ class Decompiler:
         node2 = ast.Slice(start, end)
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())
 
-    def BINARY_SUBSCR(self) -> ast.Subscript:
+    def BINARY_SUBSCR(self) -> ast_module.Subscript:
         node2 = self.stack.pop()
         node1 = self.stack.pop()
         if isinstance(node2, ast.Slice):  # and len(node2.nodes) == 2:
@@ -602,28 +604,28 @@ class Decompiler:
             if isinstance(node2, ast.Tuple) and any(
                 isinstance(item, ast.Slice) for item in node2.elts
             ):
-                node2 = ast.ExtSlice(node2.elts)  # pyright: ignore[reportArgumentType]
+                node2 = ast.ExtSlice(node2.elts)  # type: ignore[arg-type]
             else:
                 node2 = ast.Index(node2)
         return ast.Subscript(value=node1, slice=node2, ctx=ast.Load())  # pyright: ignore[reportArgumentType]
 
-    def BUILD_CONST_KEY_MAP(self, length: int) -> ast.Dict:
+    def BUILD_CONST_KEY_MAP(self, length: int) -> ast_module.Dict:
         keys = self.stack.pop()
         if PY38:
             assert isinstance(keys, ast.Constant), keys
             assert isinstance(keys.value, (tuple, list))
             keys = [make_const(key) for key in keys.value]
         else:
-            assert isinstance(keys, ast.Tuple) and is_const(keys), keys  # pyright: ignore[reportArgumentType]
-            keys = [make_const(key) for key in keys.elts]  # pyright: ignore[reportArgumentType]
+            assert isinstance(keys, ast.Tuple) and is_const(keys), keys  # type: ignore[arg-type]
+            keys = [make_const(key) for key in keys.elts]  # type: ignore[arg-type]
 
         values = self.pop_items(length)
         return ast.Dict(keys=keys, values=values)  # pyright: ignore[reportArgumentType]
 
-    def BUILD_LIST(self, size: int) -> ast.List:
+    def BUILD_LIST(self, size: int) -> ast_module.List:
         return ast.List(self.pop_items(size), ast.Load())
 
-    def BUILD_MAP(self, length: int) -> ast.Dict:
+    def BUILD_MAP(self, length: int) -> ast_module.Dict:
         data = self.pop_items(2 * length)  # [key1, value1, key2, value2, ...]
         keys: list[ast.expr | None] = []
         values: list[ast.expr] = []
@@ -632,11 +634,11 @@ class Decompiler:
             values.append(data[i + 1])
         return ast.Dict(keys=keys, values=values)
 
-    def BUILD_SET(self, size: int) -> ast.Set:
+    def BUILD_SET(self, size: int) -> ast_module.Set:
         return ast.Set(self.pop_items(size))
 
-    def BUILD_SLICE(self, size: int) -> ast.Slice:
-        items = self.pop_items(size)
+    def BUILD_SLICE(self, size: int) -> ast_module.Slice:
+        items = cast("list[ast.expr | None]", self.pop_items(size))
         if not PY38:
             items = [
                 None
@@ -645,12 +647,12 @@ class Decompiler:
                 for item in items
             ]
         items += [None] * (3 - len(items))
-        return ast.Slice(*items, ctx=ast.Load())
+        return ast.Slice(*items, ctx=ast.Load())  # type: ignore[call-arg]
 
-    def BUILD_TUPLE(self, size: int) -> ast.Tuple:
+    def BUILD_TUPLE(self, size: int) -> ast_module.Tuple:
         return ast.Tuple(self.pop_items(size), ast.Load())
 
-    def BUILD_STRING(self, count: int) -> ast.JoinedStr:
+    def BUILD_STRING(self, count: int) -> ast_module.JoinedStr:
         items = list(reversed([self.stack.pop() for _ in range(count)]))
         for i, item in enumerate(items):
             if isinstance(item, ast.Constant):
@@ -661,15 +663,18 @@ class Decompiler:
         return ast.JoinedStr(items)
 
     def CALL_FUNCTION(
-        self, argc: int, star: ast.expr | None = None, star2: ast.expr | None = None
-    ) -> ast.Call | ast.GeneratorExp:
+        self,
+        argc: int,
+        star: ast_module.expr | None = None,
+        star2: ast_module.expr | None = None,
+    ) -> ast_module.Call | ast_module.GeneratorExp:
         pop = self.stack.pop
         kwarg, posarg = divmod(argc, 256)
         keywords = []
         for _i in range(kwarg):
             arg = pop()
             key = cast("ast.Constant", pop()).value
-            keywords.append(ast.keyword(unwrap_str(key), arg))  # pyright: ignore[reportArgumentType]
+            keywords.append(ast.keyword(unwrap_str(key), arg))  # type: ignore[arg-type]
         keywords.reverse()
         args = []
         for _i in range(posarg):
@@ -683,12 +688,12 @@ class Decompiler:
 
     def _call_function(
         self,
-        args: Iterable[ast.expr],
-        keywords: Iterable[ast.keyword] | None = None,
-    ) -> ast.GeneratorExp | ast.Call:
+        args: Iterable[ast_module.expr],
+        keywords: Iterable[ast_module.keyword] | None = None,
+    ) -> ast_module.GeneratorExp | ast_module.Call:
         tos = self.stack.pop()
         if isinstance(tos, ast.GeneratorExp):
-            assert len(args) == 1 and not keywords  # pyright: ignore[reportArgumentType]
+            assert len(args) == 1 and not keywords  # type: ignore[arg-type]
             genexpr = tos
             qual = genexpr.generators[0]
             assert isinstance(qual.iter, ast.Name)
@@ -696,12 +701,12 @@ class Decompiler:
             assert isinstance(args, Sequence)
             qual.iter = args[0]
             return genexpr
-        return ast.Call(tos, args, keywords)  # pyright: ignore[reportArgumentType]
+        return ast.Call(tos, args, keywords)  # type: ignore[arg-type]
 
     def CACHE(self) -> None:
         pass
 
-    def CALL(self, argc: int) -> ast.Call | ast.GeneratorExp:
+    def CALL(self, argc: int) -> ast_module.Call | ast_module.GeneratorExp:
         values = self.pop_items(argc)
 
         keys = self.kw_names
@@ -710,8 +715,8 @@ class Decompiler:
         args = values
         keywords = []
         if keys:
-            args = values[: -len(keys)]  # pyright: ignore[reportArgumentType]
-            keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys) :])]  # pyright: ignore[reportArgumentType]
+            args = values[: -len(keys)]  # type: ignore[arg-type]
+            keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys) :])]  # type: ignore[arg-type]
 
         if PY313:
             # self/NULL and callable are swapped
@@ -729,12 +734,12 @@ class Decompiler:
         self.stack.append(callable_)
         return self._call_function(args, keywords)
 
-    def CALL_FUNCTION_VAR(self, argc: int) -> ast.Call | ast.GeneratorExp:
+    def CALL_FUNCTION_VAR(self, argc: int) -> ast_module.Call | ast_module.GeneratorExp:
         return self.CALL_FUNCTION(argc, self.stack.pop())
 
-    def CALL_FUNCTION_KW(self, argc: int) -> ast.Call | ast.GeneratorExp:
+    def CALL_FUNCTION_KW(self, argc: int) -> ast_module.Call | ast_module.GeneratorExp:
         keys = self.stack.pop()
-        assert is_const(keys), keys  # pyright: ignore[reportArgumentType]
+        assert is_const(keys), keys  # type: ignore[arg-type]
         if PY38:
             assert isinstance(keys, ast.Constant)
             keys = keys.value
@@ -742,20 +747,24 @@ class Decompiler:
             assert isinstance(keys, ast.Tuple)
             keys = keys.elts
         values = self.pop_items(argc)
-        assert len(keys) <= len(values)  # pyright: ignore[reportArgumentType]
-        args = values[: -len(keys)]  # pyright: ignore[reportArgumentType]
+        assert len(keys) <= len(values)  # type: ignore[arg-type]
+        args = values[: -len(keys)]  # type: ignore[arg-type]
         keywords = [
-            ast.keyword(unwrap_str(k), v)  # pyright: ignore[reportArgumentType]
-            for k, v in zip(keys, values[-len(keys) :])  # pyright: ignore[reportArgumentType]
+            ast.keyword(unwrap_str(k), v)  # type: ignore[arg-type]
+            for k, v in zip(keys, values[-len(keys) :])  # type: ignore[arg-type]
         ]
         return self._call_function(args, keywords)
 
-    def CALL_FUNCTION_VAR_KW(self, argc: int) -> ast.Call | ast.GeneratorExp:
+    def CALL_FUNCTION_VAR_KW(
+        self, argc: int
+    ) -> ast_module.Call | ast_module.GeneratorExp:
         star2 = self.stack.pop()
         star = self.stack.pop()
         return self.CALL_FUNCTION(argc, star, star2)
 
-    def CALL_FUNCTION_EX(self, argc: int = 1) -> ast.Call | ast.GeneratorExp:
+    def CALL_FUNCTION_EX(
+        self, argc: int = 1
+    ) -> ast_module.Call | ast_module.GeneratorExp:
         star2 = None
         if argc:
             if argc != 1:
@@ -770,9 +779,9 @@ class Decompiler:
             callable_ = self.stack.pop()
             self.stack.append(self_)
             self.stack.append(callable_)
-        return self._call_function(args, keywords)  # pyright: ignore[reportArgumentType]
+        return self._call_function(args, keywords)  # type: ignore[arg-type]
 
-    def CALL_METHOD(self, argc: int) -> ast.Call:
+    def CALL_METHOD(self, argc: int) -> ast_module.Call:
         pop = self.stack.pop
         args = []
         keywords = []
@@ -784,14 +793,14 @@ class Decompiler:
                 k = pop()
                 assert isinstance(k, ast.Constant)
                 k = k.value  # ast.Name(k.value)
-                keywords.append(ast.keyword(k, v))  # pyright: ignore[reportArgumentType]
+                keywords.append(ast.keyword(k, v))  # type: ignore[arg-type]
         for _i in range(argc):
             args.append(pop())
         args.reverse()
         method = pop()
         return ast.Call(method, args, keywords)
 
-    def CALL_KW(self, argc: int) -> ast.Call | ast.GeneratorExp:
+    def CALL_KW(self, argc: int) -> ast_module.Call | ast_module.GeneratorExp:
         names = self.stack.pop()
         if isinstance(names, ast.Constant):
             self.kw_names = cast("Iterable[str]", names.value)
@@ -801,13 +810,13 @@ class Decompiler:
             )
         return self.CALL(argc)
 
-    def COMPARE_OP(self, op: str) -> ast.Compare:
+    def COMPARE_OP(self, op: str) -> ast_module.Compare:
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
         op_map = operator_mapping[op]()
         return ast.Compare(oper1, [op_map], [oper2])
 
-    def CONVERT_VALUE(self, conversion: int) -> tuple[ast.expr, int]:
+    def CONVERT_VALUE(self, conversion: int) -> tuple[ast_module.expr, int]:
         value = self.stack.pop()
         return value, [-1, ord("s"), ord("r"), ord("a")][conversion]
 
@@ -818,19 +827,19 @@ class Decompiler:
     def COPY_FREE_VARS(self, n: int) -> None:
         pass
 
-    def CONTAINS_OP(self, invert: int) -> ast.Compare:
+    def CONTAINS_OP(self, invert: int) -> ast_module.Compare:
         return self.COMPARE_OP("not in" if invert else "in")
 
-    def DUP_TOP(self) -> ast.expr:
+    def DUP_TOP(self) -> ast_module.expr:
         return self.stack[-1]
 
-    def FOR_ITER(self, endpos: int) -> ast.comprehension:
-        target = None
+    def FOR_ITER(self, endpos: int) -> ast_module.comprehension:
+        target: Any = None  # replaced when the loop variable is stored
         iter = self.stack.pop()
         ifs: list[ast.expr] = []
-        return ast.comprehension(target, iter, ifs, 0)  # pyright: ignore[reportArgumentType]
+        return ast.comprehension(target, iter, ifs, 0)
 
-    def FORMAT_VALUE(self, flags: int) -> ast.FormattedValue:
+    def FORMAT_VALUE(self, flags: int) -> ast_module.FormattedValue:
         conversion = -1
         format_spec = None
         if flags in (0, 1, 2, 3):
@@ -852,7 +861,7 @@ class Decompiler:
             format_spec=format_spec,
         )
 
-    def FORMAT_SIMPLE(self) -> ast.FormattedValue:
+    def FORMAT_SIMPLE(self) -> ast_module.FormattedValue:
         # see CONVERT_VALUE
         args = self.stack.pop()
         if isinstance(args, tuple):
@@ -861,7 +870,7 @@ class Decompiler:
             value, conversion = args, -1
         return ast.FormattedValue(value=value, conversion=conversion)
 
-    def FORMAT_WITH_SPEC(self) -> ast.FormattedValue:
+    def FORMAT_WITH_SPEC(self) -> ast_module.FormattedValue:
         spec = self.stack.pop()
         args = self.stack.pop()
         if isinstance(args, tuple):
@@ -877,36 +886,36 @@ class Decompiler:
     def GET_ITER(self) -> None:
         pass
 
-    def JUMP_IF_FALSE(self, endpos: int) -> ast.BoolOp:
+    def JUMP_IF_FALSE(self, endpos: int) -> ast_module.BoolOp:
         return self.conditional_jump(endpos, False)
 
     JUMP_IF_FALSE_OR_POP = JUMP_IF_FALSE
 
-    def JUMP_IF_NOT_EXC_MATCH(self, endpos: int) -> ast.BoolOp:
+    def JUMP_IF_NOT_EXC_MATCH(self, endpos: int) -> ast_module.BoolOp:
         raise NotImplementedError
 
-    def JUMP_IF_TRUE(self, endpos: int) -> ast.BoolOp:
+    def JUMP_IF_TRUE(self, endpos: int) -> ast_module.BoolOp:
         return self.conditional_jump(endpos, True)
 
     JUMP_IF_TRUE_OR_POP = JUMP_IF_TRUE
 
-    def conditional_jump(self, endpos: int, if_true: bool) -> ast.BoolOp:
+    def conditional_jump(self, endpos: int, if_true: bool) -> ast_module.BoolOp:
         if PY37 or PYPY:
             return self.conditional_jump_new(endpos, if_true)
         return self.conditional_jump_old(endpos, if_true)
 
-    def conditional_jump_old(self, endpos: int, if_true: bool) -> ast.BoolOp:
+    def conditional_jump_old(self, endpos: int, if_true: bool) -> ast_module.BoolOp:
         i = self.next_pos
         if i in self.targets:
             self.process_target(i)
         expr = self.stack.pop()
         clausetype = ast.Or if if_true else ast.And
         clause = ast.BoolOp(op=clausetype(), values=[expr])
-        clause.endpos = endpos  # pyright: ignore[reportAttributeAccessIssue]
+        clause.endpos = endpos  # type: ignore[attr-defined]
         self.targets.setdefault(endpos, clause)
         return clause
 
-    def conditional_jump_new(self, endpos: int, if_true: bool) -> ast.BoolOp:
+    def conditional_jump_new(self, endpos: int, if_true: bool) -> ast_module.BoolOp:
         expr = self.stack.pop()
         if self.pos >= self.conditions_end:
             clausetype = ast.Or if if_true else ast.And
@@ -925,13 +934,16 @@ class Decompiler:
 
         expr = self.stack.pop()
         clause = ast.BoolOp(op=clausetype(), values=[expr])
-        clause.endpos = endpos  # pyright: ignore[reportAttributeAccessIssue]
+        clause.endpos = endpos  # type: ignore[attr-defined]
         self.targets.setdefault(endpos, clause)
         return clause
 
-    def conditional_jump_none_impl(self, endpos: int, negate: bool) -> ast.BoolOp:
+    def conditional_jump_none_impl(
+        self, endpos: int, negate: bool
+    ) -> ast_module.BoolOp:
         expr = self.stack.pop()
         assert self.pos < self.conditions_end
+        clausetype: type[ast.boolop]
         if self.pos in self.or_jumps:
             clausetype = ast.Or
             op = ast.IsNot if negate else ast.Is
@@ -946,20 +958,20 @@ class Decompiler:
 
         expr = self.stack.pop()
         clause = ast.BoolOp(op=clausetype(), values=[expr])
-        clause.endpos = endpos  # pyright: ignore[reportAttributeAccessIssue]
+        clause.endpos = endpos  # type: ignore[attr-defined]
         self.targets.setdefault(endpos, clause)
         return clause
 
-    def jump_if_none(self, endpos: int) -> ast.BoolOp:
+    def jump_if_none(self, endpos: int) -> ast_module.BoolOp:
         return self.conditional_jump_none_impl(endpos, False)
 
-    def jump_if_not_none(self, endpos: int) -> ast.BoolOp:
+    def jump_if_not_none(self, endpos: int) -> ast_module.BoolOp:
         return self.conditional_jump_none_impl(endpos, True)
 
-    def POP_JUMP_IF_NONE(self, endpos: int) -> ast.BoolOp:
+    def POP_JUMP_IF_NONE(self, endpos: int) -> ast_module.BoolOp:
         return self.jump_if_none(endpos)
 
-    def POP_JUMP_IF_NOT_NONE(self, endpos: int) -> ast.BoolOp:
+    def POP_JUMP_IF_NOT_NONE(self, endpos: int) -> ast_module.BoolOp:
         return self.jump_if_not_none(endpos)
 
     def process_target(self, pos: int | None, partial: bool = False) -> None:
@@ -996,7 +1008,7 @@ class Decompiler:
             elif isinstance(top2, ast.IfExp):  # Python 2.5
                 top2.orelse = top
                 if hasattr(top, "endpos"):
-                    top2.endpos = top.endpos  # pyright: ignore[reportAttributeAccessIssue]
+                    top2.endpos = top.endpos  # type: ignore[attr-defined]
                     if self.targets.get(top.endpos) is top:  # pyright: ignore[reportAttributeAccessIssue]
                         self.targets[top.endpos] = top2  # pyright: ignore[reportAttributeAccessIssue]
             else:
@@ -1006,18 +1018,18 @@ class Decompiler:
                         'e.g. select("x for x in Something")'
                     )
                 )
-            top2.endpos = max(top2.endpos, getattr(top, "endpos", 0))  # pyright: ignore[reportAttributeAccessIssue]
+            top2.endpos = max(top2.endpos, getattr(top, "endpos", 0))  # type: ignore[union-attr]
             top = self.stack.pop()
         self.stack.append(top)
 
-    def JUMP_FORWARD(self, endpos: int) -> ast.IfExp:
+    def JUMP_FORWARD(self, endpos: int) -> ast_module.IfExp:
         i = self.next_pos  # next instruction
         self.process_target(i, True)
         then = self.stack.pop()
         self.process_target(i, False)
         test = self.stack.pop()
-        if_exp = ast.IfExp(test=simplify(test), body=simplify(then), orelse=None)  # pyright: ignore[reportArgumentType]
-        if_exp.endpos = endpos  # pyright: ignore[reportAttributeAccessIssue]
+        if_exp = ast.IfExp(test=simplify(test), body=simplify(then), orelse=None)  # type: ignore[arg-type]
+        if_exp.endpos = endpos  # type: ignore[attr-defined]
         self.targets.setdefault(endpos, if_exp)
         if self.targets.get(endpos) is then:
             self.targets[endpos] = if_exp
@@ -1027,7 +1039,7 @@ class Decompiler:
         # Stash for CALL
         self.kw_names = kw_names
 
-    def IS_OP(self, invert: int) -> ast.Compare:
+    def IS_OP(self, invert: int) -> ast_module.Compare:
         return self.COMPARE_OP("is not" if invert else "is")
 
     def LIST_APPEND(self, offset: int) -> None:
@@ -1044,7 +1056,7 @@ class Decompiler:
         assert isinstance(list_node, ast.List), list_node
         list_node.elts.append(tos)
 
-    def LIST_EXTEND(self, offset: int) -> ast.List:
+    def LIST_EXTEND(self, offset: int) -> ast_module.List:
         if offset != 1:
             raise NotImplementedError(offset)
         items = self.stack.pop()
@@ -1059,7 +1071,7 @@ class Decompiler:
         lst.elts.extend(values)
         return lst
 
-    def LIST_TO_TUPLE(self) -> ast.Tuple:
+    def LIST_TO_TUPLE(self) -> ast_module.Tuple:
         tos = self.stack.pop()
         if not isinstance(tos, ast.List):
             throw(
@@ -1069,7 +1081,7 @@ class Decompiler:
             )
         return ast.Tuple(tos.elts, ast.Load())
 
-    def LOAD_ATTR(self, attr_name: str, push_null: bool) -> ast.Attribute | None:
+    def LOAD_ATTR(self, attr_name: str, push_null: bool) -> ast_module.Attribute | None:
         res = ast.Attribute(self.stack.pop(), attr_name, ast.Load())
         if push_null and PY313:
             # NULL and attr swapped
@@ -1080,35 +1092,35 @@ class Decompiler:
             self.stack.append(None)
         return res
 
-    def LOAD_CLOSURE(self, freevar: str) -> ast.Name:
+    def LOAD_CLOSURE(self, freevar: str) -> ast_module.Name:
         self.names.add(freevar)
         return ast.Name(freevar, ast.Load())
 
     def LOAD_CONST(
         self,
         const_value: _ConstValue | tuple[_ConstValue, ...] | tuple[tuple, ...] | slice,
-    ) -> ast.Constant | ast.Tuple | ast.Slice:
+    ) -> ast_module.Constant | ast_module.Tuple | ast_module.Slice:
         return make_const(const_value)
 
-    def LOAD_DEREF(self, freevar: str) -> ast.Name:
+    def LOAD_DEREF(self, freevar: str) -> ast_module.Name:
         self.names.add(freevar)
         return ast.Name(freevar, ast.Load())
 
-    def LOAD_FAST(self, varname: str) -> ast.Name:
+    def LOAD_FAST(self, varname: str) -> ast_module.Name:
         self.names.add(varname)
         return ast.Name(varname, ast.Load())
 
     LOAD_FAST_AND_CLEAR = LOAD_FAST
     LOAD_FAST_BORROW = LOAD_FAST
 
-    def LOAD_FAST_LOAD_FAST(self, varname1: str, varname2: str) -> ast.Name:
+    def LOAD_FAST_LOAD_FAST(self, varname1: str, varname2: str) -> ast_module.Name:
         self.names.add(varname1)
         self.stack.append(ast.Name(varname1, ast.Load()))
         return self.LOAD_FAST(varname2)
 
     LOAD_FAST_BORROW_LOAD_FAST_BORROW = LOAD_FAST_LOAD_FAST
 
-    def LOAD_GLOBAL(self, varname: str, push_null: int) -> ast.Name | None:
+    def LOAD_GLOBAL(self, varname: str, push_null: int) -> ast_module.Name | None:
         res = ast.Name(varname, ast.Load())
         self.names.add(varname)
         if push_null and PY313:
@@ -1120,27 +1132,29 @@ class Decompiler:
             self.stack.append(None)
         return res
 
-    def LOAD_METHOD(self, methname: str) -> ast.Attribute | None:
+    def LOAD_METHOD(self, methname: str) -> ast_module.Attribute | None:
         return self.LOAD_ATTR(methname, PY311)
 
     LOOKUP_METHOD = LOAD_METHOD  # For PyPy
 
-    def LOAD_NAME(self, varname: str) -> ast.Name:
+    def LOAD_NAME(self, varname: str) -> ast_module.Name:
         self.names.add(varname)
         return ast.Name(varname, ast.Load())
 
-    def LOAD_SMALL_INT(self, value: int) -> ast.Constant | ast.Tuple | ast.Slice:
+    def LOAD_SMALL_INT(
+        self, value: int
+    ) -> ast_module.Constant | ast_module.Tuple | ast_module.Slice:
         return make_const(value)
 
     def MAKE_CELL(self, freevar: str) -> None:
         pass
 
-    def MAKE_CLOSURE(self, argc: int) -> ast.expr:
+    def MAKE_CLOSURE(self, argc: int) -> ast_module.expr:
         self.stack[-3:-2] = []  # ignore freevars
         return self.MAKE_FUNCTION(argc)
 
-    def MAKE_FUNCTION(self, argc: int = 0) -> ast.expr:
-        defaults = []
+    def MAKE_FUNCTION(self, argc: int = 0) -> ast_module.expr:
+        defaults: list[ast.expr] = []
         if not PY311:
             self.stack.pop()  # qualname
         tos = cast("ast.Constant", self.stack.pop())
@@ -1152,15 +1166,15 @@ class Decompiler:
             self.stack.pop()  # keyword-only defaults
             throw(NotImplementedError)
         if argc & 0x01:
-            defaults = self.stack.pop()
-            assert isinstance(defaults, ast.Tuple)
-            defaults = defaults.elts
+            defaults_tuple = self.stack.pop()
+            assert isinstance(defaults_tuple, ast.Tuple)
+            defaults = defaults_tuple.elts
         codeobject = tos.value
-        func_decompiler = Decompiler(codeobject)  # pyright: ignore[reportArgumentType]
+        func_decompiler = Decompiler(codeobject)  # type: ignore[arg-type]
         # decompiler.names.update(decompiler.names)  ???
-        if codeobject.co_varnames[:1] == (".0",):  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+        if codeobject.co_varnames[:1] == (".0",):  # type: ignore[union-attr]
             return func_decompiler.ast  # generator
-        argnames, vararg, kwarg = inspect.getargs(codeobject)  # pyright: ignore[reportArgumentType]
+        argnames, vararg, kwarg = inspect.getargs(codeobject)  # type: ignore[arg-type]
         args = ast.arguments(
             posonlyargs=[],
             args=[ast.arg(arg=v) for v in argnames],
@@ -1192,7 +1206,7 @@ class Decompiler:
     def PUSH_NULL(self) -> None:
         self.stack.append(None)
 
-    def RETURN_VALUE(self) -> ast.expr:
+    def RETURN_VALUE(self) -> ast_module.expr:
         if self.next_pos != self.end:
             throw(DecompileError)
         expr = self.stack.pop()
@@ -1200,7 +1214,7 @@ class Decompiler:
 
     def RETURN_CONST(
         self, val: _ConstValue | tuple[_ConstValue, ...] | tuple[tuple, ...] | slice
-    ) -> ast.Constant | ast.Tuple | ast.Slice:
+    ) -> ast_module.Constant | ast_module.Tuple | ast_module.Slice:
         return make_const(val)
 
     def RETURN_GENERATOR(self) -> None:
@@ -1254,7 +1268,7 @@ class Decompiler:
         self.STORE_FAST(varname1)
         self.STORE_FAST(varname2)
 
-    def STORE_FAST_LOAD_FAST(self, varname1: str, varname2: str) -> ast.Name:
+    def STORE_FAST_LOAD_FAST(self, varname1: str, varname2: str) -> ast_module.Name:
         self.STORE_FAST(varname1)
         return self.LOAD_FAST(varname2)
 
@@ -1264,9 +1278,9 @@ class Decompiler:
         tos2 = self.stack[-1]
         if not isinstance(tos2, ast.Dict):
             assert False  # pragma: no cover
-        if tos2.items == ():  # pyright: ignore[reportAttributeAccessIssue]
-            tos2.items = []  # pyright: ignore[reportAttributeAccessIssue]
-        tos2.items.append((tos, tos1))  # pyright: ignore[reportAttributeAccessIssue]
+        if tos2.items == ():  # type: ignore[attr-defined]
+            tos2.items = []  # type: ignore[attr-defined]
+        tos2.items.append((tos, tos1))  # type: ignore[attr-defined]
 
     def STORE_SUBSCR(self) -> None:
         tos = self.stack.pop()
@@ -1274,9 +1288,9 @@ class Decompiler:
         tos2 = self.stack.pop()
         if not isinstance(tos1, ast.Dict):
             assert False  # pragma: no cover
-        if tos1.items == ():  # pyright: ignore[reportAttributeAccessIssue]
-            tos1.items = []  # pyright: ignore[reportAttributeAccessIssue]
-        tos1.items.append((tos, tos2))  # pyright: ignore[reportAttributeAccessIssue]
+        if tos1.items == ():  # type: ignore[attr-defined]
+            tos1.items = []  # type: ignore[attr-defined]
+        tos1.items.append((tos, tos2))  # type: ignore[attr-defined]
 
     def SWAP(self, _):
         pass  # this is not great, but stack is not the same as during runtime
@@ -1285,27 +1299,27 @@ class Decompiler:
     def TO_BOOL(self):
         pass
 
-    def UNARY_POSITIVE(self) -> ast.UnaryOp:
+    def UNARY_POSITIVE(self) -> ast_module.UnaryOp:
         return ast.UnaryOp(op=ast.UAdd(), operand=self.stack.pop())
 
-    def UNARY_NEGATIVE(self) -> ast.UnaryOp:
+    def UNARY_NEGATIVE(self) -> ast_module.UnaryOp:
         return ast.UnaryOp(op=ast.USub(), operand=self.stack.pop())
 
-    def UNARY_NOT(self) -> ast.UnaryOp:
+    def UNARY_NOT(self) -> ast_module.UnaryOp:
         return ast.UnaryOp(op=ast.Not(), operand=self.stack.pop())
 
-    def UNARY_INVERT(self) -> ast.Invert:
-        return ast.Invert(self.stack.pop())  # pyright: ignore[reportCallIssue]
+    def UNARY_INVERT(self) -> ast_module.Invert:
+        return ast.Invert(self.stack.pop())  # type: ignore[call-arg]
 
-    def UNPACK_SEQUENCE(self, count: int) -> ast.Assign:
+    def UNPACK_SEQUENCE(self, count: int) -> ast_module.Assign:
         ass_tuple = ast.Assign(
             targets=cast("list[ast.expr]", ast.Tuple([], ast.Store())),
             value=ast.Constant(None),
         )
-        ass_tuple.count = count  # pyright: ignore[reportAttributeAccessIssue]
+        ass_tuple.count = count  # type: ignore[attr-defined]
         return ass_tuple
 
-    def YIELD_VALUE(self, _: None = None) -> ast.GeneratorExp:
+    def YIELD_VALUE(self, _: None = None) -> ast_module.GeneratorExp:
         expr = self.stack.pop()
         generators = []
         while self.stack:
@@ -1430,12 +1444,12 @@ def test(test_line: int | None = None) -> None:
         if line.startswith("#"):
             continue
         code = compile(line, "<?>", "eval").co_consts[0]
-        ast1 = ast.parse(line).body[0]
-        ast1.value.generators[0].iter.id = outmost_iterable_name  # pyright: ignore[reportAttributeAccessIssue]
-        ast1 = ast.dump(ast1)
+        tree1 = ast.parse(line).body[0]
+        tree1.value.generators[0].iter.id = outmost_iterable_name  # type: ignore[attr-defined]
+        ast1 = ast.dump(tree1)
         try:
-            ast2 = ast.Expr(Decompiler(code).ast)
-            ast2 = ast.dump(ast2)
+            tree2 = ast.Expr(Decompiler(code).ast)
+            ast2 = ast.dump(tree2)
         except Exception:
             print()
             print(i, line)
