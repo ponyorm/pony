@@ -2,9 +2,9 @@
 
 """Run the Pony ORM and utility test suites on Python 3.10 through 3.14.
 
-Pyright is run for every one of these versions as well.
+Pyright and mypy are run for every one of these versions as well.
 Pass versions to restrict the run, e.g. `run_tests.py 3.10 3.14`, and
---no-pyright to skip the type check.
+--no-pyright or --no-mypy to skip a type check.
 """
 
 
@@ -28,6 +28,11 @@ TEST_SUITES = (
         ('-m', 'unittest', 'discover', '-s', 'pony/utils/tests',
          '-p', 'test_*.py'),
     ),
+)
+TYPE_CHECKERS = (
+    # name, module, option that selects the Python version
+    ('Pyright', 'pyright', '--pythonversion'),
+    ('Mypy', 'mypy', '--python-version'),
 )
 
 
@@ -124,20 +129,18 @@ def run_suite(executable, arguments):
         return 1
 
 
-def pyright_available():
-    command = [sys.executable, '-m', 'pyright', '--version']
+def type_checker_available(module):
+    command = [sys.executable, '-m', module, '--version']
     try:
         return run_command(command, capture_output=True).returncode == 0
     except OSError:
         return False
 
 
-def run_pyright(version):
-    # pyright checks against the typeshed stubs of the requested version, so it
-    # does not need an interpreter of that version
-    return run_suite(
-        sys.executable, ('-m', 'pyright', '--pythonversion', version)
-    )
+def run_type_checker(module, version_option, version):
+    # the type checkers check against the typeshed stubs of the requested
+    # version, so they do not need an interpreter of that version
+    return run_suite(sys.executable, ('-m', module, version_option, version))
 
 
 def format_status(exit_code):
@@ -158,9 +161,10 @@ def parse_args():
         metavar='VERSION',
         help='Python versions to run (default: %s)' % ' '.join(PYTHON_VERSIONS),
     )
-    parser.add_argument(
-        '--no-pyright', action='store_true', help='do not run pyright'
-    )
+    for name, module, _ in TYPE_CHECKERS:
+        parser.add_argument(
+            '--no-' + module, action='store_true', help='do not run ' + name
+        )
     args = parser.parse_args()
     for version in args.versions:
         if version not in PYTHON_VERSIONS:
@@ -174,15 +178,19 @@ def parse_args():
 def main():
     args = parse_args()
     versions = args.versions or PYTHON_VERSIONS
-    with_pyright = not args.no_pyright
-    if with_pyright and not pyright_available():
-        print(
-            'pyright is not installed, run: pip install -r requirements-dev.txt',
-            file=sys.stderr,
-        )
-        pyright_missing = True
-    else:
-        pyright_missing = False
+    selected = [
+        checker for checker in TYPE_CHECKERS
+        if not getattr(args, 'no_' + checker[1])
+    ]
+    missing = set()
+    for _, module, _ in selected:
+        if not type_checker_available(module):
+            print(
+                '%s is not installed, run: pip install -r requirements-dev.txt'
+                % module,
+                file=sys.stderr,
+            )
+            missing.add(module)
 
     results = []
 
@@ -203,26 +211,36 @@ def main():
                 print('\n--- %s tests ---' % suite_name, flush=True)
                 suite_results.append(run_suite(executable, arguments))
 
-        if not with_pyright:
-            pyright_result = SKIPPED
-        elif pyright_missing:
-            pyright_result = None
-        else:
-            print('\n--- Pyright ---', flush=True)
-            pyright_result = run_pyright(version)
-        results.append((version,) + tuple(suite_results) + (pyright_result,))
+        checker_results = []
+        for checker in TYPE_CHECKERS:
+            name, module, version_option = checker
+            if checker not in selected:
+                checker_results.append(SKIPPED)
+            elif module in missing:
+                checker_results.append(None)
+            else:
+                print('\n--- %s ---' % name, flush=True)
+                checker_results.append(
+                    run_type_checker(module, version_option, version)
+                )
+        results.append((version, suite_results + checker_results))
 
     print('\n=== Summary ===')
-    print('{:<8} {:<12} {:<12} {:<12}'.format('Python', 'ORM', 'Utils', 'Pyright'))
-    for version, orm_exit, utils_exit, pyright_exit in results:
+    columns = [name for name, _ in TEST_SUITES]
+    columns += [name for name, _, _ in TYPE_CHECKERS]
+    print('{:<8} {}'.format(
+        'Python', ' '.join(f'{column:<12}' for column in columns)
+    ))
+    for version, exit_codes in results:
+        statuses = (format_status(exit_code) for exit_code in exit_codes)
         print(
-            f'{version:<8} {format_status(orm_exit):<12} '
-            f'{format_status(utils_exit):<12} {format_status(pyright_exit):<12}'
+            f'{version:<8} '
+            + ' '.join(f'{status:<12}' for status in statuses)
         )
 
     return int(any(
         exit_code is None or exit_code not in (0, SKIPPED)
-        for _, *exit_codes in results
+        for _, exit_codes in results
         for exit_code in exit_codes
     ))
 
