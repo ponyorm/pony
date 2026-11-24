@@ -1,4 +1,5 @@
 from datetime import date
+from typing import TYPE_CHECKING, Any
 
 from pony.orm.core import (
     Database,
@@ -16,22 +17,27 @@ from pony.orm.core import (
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Department(db.Entity):
+
+class Department(Entity):
     number = PrimaryKey(int, auto=True)
     name = Required(str, unique=True)
     groups = Set("Group")
     courses = Set("Course")
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     major = Required(str)
     dept = Required("Department")
     students = Set("Student")
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     lect_hours = Required(int)
@@ -42,7 +48,7 @@ class Course(db.Entity):
     PrimaryKey(name, semester)
 
 
-class Student(db.Entity):
+class Student(Entity):
     # _table_ = "public", "Students"  # Schema support
     id = PrimaryKey(int, auto=True)
     name = Required(str)
@@ -56,7 +62,7 @@ class Student(db.Entity):
 
 sql_debug(True)  # Output all SQL queries to stdout
 
-params = dict(
+params: dict[str, dict[str, Any]] = dict(
     sqlite=dict(provider="sqlite", filename="university1.sqlite", create_db=True),
     mysql=dict(
         provider="mysql", host="localhost", user="pony", passwd="pony", db="pony"

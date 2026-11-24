@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -8,8 +9,13 @@ db = Database()
 
 db = Database("sqlite", ":memory:")
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Product(db.Entity):
+
+class Product(Entity):
     id = PrimaryKey(int)
     name = Required(str)
     comments = Set("Comment")
@@ -71,7 +77,7 @@ class Product(db.Entity):
         return coalesce(sum(self.comments.points), 0.0)
 
 
-class Comment(db.Entity):
+class Comment(Entity):
     id = PrimaryKey(int)
     points = Required(int)
     product = Optional("Product")

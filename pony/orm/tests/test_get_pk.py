@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
@@ -8,31 +9,36 @@ day = date.today()
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class A(db.Entity):
+
+class A(Entity):
     b = Required("B")
     c = Required("C")
     PrimaryKey(b, c)
 
 
-class B(db.Entity):
+class B(Entity):
     id = PrimaryKey(date)
     a_set = Set(A)
 
 
-class C(db.Entity):
+class C(Entity):
     x = Required("X")
     y = Required("Y")
     a_set = Set(A)
     PrimaryKey(x, y)
 
 
-class X(db.Entity):
+class X(Entity):
     id = PrimaryKey(int)
     c_set = Set(C)
 
 
-class Y(db.Entity):
+class Y(Entity):
     id = PrimaryKey(int)
     c_set = Set(C)
 

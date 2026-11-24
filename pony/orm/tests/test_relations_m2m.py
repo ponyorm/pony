@@ -1,17 +1,23 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import db_params, teardown_database
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Group(db.Entity):
+
+class Group(Entity):
     number = PrimaryKey(int)
     subjects = Set("Subject")
 
 
-class Subject(db.Entity):
+class Subject(Entity):
     name = PrimaryKey(str)
     groups = Set(Group)
 

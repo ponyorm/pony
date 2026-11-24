@@ -1,14 +1,20 @@
 import unittest
 from datetime import datetime
 from hashlib import md5
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class User(db.Entity):
+
+class User(Entity):
     name = Required(str)
     password = Required(str)
     created_at = Required(datetime)

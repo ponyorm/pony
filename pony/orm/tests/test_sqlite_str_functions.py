@@ -1,5 +1,6 @@
 import unittest
 from binascii import unhexlify
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import only_for
@@ -7,8 +8,13 @@ from pony.orm.tests.testutils import *
 
 db = Database("sqlite", ":memory:")
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Person(db.Entity):
+
+class Person(Entity):
     name = Required(str)
     age = Optional(int)
     image = Optional(buffer)
@@ -25,17 +31,17 @@ with db_session:
 class TestUnicode(unittest.TestCase):
     @db_session
     def test1(self):
-        names = select(p.name for p in Person).order_by(lambda: p.id)[:]  # type: ignore # deprecated syntax
+        names = select(p.name for p in Person).order_by(lambda: p.id)[:]  # pyright: ignore[reportUndefinedVariable]  # deprecated syntax
         self.assertEqual(names, ["John", "Иван"])
 
     @db_session
     def test2(self):
-        names = select(p.name.upper() for p in Person).order_by(lambda: p.id)[:]  # type: ignore # deprecated syntax
+        names = select(p.name.upper() for p in Person).order_by(lambda: p.id)[:]  # pyright: ignore[reportUndefinedVariable]  # deprecated syntax
         self.assertEqual(names, ["JOHN", "ИВАН"])  # u'\u0418\u0412\u0410\u041d'
 
     @db_session
     def test3(self):
-        names = select(p.name.lower() for p in Person).order_by(lambda: p.id)[:]  # type: ignore # deprecated syntax
+        names = select(p.name.lower() for p in Person).order_by(lambda: p.id)[:]  # pyright: ignore[reportUndefinedVariable]  # deprecated syntax
         self.assertEqual(names, ["john", "иван"])  # u'\u0438\u0432\u0430\u043d'
 
     @db_session

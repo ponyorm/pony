@@ -1,9 +1,16 @@
+from typing import TYPE_CHECKING
+
 from pony.orm.core import Database, PrimaryKey, Required, commit, db_session, sql_debug
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Numbers(db.Entity):
+
+class Numbers(Entity):
     _table_ = "Numbers"
     id = PrimaryKey(int, auto=True)
     int8 = Required(int, size=8)  # TINYINT

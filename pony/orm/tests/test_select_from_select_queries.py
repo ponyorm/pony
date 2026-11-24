@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
@@ -6,14 +7,19 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Group(db.Entity):
+
+class Group(Entity):
     number = PrimaryKey(int)
     major = Required(str)
     students = Set("Student")
 
 
-class Student(db.Entity):
+class Student(Entity):
     first_name = Required(str)
     last_name = Required(str)
     age = Required(int)
@@ -26,7 +32,7 @@ class Student(db.Entity):
         return self.first_name + " " + self.last_name
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     credits = Required(int)
@@ -141,7 +147,7 @@ class TestSelectFromSelect(unittest.TestCase):
     )
     def test_7(self):  # test access to original query var name from the new query
         q = select(s.first_name for s in Student if s.scholarship < 500)
-        q2 = select(x for x in q if s.scholarship > 0)  # type: ignore # error expected
+        q2 = select(x for x in q if s.scholarship > 0)  # error expected  # pyright: ignore[reportUndefinedVariable]
 
     @db_session
     def test_8(

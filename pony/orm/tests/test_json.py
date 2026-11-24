@@ -1,5 +1,6 @@
 import pickle
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.ormtypes import Json, TrackedDict, TrackedList, TrackedValue
@@ -8,8 +9,13 @@ from pony.orm.tests.testutils import raises_exception, raises_if
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Product(db.Entity):
+
+class Product(Entity):
     name = Required(str)
     info = Optional(Json)
     tags = Optional(Json)

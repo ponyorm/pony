@@ -951,7 +951,7 @@ class TestAttribute(unittest.TestCase):
         db = self.db
 
         class Foo(db.Entity):
-            x = Required(type(None))  # pyright: ignore[reportArgumentType]
+            x = Required(type(None))  # pyright: ignore[reportCallIssue, reportArgumentType]
 
         db.generate_mapping(check_tables=False)
 

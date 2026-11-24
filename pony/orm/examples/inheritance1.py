@@ -5,6 +5,8 @@ from pony import options
 
 options.CUT_TRACEBACK = False
 
+from typing import TYPE_CHECKING
+
 from pony.orm.core import (
     Database,
     Optional,
@@ -20,8 +22,13 @@ sql_debug(False)
 
 db = Database("sqlite", "inheritance1.sqlite", create_db=True)
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Person(db.Entity):
+
+class Person(Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(str)
     dob = Optional(date)
@@ -48,12 +55,12 @@ class Professor(Teacher):
     position = Required(str)
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     students = Set("Student")
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     students = Set(Student)

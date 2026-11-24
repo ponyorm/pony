@@ -4,6 +4,7 @@ import sys
 import unittest
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
@@ -11,8 +12,13 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     name = Required(str)
     scholarship = Optional(int)
     gpa = Optional(Decimal, 3, 1)
@@ -22,12 +28,12 @@ class Student(db.Entity):
     biography = Optional(LongUnicode)
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     students = Set(Student)
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str, unique=True)
     students = Set(Student)
 

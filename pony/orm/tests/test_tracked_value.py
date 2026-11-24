@@ -5,7 +5,7 @@ from pony.orm.ormtypes import TrackedDict, TrackedList, TrackedValue
 
 
 class Object:
-    def __init__(self):
+    def __init__(self) -> None:
         self.on_attr_changed: Any = None
 
     def _attr_changed_(self, attr):

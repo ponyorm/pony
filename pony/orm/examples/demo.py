@@ -1,32 +1,38 @@
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm import Database, PrimaryKey, Required, Set, commit, sql_debug
 
 db = Database("sqlite", "demo.sqlite", create_db=True)
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Customer(db.Entity):
+
+class Customer(Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(str)
     email = Required(str, unique=True)
     orders = Set("Order")
 
 
-class Order(db.Entity):
+class Order(Entity):
     id = PrimaryKey(int, auto=True)
     total_price = Required(Decimal)
     customer = Required(Customer)
     items = Set("OrderItem")
 
 
-class Product(db.Entity):
+class Product(Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(str)
     price = Required(Decimal)
     items = Set("OrderItem")
 
 
-class OrderItem(db.Entity):
+class OrderItem(Entity):
     quantity = Required(int, default=1)
     order = Required(Order)
     product = Required(Product)

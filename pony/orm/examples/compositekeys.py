@@ -1,4 +1,5 @@
 from datetime import date
+from typing import TYPE_CHECKING
 
 from pony.orm.core import (
     Database,
@@ -14,8 +15,13 @@ from pony.orm.core import (
 
 db = Database("sqlite", "complex.sqlite", create_db=True)
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Group(db.Entity):
+
+class Group(Entity):
     dept = Required("Department")
     year = Required(int)
     spec = Required(int)
@@ -25,7 +31,7 @@ class Group(db.Entity):
     PrimaryKey(dept, year, spec)
 
 
-class Department(db.Entity):
+class Department(Entity):
     number = PrimaryKey(int)
     faculty = Required("Faculty")
     name = Required(str)
@@ -33,13 +39,13 @@ class Department(db.Entity):
     teachers = Set("Teacher")
 
 
-class Faculty(db.Entity):
+class Faculty(Entity):
     number = PrimaryKey(int)
     name = Required(str)
     depts = Set(Department)
 
 
-class Student(db.Entity):
+class Student(Entity):
     name = Required(str)
     group = Required(Group)
     dob = Optional(date)
@@ -47,7 +53,7 @@ class Student(db.Entity):
     PrimaryKey(name, group)
 
 
-class Grade(db.Entity):
+class Grade(Entity):
     student = Required(Student, columns=["student_name", "dept", "year", "spec"])
     task = Required("Task")
     date = Required(date)
@@ -55,7 +61,7 @@ class Grade(db.Entity):
     PrimaryKey(student, task)
 
 
-class Task(db.Entity):
+class Task(Entity):
     course = Required("Course")
     type = Required(str)
     number = Required(int)
@@ -64,7 +70,7 @@ class Task(db.Entity):
     PrimaryKey(course, type, number)
 
 
-class Course(db.Entity):
+class Course(Entity):
     subject = Required("Subject")
     semester = Required(int)
     groups = Set(Group)
@@ -74,13 +80,13 @@ class Course(db.Entity):
     PrimaryKey(subject, semester)
 
 
-class Subject(db.Entity):
+class Subject(Entity):
     name = PrimaryKey(str)
     descr = Optional(str)
     courses = Set(Course)
 
 
-class Room(db.Entity):
+class Room(Entity):
     building = Required(str)
     number = Required(str)
     floor = Optional(int)
@@ -88,14 +94,14 @@ class Room(db.Entity):
     PrimaryKey(building, number)
 
 
-class Teacher(db.Entity):
+class Teacher(Entity):
     dept = Required(Department)
     name = Required(str)
     courses = Set(Course)
     lessons = Set("Lesson")
 
 
-class Lesson(db.Entity):
+class Lesson(Entity):
     _table_ = "Schedule"
     groups = Set(Group)
     course = Required(Course)

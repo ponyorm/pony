@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm.core import (
     Database,
@@ -14,15 +15,20 @@ from pony.orm.core import (
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Faculty(db.Entity):
+
+class Faculty(Entity):
     _table_ = "Faculties"
     number = PrimaryKey(int)
     name = Required(str, unique=True)
     departments = Set("Department")
 
 
-class Department(db.Entity):
+class Department(Entity):
     _table_ = "Departments"
     number = PrimaryKey(int)
     name = Required(str, unique=True)
@@ -32,7 +38,7 @@ class Department(db.Entity):
     groups = Set("Group")
 
 
-class Group(db.Entity):
+class Group(Entity):
     _table_ = "Groups"
     number = PrimaryKey(int)
     grad_year = Required(int)
@@ -44,7 +50,7 @@ class Group(db.Entity):
     students = Set("Student")
 
 
-class Student(db.Entity):
+class Student(Entity):
     _table_ = "Students"
     name = Required(str)
     scholarship = Required(Decimal, 10, 2, default=Decimal("0.0"))
@@ -52,21 +58,21 @@ class Student(db.Entity):
     grades = Set("Grade")
 
 
-class Major(db.Entity):
+class Major(Entity):
     _table_ = "Majors"
     name = PrimaryKey(str)
     department = Required(Department)
     courses = Set("Course")
 
 
-class Subject(db.Entity):
+class Subject(Entity):
     _table_ = "Subjects"
     name = PrimaryKey(str)
     courses = Set("Course")
     teachers = Set("Teacher")
 
 
-class Course(db.Entity):
+class Course(Entity):
     _table_ = "Courses"
     major = Required(Major)
     subject = Required(Subject)
@@ -79,7 +85,7 @@ class Course(db.Entity):
     grades = Set("Grade")
 
 
-class Lesson(db.Entity):
+class Lesson(Entity):
     _table_ = "Lessons"
     day_of_week = Required(int)
     meeting_time = Required(int)
@@ -90,7 +96,7 @@ class Lesson(db.Entity):
     groups = Set(Group)
 
 
-class Grade(db.Entity):
+class Grade(Entity):
     _table_ = "Grades"
     student = Required(Student)
     course = Required(Course)
@@ -100,7 +106,7 @@ class Grade(db.Entity):
     value = Required(str)
 
 
-class Teacher(db.Entity):
+class Teacher(Entity):
     _table_ = "Teachers"
     name = Required(str)
     degree = Optional(str)
@@ -110,14 +116,14 @@ class Teacher(db.Entity):
     grades = Set(Grade)
 
 
-class Building(db.Entity):
+class Building(Entity):
     _table_ = "Buildings"
     number = PrimaryKey(str)
     description = Optional(str)
     classrooms = Set("Classroom")
 
 
-class Classroom(db.Entity):
+class Classroom(Entity):
     _table_ = "Classrooms"
     building = Required(Building)
     number = Required(str)

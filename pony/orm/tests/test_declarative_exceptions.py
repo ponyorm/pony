@@ -2,6 +2,7 @@ import sys
 import unittest
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.sqltranslation import IncomparableTypesError
@@ -11,8 +12,13 @@ from pony.py23compat import PY314, PYPY
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     name = Required(str)
     dob = Optional(date)
     gpa = Optional(float)
@@ -21,18 +27,18 @@ class Student(db.Entity):
     courses = Set("Course")
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     students = Set(Student)
     dept = Required("Department")
 
 
-class Department(db.Entity):
+class Department(Entity):
     number = PrimaryKey(int)
     groups = Set(Group)
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     PrimaryKey(name, semester)
@@ -97,7 +103,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         else "`1 in 2` raises TypeError: 'int' object is not iterable",
     )
     def test6(self):
-        select(s for s in Student if 1 in 2)  # type: ignore # error expected
+        select(s for s in Student if 1 in 2)  # error expected  # pyright: ignore[reportOperatorIssue]
 
     @raises_exception(NotImplementedError, "Group[s.group.number]")
     def test7(self):
@@ -321,7 +327,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         else "`len(1, 2) == 3` raises TypeError: len() takes exactly one argument (2 given)",
     )
     def test40(self):
-        select(s for s in Student if len(1, 2) == 3)  # type: ignore # error expected
+        select(s for s in Student if len(1, 2) == 3)  # error expected  # pyright: ignore[reportCallIssue]
 
     @raises_exception(
         TypeError,

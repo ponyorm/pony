@@ -1,12 +1,18 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony import orm
 from pony.orm.tests import setup_database, teardown_database
 
 db = orm.Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Person(db.Entity):
+
+class Person(Entity):
     id = orm.PrimaryKey(int, auto=True)
     name = orm.Required(str)
     orm.composite_key(id, name)

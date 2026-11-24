@@ -1,10 +1,17 @@
+from typing import TYPE_CHECKING
+
 from pony.orm.core import *
 from pony.orm.tests import db_params
 
 db = Database(**db_params)
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     _table_ = "Students"
     record = PrimaryKey(int)
     name = Required(str, column="fio")
@@ -13,7 +20,7 @@ class Student(db.Entity):
     marks = Set("Mark")
 
 
-class Group(db.Entity):
+class Group(Entity):
     _table_ = "Groups"
     number = PrimaryKey(str)
     department = Required(int)
@@ -21,14 +28,14 @@ class Group(db.Entity):
     subjects = Set("Subject")
 
 
-class Subject(db.Entity):
+class Subject(Entity):
     _table_ = "Subjects"
     name = PrimaryKey(str)
     groups = Set("Group")
     marks = Set("Mark")
 
 
-class Mark(db.Entity):
+class Mark(Entity):
     _table_ = "Exams"
     student = Required(Student, column="student")
     subject = Required(Subject, column="subject")

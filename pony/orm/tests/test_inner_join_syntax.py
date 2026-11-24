@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony import orm
 from pony.orm import *
@@ -6,20 +7,25 @@ from pony.orm.tests import only_for, setup_database, teardown_database
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Genre(db.Entity):
+
+class Genre(Entity):
     name = orm.Optional(str)  # TODO primary key
     artists = orm.Set("Artist")
     favorite = orm.Optional(bool)
     index = orm.Optional(int)
 
 
-class Hobby(db.Entity):
+class Hobby(Entity):
     name = orm.Required(str)
     artists = orm.Set("Artist")
 
 
-class Artist(db.Entity):
+class Artist(Entity):
     name = orm.Required(str)
     age = orm.Optional(int)
     hobbies = orm.Set(Hobby)

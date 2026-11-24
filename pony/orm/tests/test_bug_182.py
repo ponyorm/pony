@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony import orm
 from pony.orm import *
@@ -6,8 +7,13 @@ from pony.orm.tests import setup_database, teardown_database
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class User(db.Entity):
+
+class User(Entity):
     name = Required(str)
     servers = Set("Server")
 
@@ -21,7 +27,7 @@ class Admin(Worker):
 
 
 # And M:1 relationship with another entity
-class Server(db.Entity):
+class Server(Entity):
     name = Required(str)
     user = Optional(User)
 

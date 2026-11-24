@@ -1,5 +1,6 @@
 import unittest
 import warnings
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm import core
@@ -8,8 +9,13 @@ from pony.orm.tests.testutils import raises_exception
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Person(db.Entity):
+
+class Person(Entity):
     id = PrimaryKey(int)
     name = Required(str)
     tel = Optional(str)
