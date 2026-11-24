@@ -2821,7 +2821,7 @@ usergroup_functions: list[tuple[Any, Callable[..., Any]]] = []
 
 def user_groups_getter(cls=None):
     def decorator(func):
-        if func not in usergroup_functions:
+        if (cls, func) not in usergroup_functions:
             usergroup_functions.append((cls, func))
         return func
 
