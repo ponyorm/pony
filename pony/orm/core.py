@@ -1907,6 +1907,7 @@ class Database:
                     for column_name, converter in zip(
                         m2m_columns_1 + m2m_columns_2,
                         reverse.converters + attr.converters,
+                        strict=True,
                     ):
                         m2m_table.add_column(
                             column_name, converter.get_sql_type(), converter, True
@@ -1958,7 +1959,9 @@ class Database:
                                 "sql_type cannot be specified for composite attribute %s"
                                 % attr,
                             )
-                        for column_name, converter in zip(columns, attr.converters):
+                        for column_name, converter in zip(
+                            columns, attr.converters, strict=True
+                        ):
                             table.add_column(
                                 column_name,
                                 converter.get_sql_type(),
@@ -3896,7 +3899,7 @@ class Attribute(Generic[_OAET_co]):
                         ["PARAM", (i, None, None), converter],
                     ]
                     for i, (column, converter) in enumerate(
-                        zip(pk_columns, pk_converters)
+                        zip(pk_columns, pk_converters, strict=True)
                     )
                 ]
                 sql_ast = ["SELECT", select_list, from_list, ["WHERE"] + criteria_list]
@@ -4936,7 +4939,9 @@ def construct_batchload_criteria_list(
     if batch_size == 1:
         return [
             [converter.EQ, ["COLUMN", alias, column], param(start, j, converter)]
-            for j, (column, converter) in enumerate(zip(columns, converters))
+            for j, (column, converter) in enumerate(
+                zip(columns, converters, strict=True)
+            )
         ]
     if len(columns) == 1:
         column = columns[0]
@@ -4962,7 +4967,9 @@ def construct_batchload_criteria_list(
                     ["COLUMN", alias, column],
                     param(i + start, j, converter),
                 ]
-                for j, (column, converter) in enumerate(zip(columns, converters))
+                for j, (column, converter) in enumerate(
+                    zip(columns, converters, strict=True)
+                )
             ]
             for i in range(batch_size)
         ]
@@ -5585,7 +5592,9 @@ class Set(Collection[_ET_co]):
             else:
                 columns = reverse.columns + self.columns
                 converters = reverse.converters + self.converters
-            for i, (column, converter) in enumerate(zip(columns, converters)):
+            for i, (column, converter) in enumerate(
+                zip(columns, converters, strict=True)
+            ):
                 where_list.append(
                     [
                         converter.EQ,
@@ -5775,7 +5784,7 @@ class SetInstance(Generic[_ET_co]):
         if cached_sql is None:
             where_list: list[str | list[str | list]] = ["WHERE"]
             for i, (column, converter) in enumerate(
-                zip(reverse.columns, reverse.converters)
+                zip(reverse.columns, reverse.converters, strict=True)
             ):
                 where_list.append(
                     [
@@ -5861,7 +5870,7 @@ class SetInstance(Generic[_ET_co]):
         if cached_sql is None:
             where_list: list[str | list[str | list]] = ["WHERE"]
             for i, (column, converter) in enumerate(
-                zip(reverse.columns, reverse.converters)
+                zip(reverse.columns, reverse.converters, strict=True)
             ):
                 where_list.append(
                     [
@@ -6844,7 +6853,10 @@ class EntityMeta(type):
             key = (key,)
         _entity = None
         if len(key) == len(cls._pk_attrs_):
-            kwargs = {attr.name: value for attr, value in zip(cls._pk_attrs_, key)}
+            kwargs = {
+                attr.name: value
+                for attr, value in zip(cls._pk_attrs_, key, strict=True)
+            }
             _entity = cls._find_one_(kwargs)
         elif len(key) == len(cls._pk_columns_):
             _entity = cls._get_by_raw_pkval_(key, from_db=False, seed=False)  # type: ignore[arg-type]
@@ -7373,7 +7385,7 @@ class EntityMeta(type):
                         where_list.append(["IS_NULL", ["COLUMN", None, column]])
                 else:
                     for j, (column, converter) in enumerate(
-                        zip(attr.columns, attr_entity._pk_converters_)
+                        zip(attr.columns, attr_entity._pk_converters_, strict=True)
                     ):
                         where_list.append(
                             [
@@ -7645,7 +7657,7 @@ class EntityMeta(type):
                     obj._newid_ = next(new_instance_id_counter)
                 pairs: Iterable[tuple[Attribute, Any]]
                 if obj._pk_is_composite_:
-                    pairs = zip(pk_attrs, pkval)  # type: ignore[arg-type]
+                    pairs = zip(pk_attrs, pkval, strict=True)  # type: ignore[arg-type]
                 else:
                     pairs = ((pk_attrs[0], pkval),)
                 if status == "loaded":
@@ -7872,7 +7884,7 @@ def populate_criteria_list(
     table_alias: str | None = None,
     optimistic: bool = False,
 ) -> int:
-    for column, op, converter in zip(columns, operations, converters):
+    for column, op, converter in zip(columns, operations, converters, strict=False):
         if op == "IS_NULL":
             criteria_list.append([op, ["COLUMN", None, column]])
         else:
@@ -8157,7 +8169,7 @@ class Entity(metaclass=EntityMeta):
                 return pkval._get_raw_pkval_()
         raw_pkval: list[_PkValue] = []
         append, extend = raw_pkval.append, raw_pkval.extend
-        for attr, val in zip(self._pk_attrs_, pkval):  # type: ignore[arg-type]
+        for attr, val in zip(self._pk_attrs_, pkval, strict=True):  # type: ignore[arg-type]
             if not attr.reverse:
                 append(val)
             else:
@@ -8332,7 +8344,7 @@ class Entity(metaclass=EntityMeta):
                     ["PARAM", (i, None, None), converter],
                 ]
                 for i, (column, converter) in enumerate(
-                    zip(self._pk_columns_, self._pk_converters_)
+                    zip(self._pk_columns_, self._pk_converters_, strict=True)
                 )
             ]
             where_list = ["WHERE"] + criteria_list
@@ -8991,7 +9003,7 @@ class Entity(metaclass=EntityMeta):
                 sql_ast = [
                     "UPDATE",
                     self._table_,
-                    list(zip(update_columns, update_params)),
+                    list(zip(update_columns, update_params, strict=True)),
                     where_list,
                 ]
                 sql, adapter = database._ast2sql(sql_ast)
@@ -9072,7 +9084,9 @@ class Entity(metaclass=EntityMeta):
                 ["COLUMN", None, column],
                 ["PARAM", (i, None, None), converter],
             ]
-            for i, (column, converter) in enumerate(zip(pk_columns, pk_converters))
+            for i, (column, converter) in enumerate(
+                zip(pk_columns, pk_converters, strict=True)
+            )
         ]
         sql_ast = ["SELECT", select_list, from_list, ["WHERE"] + criteria_list]
         database = entity._database_

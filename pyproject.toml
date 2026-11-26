@@ -99,8 +99,6 @@ ignore = [
     # Pony wraps database exceptions deliberately and preserves its historical
     # exception surface instead of exposing implementation exception chains.
     "B904",
-    # Temporarily ignore B905 until each zip() call is audited for intended strictness.
-    "B905",
 ]
 future-annotations = true
 

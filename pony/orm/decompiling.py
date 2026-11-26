@@ -72,7 +72,7 @@ def decompile(
         assert isinstance(x, types.FunctionType)
         codeobject = x.__code__
         if x.__closure__:
-            cells = dict(zip(codeobject.co_freevars, x.__closure__))
+            cells = dict(zip(codeobject.co_freevars, x.__closure__, strict=True))
     else:
         throw(TypeError("Can't decompile %r" % t))
     assert isinstance(codeobject, types.CodeType)
@@ -636,7 +636,10 @@ class Decompiler:
         keywords = []
         if keys:
             args = values[: -len(keys)]  # type: ignore[arg-type]
-            keywords = [ast.keyword(k, v) for k, v in zip(keys, values[-len(keys) :])]  # type: ignore[arg-type]
+            keywords = [
+                ast.keyword(k, v)
+                for k, v in zip(keys, values[-len(keys) :], strict=True)  # type: ignore[arg-type]
+            ]
 
         if PY313:
             # self/NULL and callable are swapped
@@ -666,7 +669,7 @@ class Decompiler:
         args = values[: -len(keys)]  # type: ignore[arg-type]
         keywords = [
             ast.keyword(unwrap_str(k), v)
-            for k, v in zip(keys, values[-len(keys) :])  # type: ignore[arg-type]
+            for k, v in zip(keys, values[-len(keys) :], strict=True)  # type: ignore[arg-type]
         ]
         return self._call_function(args, keywords)
 

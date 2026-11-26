@@ -175,7 +175,7 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         result = [arg.arg for arg in nodef_args]
         result.extend(
             "%s=%s" % (arg.arg, default.src)  # type: ignore[attr-defined]
-            for arg, default in zip(def_args, node.defaults)
+            for arg, default in zip(def_args, node.defaults, strict=True)
         )
         if node.vararg:
             result.append("*%s" % node.vararg.arg)
@@ -201,7 +201,7 @@ class PythonTranslator(ASTTranslator[ast.AST]):
     @priority(11)
     def postCompare(self, node: ast.Compare) -> str:
         result = [node.left.src]  # type: ignore[attr-defined]
-        for op, expr in zip(node.ops, node.comparators):
+        for op, expr in zip(node.ops, node.comparators, strict=True):
             result.extend((op.src, expr.src))  # type: ignore[attr-defined]
         return " ".join(result)
 
@@ -364,7 +364,9 @@ class PythonTranslator(ASTTranslator[ast.AST]):
         node.priority = 1  # type: ignore[attr-defined]
         return "{%s}" % ", ".join(
             "%s:%s" % (key.src, value.src)  # type: ignore[attr-defined]
-            for key, value in zip(cast("list[ast.expr]", node.keys), node.values)
+            for key, value in zip(
+                cast("list[ast.expr]", node.keys), node.values, strict=True
+            )
         )
 
     def postSet(self, node):

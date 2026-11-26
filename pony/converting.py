@@ -39,7 +39,10 @@ def isbn10_checksum(digits):
     if len(digits) != 9:
         raise ValueError()
     reminder = (
-        sum(digit * coef for digit, coef in zip(map(int, digits), range(10, 1, -1)))
+        sum(
+            digit * coef
+            for digit, coef in zip(map(int, digits), range(10, 1, -1), strict=True)
+        )
         % 11
     )
     if reminder == 1:
@@ -51,7 +54,11 @@ def isbn13_checksum(digits):
     if len(digits) != 12:
         raise ValueError()
     reminder = (
-        sum(digit * coef for digit, coef in zip(map(int, digits), (1, 3) * 6)) % 10
+        sum(
+            digit * coef
+            for digit, coef in zip(map(int, digits), (1, 3) * 6, strict=True)
+        )
+        % 10
     )
     return (reminder and str(10 - reminder)) or "0"
 

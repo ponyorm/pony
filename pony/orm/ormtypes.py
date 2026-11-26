@@ -433,7 +433,7 @@ def are_comparable_types(
         assert isinstance(t1, tuple) and isinstance(t2, tuple)
         if len(t1) != len(t2):
             return False
-        for item1, item2 in zip(t1, t2):
+        for item1, item2 in zip(t1, t2, strict=True):
             if not are_comparable_types(item1, item2):
                 return False
         return True
