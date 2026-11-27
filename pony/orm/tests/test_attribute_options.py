@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony import orm
 from pony.orm.core import *
@@ -9,8 +10,13 @@ from pony.orm.tests.testutils import raises_exception
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Person(db.Entity):
+
+class Person(Entity):
     id = PrimaryKey(int)
     name = orm.Required(str, 40)
     lastName = orm.Required(str, max_len=40, unique=True)

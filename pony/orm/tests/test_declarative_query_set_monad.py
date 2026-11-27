@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -6,13 +7,18 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Group(db.Entity):
+
+class Group(Entity):
     id = PrimaryKey(int)
     students = Set("Student")
 
 
-class Student(db.Entity):
+class Student(Entity):
     name = Required(str)
     age = Required(int)
     group = Required("Group")
@@ -20,7 +26,7 @@ class Student(db.Entity):
     courses = Set("Course")
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     PrimaryKey(name, semester)
@@ -59,13 +65,13 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_len_2(self):
         result = set(
-            select(g for g in Group if len(s for s in Student if s.group == g) > 1)
+            select(g for g in Group if len(s for s in Student if s.group == g) > 1)  # pyright: ignore[reportArgumentType]
         )
         self.assertEqual(result, {Group[1]})
 
     def test_len_3(self):
         result = set(
-            select(g for g in Group if len(s.name for s in Student if s.group == g) > 1)
+            select(g for g in Group if len(s.name for s in Student if s.group == g) > 1)  # pyright: ignore[reportArgumentType]
         )
         self.assertEqual(result, {Group[1]})
 
@@ -268,10 +274,12 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_avg_3(self):
         result = select(c.semester for c in Course).avg()
+        assert result is not None
         self.assertAlmostEqual(1.33, result, places=2)
 
     def test_avg_4(self):
         result = select(c.semester for c in Course).avg(distinct=True)
+        assert result is not None
         self.assertAlmostEqual(1.5, result)
 
     def test_avg_5(self):

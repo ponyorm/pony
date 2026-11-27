@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 DEBUG = True
 
-STATIC_DIR = None
+STATIC_DIR: str | None = None
 
 CUT_TRACEBACK = True
 
@@ -59,7 +61,7 @@ SOURCE_ENCODING = None
 CONSOLE_ENCODING = None
 
 # db options
-MAX_FETCH_COUNT = None
+MAX_FETCH_COUNT: int | None = None
 
 # used for select(...).show()
 CONSOLE_WIDTH = 80

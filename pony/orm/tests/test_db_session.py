@@ -1,6 +1,7 @@
+import itertools
 import unittest
 import warnings
-from itertools import count
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -30,14 +31,14 @@ class TestDBSession(unittest.TestCase):
         "Pass only keyword arguments to db_session or use db_session as decorator",
     )
     def test_db_session_1(self):
-        db_session(1, 2, 3)
+        db_session(1, 2, 3)  # error expected  # pyright: ignore[reportCallIssue]
 
     @raises_exception(
         TypeError,
         "Pass only keyword arguments to db_session or use db_session as decorator",
     )
     def test_db_session_2(self):
-        db_session(1, 2, 3, a=10, b=20)
+        db_session(1, 2, 3, a=10, b=20)  # error expected  # pyright: ignore[reportCallIssue]
 
     def test_db_session_3(self):
         self.assertTrue(db_session is db_session())
@@ -65,7 +66,7 @@ class TestDBSession(unittest.TestCase):
         @db_session
         def test():
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -80,7 +81,7 @@ class TestDBSession(unittest.TestCase):
         @db_session(allowed_exceptions=[TypeError])
         def test():
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -95,7 +96,7 @@ class TestDBSession(unittest.TestCase):
         @db_session(allowed_exceptions=[ZeroDivisionError])
         def test():
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -110,7 +111,7 @@ class TestDBSession(unittest.TestCase):
         @db_session(allowed_exceptions=lambda e: isinstance(e, ZeroDivisionError))
         def test():
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -125,7 +126,7 @@ class TestDBSession(unittest.TestCase):
         @db_session(allowed_exceptions=lambda e: isinstance(e, TypeError))
         def test():
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -154,13 +155,13 @@ class TestDBSession(unittest.TestCase):
 
     def test_retry_3(self):
         # Should not to do retry until retry count is specified
-        counter = count()
+        counter = itertools.count()
 
         @db_session(retry_exceptions=[ZeroDivisionError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -173,13 +174,13 @@ class TestDBSession(unittest.TestCase):
 
     def test_retry_4(self):
         # Should rollback & retry 1 time if retry=1
-        counter = count()
+        counter = itertools.count()
 
         @db_session(retry=1, retry_exceptions=[ZeroDivisionError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -192,13 +193,13 @@ class TestDBSession(unittest.TestCase):
 
     def test_retry_5(self):
         # Should rollback & retry N time if retry=N
-        counter = count()
+        counter = itertools.count()
 
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -211,13 +212,13 @@ class TestDBSession(unittest.TestCase):
 
     def test_retry_6(self):
         # Should not retry if the exception not in the list of retry_exceptions
-        counter = count()
+        counter = itertools.count()
 
         @db_session(retry=3, retry_exceptions=[TypeError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -230,14 +231,14 @@ class TestDBSession(unittest.TestCase):
 
     def test_retry_7(self):
         # Should commit after successful retrying
-        counter = count()
+        counter = itertools.count()
 
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
             i = next(counter)
             self.X(a=3, b=3)
             if i < 2:
-                1 / 0
+                1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -264,7 +265,7 @@ class TestDBSession(unittest.TestCase):
 
     def test_retry_9(self):
         # retry_exceptions may be callable, should retry if nonzero
-        counter = count()
+        counter = itertools.count()
 
         @db_session(
             retry=3, retry_exceptions=lambda e: isinstance(e, ZeroDivisionError)
@@ -272,7 +273,7 @@ class TestDBSession(unittest.TestCase):
         def test():
             i = next(counter)
             self.X(a=3, b=3)
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         try:
             test()
@@ -285,7 +286,7 @@ class TestDBSession(unittest.TestCase):
 
     def test_retry_10(self):
         # Issue 313: retry on exception raised during db_session.__exit__
-        retries = count()
+        retries = itertools.count()
 
         @db_session(retry=3)
         def test():
@@ -334,7 +335,7 @@ class TestDBSession(unittest.TestCase):
         try:
             with db_session(allowed_exceptions=[TypeError]):
                 self.X(a=3, b=3)
-                1 / 0
+                1 / 0  # pyright: ignore[reportUnusedExpression]
         except ZeroDivisionError:
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
@@ -346,7 +347,7 @@ class TestDBSession(unittest.TestCase):
         try:
             with db_session(allowed_exceptions=[ZeroDivisionError]):
                 self.X(a=3, b=3)
-                1 / 0
+                1 / 0  # pyright: ignore[reportUnusedExpression]
         except ZeroDivisionError:
             with db_session:
                 self.assertEqual(count(x for x in self.X), 3)
@@ -401,7 +402,7 @@ class TestDBSession(unittest.TestCase):
     @raises_exception(ZeroDivisionError)
     def test_db_session_exceptions_1(self):
         def before_insert(self):
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         self.X.before_insert = before_insert
         with db_session:
@@ -411,7 +412,7 @@ class TestDBSession(unittest.TestCase):
     @raises_exception(ZeroDivisionError)
     def test_db_session_exceptions_2(self):
         def before_insert(self):
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         self.X.before_insert = before_insert
         with db_session:
@@ -422,7 +423,7 @@ class TestDBSession(unittest.TestCase):
     @raises_exception(ZeroDivisionError)
     def test_db_session_exceptions_3(self):
         def before_insert(self):
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
         self.X.before_insert = before_insert
         with db_session:
@@ -435,19 +436,24 @@ class TestDBSession(unittest.TestCase):
         with db_session:
             connection = self.db.get_connection()
             connection.close()
-            1 / 0
+            1 / 0  # pyright: ignore[reportUnusedExpression]
 
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Group(db.Entity):
+
+class Group(Entity):
     id = PrimaryKey(int)
     major = Required(str)
     students = Set("Student")
 
 
-class Student(db.Entity):
+class Student(Entity):
     name = Required(str)
     picture = Optional(buffer, lazy=True)
     group = Required("Group")

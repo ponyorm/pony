@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import db_params, setup_database, teardown_database
@@ -6,8 +7,13 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Foo(db.Entity):
+
+class Foo(Entity):
     id = PrimaryKey(int)
     a = Required(int)
     b = Required(int)

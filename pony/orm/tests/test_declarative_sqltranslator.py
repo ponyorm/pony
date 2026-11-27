@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -7,14 +8,19 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Department(db.Entity):
+
+class Department(Entity):
     number = PrimaryKey(int)
     groups = Set("Group")
     courses = Set("Course")
 
 
-class Student(db.Entity):
+class Student(Entity):
     name = Required(str)
     group = Required("Group")
     scholarship = Required(int, default=0)
@@ -23,14 +29,14 @@ class Student(db.Entity):
     grades = Set("Grade")
 
 
-class Group(db.Entity):
+class Group(Entity):
     id = PrimaryKey(int)
     students = Set(Student)
     dept = Required(Department)
     rooms = Set("Room")
 
 
-class Course(db.Entity):
+class Course(Entity):
     dept = Required(Department)
     name = Required(str)
     credits = Optional(int)
@@ -40,7 +46,7 @@ class Course(db.Entity):
     students = Set(Student)
 
 
-class Grade(db.Entity):
+class Grade(Entity):
     student = Required(Student)
     course = Required(Course)
     PrimaryKey(student, course)
@@ -49,20 +55,25 @@ class Grade(db.Entity):
     teacher = Required("Teacher")
 
 
-class Teacher(db.Entity):
+class Teacher(Entity):
     name = Required(str)
     grades = Set(Grade)
 
 
-class Room(db.Entity):
+class Room(Entity):
     name = PrimaryKey(str)
     groups = Set(Group)
 
 
 db2 = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity as Entity2
+else:
+    Entity2 = db2.Entity
 
-class Room2(db2.Entity):
+
+class Room2(Entity2):
     name = PrimaryKey(str)
 
 
@@ -285,6 +296,11 @@ class TestSQLTranslator(unittest.TestCase):
         result = select(s for s in Student if s.name in (n1, n2))[:]
         self.assertEqual(result, [Student[1], Student[2]])
 
+    def test_set_literal_with_variable(self):
+        n1 = "S1"
+        result = select(s for s in Student if s.name in {n1, "S2"})[:]
+        self.assertEqual(result, [Student[1], Student[2]])
+
     def test_None_value(self):
         result = select(s for s in Student if s.name is None)[:]
         self.assertEqual(result, [])
@@ -399,7 +415,9 @@ class TestSQLTranslator(unittest.TestCase):
     def test_composite_key4(self):
         result = set(
             select(
-                s for s in Student if len(c for c in Course if c not in s.courses) == 2
+                s
+                for s in Student
+                if len(c for c in Course if c not in s.courses) == 2  # pyright: ignore[reportArgumentType]
             )
         )
         self.assertEqual(result, {Student[1]})
@@ -444,7 +462,7 @@ class TestSQLTranslator(unittest.TestCase):
 
     @raises_exception(TypeError, "string argument without an encoding")
     def test_buffer_monad1(self):
-        select(s for s in Student if s.picture == buffer("abc"))
+        select(s for s in Student if s.picture == buffer("abc"))  # pyright: ignore[reportArgumentType]
 
     def test_buffer_monad2(self):
         select(s for s in Student if s.picture == buffer("abc", "ascii"))

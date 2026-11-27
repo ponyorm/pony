@@ -12,8 +12,8 @@ core.suppress_debug_change = True
 
 directive_re = re.compile(r"(\w+)(\s+[0-9\.]+)?:")
 directive = directive_param = module_name = None
-statements = []
-lines = []
+statements: list[str] = []
+lines: list[str] = []
 
 
 def Schema(param):
@@ -45,7 +45,7 @@ def Oracle(server_version):
     do_test("oracle", server_version)
 
 
-unavailable_providers = set()
+unavailable_providers: set[str] = set()
 
 
 def do_test(provider_name, raw_server_version):
@@ -54,6 +54,7 @@ def do_test(provider_name, raw_server_version):
     testutils.TestDatabase.real_provider_name = provider_name
     testutils.TestDatabase.raw_server_version = raw_server_version
     core.Database = orm.Database = testutils.TestDatabase
+    assert module_name is not None
     sys.modules.pop(module_name, None)
     try:
         __import__(module_name)
@@ -108,6 +109,7 @@ def orphan_lines(lines):
 
 
 statement_used = True
+directive_param = None
 for raw_line in open(queries_fname):
     line = raw_line.strip()
     if not line:

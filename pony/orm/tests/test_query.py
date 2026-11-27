@@ -1,7 +1,9 @@
 import pickle
 import unittest
+from collections.abc import Iterator, Mapping
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -9,8 +11,13 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     name = Required(str)
     scholarship = Optional(int)
     gpa = Optional(Decimal, 3, 1)
@@ -18,9 +25,25 @@ class Student(db.Entity):
     dob = Optional(date)
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     students = Set(Student)
+
+
+class SimpleMapping(Mapping):
+    """A read-only mapping that is not a dict and has no copy() method"""
+
+    def __init__(self, data):
+        self._data = dict(data)
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self) -> Iterator:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
 
 
 class TestQuery(unittest.TestCase):
@@ -78,7 +101,7 @@ class TestQuery(unittest.TestCase):
 
     @raises_exception(ExprEvalError, "`a` raises NameError: name 'a' is not defined")
     def test4(self):
-        select(a for s in Student)
+        select(a for s in Student)  # error expected  # pyright: ignore[reportUndefinedVariable]
 
     @raises_exception(
         TypeError, "Incomparable types 'str' and 'StrArray' in expression: s.name == x"
@@ -244,7 +267,7 @@ class TestQuery(unittest.TestCase):
         def find_by_gpa():
             if False:
                 gpa = Decimal("3.1")
-            return lambda s: s.gpa > gpa
+            return lambda s: s.gpa > gpa  # error expected  # pyright: ignore[reportUndefinedVariable]
 
         fn = find_by_gpa()
         students = list(Student.select(fn))
@@ -267,6 +290,61 @@ class TestQuery(unittest.TestCase):
         rollback()
         students1 = Student.select(lambda s: s.id > 1).order_by(Student.id)[:]
         self.assertEqual([s.id for s in students1], [2, 3])
+
+    def test_explicit_globals_and_locals(self):
+        env = {"Student": Student}
+        names = select("s.name for s in Student if s.id > x", env, {"x": 1})
+        self.assertEqual(sorted(names), ["S2", "S3"])
+
+    def test_explicit_locals_none_str(self):
+        env = {"Student": Student}
+        names = select("s.name for s in Student", env, None)
+        self.assertEqual(sorted(names), ["S1", "S2", "S3"])
+
+    def test_explicit_locals_none_lambda(self):
+        env = {"Student": Student}
+        students = Student.select("lambda s: s.id == 1", env, None)
+        self.assertEqual([s.id for s in students], [1])
+
+    def test_explicit_locals_none_generator(self):
+        env = {"Student": Student}
+        gen = (s.name for s in Student)
+        names = select(gen, env, None)
+        self.assertEqual(sorted(names), ["S1", "S2", "S3"])
+
+    def test_explicit_locals_mapping_generator(self):
+        env = {"Student": Student}
+        x = 1
+        gen = (s.name for s in Student if s.id > x)
+        names = select(gen, env, SimpleMapping({}))
+        self.assertEqual(sorted(names), ["S2", "S3"])
+
+    def test_explicit_locals_mapping_str_lambda(self):
+        env = {"Student": Student}
+        locals_ = SimpleMapping({"x": 1})
+        students = Student.select("lambda s: s.id > x", env, locals_)
+        self.assertEqual([s.id for s in students.order_by(1)], [2, 3])
+
+    def test_explicit_locals_mapping_closure(self):
+        env = {"Student": Student}
+        x = 2
+        students = Student.select(lambda s: s.id > x, env, SimpleMapping({}))
+        self.assertEqual([s.id for s in students], [3])
+
+    def test_select_by_sql_mapping_locals(self):
+        env = {"Student": Student}
+        students = Student.select_by_sql(
+            "select * from Student where id > $x", env, SimpleMapping({"x": 1})
+        )
+        self.assertEqual(sorted(s.id for s in students), [2, 3])
+
+    @raises_exception(
+        TypeError,
+        "The third positional arguments should be locals dictionary. Got: 5",
+    )
+    def test_explicit_locals_invalid(self):
+        env = {"Student": Student}
+        select("s for s in Student", env, 5)  # pyright: ignore[reportArgumentType]
 
 
 if __name__ == "__main__":

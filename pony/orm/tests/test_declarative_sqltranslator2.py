@@ -1,6 +1,7 @@
 import unittest
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.sqltranslation import IncomparableTypesError
@@ -9,22 +10,27 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Department(db.Entity):
+
+class Department(Entity):
     number = PrimaryKey(int, auto=True)
     name = Required(str, unique=True)
     groups = Set("Group")
     courses = Set("Course")
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     major = Required(str)
     dept = Required("Department")
     students = Set("Student")
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     lect_hours = Required(int)
@@ -35,7 +41,7 @@ class Course(db.Entity):
     PrimaryKey(name, semester)
 
 
-class Student(db.Entity):
+class Student(Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(str)
     dob = Required(date)
@@ -198,7 +204,7 @@ class TestSQLTranslator2(unittest.TestCase):
         q = select(
             d
             for d in Department
-            if len(s for c in d.courses for s in c.students) > len(s for s in Student)
+            if len(s for c in d.courses for s in c.students) > len(s for s in Student)  # pyright: ignore[reportArgumentType]
         )
         self.assertEqual(q[:], [])
         self.assertTrue("DISTINCT" in db.last_sql)

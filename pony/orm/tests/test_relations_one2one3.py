@@ -75,6 +75,7 @@ WHERE "passport"."id" IS NOT NULL""",
     @db_session
     def test_5(self):
         p = self.db.Person.get(name="John")
+        assert p is not None
         p.delete()
         flush()
         sql = self.db.last_sql

@@ -382,7 +382,7 @@ def log_all(Test):
 
 
 # @provider(enabled=False)
-# class DBSessionProvider(object):
+# class DBSessionProvider:
 #
 #     fixture= 'db_session'
 #

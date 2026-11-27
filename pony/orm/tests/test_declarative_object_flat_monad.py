@@ -1,32 +1,38 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     name = Required(str)
     scholarship = Optional(int)
     group = Required("Group")
     marks = Set("Mark")
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     department = Required(int)
     students = Set(Student)
     subjects = Set("Subject")
 
 
-class Subject(db.Entity):
+class Subject(Entity):
     name = PrimaryKey(str)
     groups = Set(Group)
     marks = Set("Mark")
 
 
-class Mark(db.Entity):
+class Mark(Entity):
     value = Required(int)
     student = Required(Student)
     subject = Required(Subject)

@@ -1,17 +1,23 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class TestPost(db.Entity):
+
+class TestPost(Entity):
     category = Optional("TestCategory")
     name = Optional(str, default="Noname")
 
 
-class TestCategory(db.Entity):
+class TestCategory(Entity):
     posts = Set(TestPost)
 
 

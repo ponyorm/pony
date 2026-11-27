@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
@@ -6,8 +7,13 @@ from pony.orm.tests.testutils import raises_exception
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class AbstractUser(db.Entity):
+
+class AbstractUser(Entity):
     username = PrimaryKey(str)
 
 
@@ -36,7 +42,7 @@ class SubOrg2(Organization):
     attr4 = Optional(str)
 
 
-class Diagram(db.Entity):
+class Diagram(Entity):
     name = Required(str)
     owner = Required(User)
 

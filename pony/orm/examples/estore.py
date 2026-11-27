@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.converting import str2datetime
 from pony.orm import (
@@ -20,8 +21,13 @@ from pony.orm import (
 
 db = Database("sqlite", "estore.sqlite", create_db=True)
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Customer(db.Entity):
+
+class Customer(Entity):
     email = Required(str, unique=True)
     password = Required(str)
     name = Required(str)
@@ -31,7 +37,7 @@ class Customer(db.Entity):
     orders = Set("Order")
 
 
-class Product(db.Entity):
+class Product(Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(str)
     categories = Set("Category")
@@ -43,13 +49,13 @@ class Product(db.Entity):
     order_items = Set("OrderItem")
 
 
-class CartItem(db.Entity):
+class CartItem(Entity):
     quantity = Required(int)
     customer = Required(Customer)
     product = Required(Product)
 
 
-class OrderItem(db.Entity):
+class OrderItem(Entity):
     quantity = Required(int)
     price = Required(Decimal)
     order = Required("Order")
@@ -57,7 +63,7 @@ class OrderItem(db.Entity):
     PrimaryKey(order, product)
 
 
-class Order(db.Entity):
+class Order(Entity):
     id = PrimaryKey(int, auto=True)
     state = Required(str)
     date_created = Required(datetime)
@@ -68,7 +74,7 @@ class Order(db.Entity):
     items = Set(OrderItem)
 
 
-class Category(db.Entity):
+class Category(Entity):
     name = Required(str, unique=True)
     products = Set(Product)
 

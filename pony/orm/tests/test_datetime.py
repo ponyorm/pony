@@ -1,5 +1,6 @@
 import unittest
 from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -7,8 +8,13 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Entity1(db.Entity):
+
+class Entity1(Entity):
     id = PrimaryKey(int)
     d = Required(date)
     dt = Required(datetime)

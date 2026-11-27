@@ -1,5 +1,6 @@
 import re
 from contextlib import contextmanager
+from typing import Literal, overload
 
 from pony.orm.core import Database
 from pony.utils import import_module
@@ -82,21 +83,30 @@ class TestConnection:
 
 
 class TestCursor:
+    arraysize = 1
+
     def __init__(self):
         self.description = []
         self.rowcount = 0
+        self.lastrowid = None
 
     def execute(self, sql, args=None):
+        pass
+
+    def executemany(self, sql, arguments):
         pass
 
     def fetchone(self):
         return None
 
-    def fetchmany(self, size):
+    def fetchmany(self, size: int = 0, /) -> list:
         return []
 
-    def fetchall(self):
+    def fetchall(self) -> list:
         return []
+
+    def var(self, typ, size, arrazsize, /, outconverter):
+        return None
 
 
 test_cursor = TestCursor()
@@ -120,6 +130,7 @@ class TestPool:
 
 
 class TestDatabase(Database):
+    __test__ = False
     real_provider_name = None
     raw_server_version = None
     sql = None
@@ -168,7 +179,33 @@ class TestDatabase(Database):
     def _execute(self, sql, globals, locals, frame_depth):
         assert False  # pragma: no cover
 
-    def _exec_sql(self, sql, arguments=None, returning_id=False):
+    @overload
+    def _exec_sql(
+        self,
+        sql,
+        arguments=None,
+        *,
+        returning_id: Literal[False] = False,
+        start_transaction: bool = False,
+    ) -> TestCursor: ...
+
+    @overload
+    def _exec_sql(
+        self,
+        sql,
+        arguments=None,
+        *,
+        returning_id: Literal[True],
+        start_transaction: bool = False,
+    ) -> int: ...
+
+    def _exec_sql(
+        self,
+        sql,
+        arguments=None,
+        returning_id: bool = False,
+        start_transaction: bool = False,
+    ) -> TestCursor | int:
         assert type(arguments) is not list and not returning_id
         self.sql = sql
         self.arguments = arguments

@@ -1,6 +1,7 @@
 import unittest
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -9,8 +10,13 @@ from pony.py23compat import PYPY
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     id = PrimaryKey(int)
     name = Required(str)
     dob = Required(date)
@@ -20,7 +26,7 @@ class Student(db.Entity):
     group = Required("Group")
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     students = Set(Student)
 
@@ -134,7 +140,7 @@ class TestFuncMonad(unittest.TestCase):
         "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'str'",
     )
     def test_date_func2(self):
-        result = set(select(s for s in Student if s.dob >= date(1983, "three", 3)))
+        result = set(select(s for s in Student if s.dob >= date(1983, "three", 3)))  # pyright: ignore[reportArgumentType]
 
     # @raises_exception(NotImplementedError)
     # def test_date_func3(self):
@@ -163,7 +169,7 @@ class TestFuncMonad(unittest.TestCase):
     )
     def test_datetime_func4(self):
         result = set(
-            select(s for s in Student if s.last_visit >= datetime(1983, "three", 3))
+            select(s for s in Student if s.last_visit >= datetime(1983, "three", 3))  # pyright: ignore[reportArgumentType]
         )
 
     # @raises_exception(NotImplementedError)
@@ -186,7 +192,7 @@ class TestFuncMonad(unittest.TestCase):
         ),
     )
     def test_datetime_now2(self):
-        select(s for s in Student if 1 < datetime.now())
+        select(s for s in Student if 1 < datetime.now())  # error expected  # pyright: ignore[reportOperatorIssue]
 
     def test_datetime_now3(self):
         result = set(select(s for s in Student if s.dob < datetime.today()))

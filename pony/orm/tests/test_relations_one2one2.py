@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -6,13 +7,18 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Male(db.Entity):
+
+class Male(Entity):
     name = Required(str)
     wife = Optional("Female", column="wife")
 
 
-class Female(db.Entity):
+class Female(Entity):
     name = Required(str)
     husband = Optional("Male", column="husband")
 

@@ -1,6 +1,7 @@
 import unittest
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
@@ -8,8 +9,13 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     name = Required(str)
     scholarship = Optional(int)
     gpa = Optional(Decimal, 3, 1)
@@ -20,18 +26,18 @@ class Student(db.Entity):
     biography = Optional(LongStr)
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     major = Required(str, lazy=True)
     students = Set(Student)
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str, unique=True)
     students = Set(Student)
 
 
-class Teacher(db.Entity):
+class Teacher(Entity):
     name = Required(str)
     students = Set(Student)
 
@@ -126,7 +132,7 @@ class TestPrefetching(unittest.TestCase):
     )
     def test_5(self):
         with db_session:
-            Student.select().prefetch(111)
+            Student.select().prefetch(111)  # pyright: ignore[reportArgumentType]
 
     @raises_exception(
         DatabaseSessionIsOver,
@@ -184,7 +190,9 @@ class TestPrefetching(unittest.TestCase):
         self.assertEqual(s1.biography, "S1 bio")
         table_name = (
             "Student"
-            if db.provider.dialect == "SQLite" and pony.__version__ < "0.9"
+            if db.provider
+            and db.provider.dialect == "SQLite"
+            and pony.__version__ < "0.9"
             else "student"
         )
         expected_sql = (
@@ -194,7 +202,11 @@ ORDER BY 1
 LIMIT 1"""
             % table_name
         )
-        if db.provider.dialect == "SQLite" and pony.__version__ >= "0.9":
+        if (
+            db.provider
+            and db.provider.dialect == "SQLite"
+            and pony.__version__ >= "0.9"
+        ):
             expected_sql = expected_sql.replace('"', "`")
         self.assertEqual(db.last_sql, expected_sql)
 

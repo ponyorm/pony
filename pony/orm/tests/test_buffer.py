@@ -1,21 +1,27 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony import orm
 from pony.orm.tests import setup_database, teardown_database
 
 db = orm.Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Foo(db.Entity):
+
+class Foo(Entity):
     id = orm.PrimaryKey(int)
     b = orm.Optional(orm.buffer)
 
 
-class Bar(db.Entity):
+class Bar(Entity):
     b = orm.PrimaryKey(orm.buffer)
 
 
-class Baz(db.Entity):
+class Baz(Entity):
     id = orm.PrimaryKey(int)
     b = orm.Optional(orm.buffer, unique=True)
 

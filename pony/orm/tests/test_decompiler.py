@@ -1,8 +1,8 @@
 import ast
 import re
-import sys
 import textwrap
 import unittest
+import warnings
 
 from pony.orm.asttranslation import ast2src
 from pony.orm.decompiling import Decompiler, test_lines
@@ -123,10 +123,6 @@ class TestDecompiler(unittest.TestCase):
         self.assertEqual(ast.dump(expected), ast.dump(actual))
 
     def assertDecompilesTo(self, src, expected):
-        # skip test due to ast.dump has no indent parameter
-        if sys.version_info[:2] <= (3, 8):
-            return
-
         code = compile(src, "<?>", "eval").co_consts[0]
         # import dis
         # print(dis.dis(code))
@@ -356,16 +352,41 @@ class TestDecompiler(unittest.TestCase):
         self.assertDecompilesTo(re.sub("\n", " ", expr), expected_result)
         self.assertDecompilesTo(expr, expected_result)
 
+    def test_slice_has_no_deprecated_ctx(self):
+        # ast.Slice has no ctx field; passing one is deprecated since Python 3.13
+        code = compile("(a[1:2:3] for b in [])", "<?>", "eval").co_consts[0]
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            Decompiler(code)
+
+    def test_f_string_conversion_and_format_spec(self):
+        conversions = {"": -1, "!s": ord("s"), "!r": ord("r"), "!a": ord("a")}
+        for suffix, conversion in conversions.items():
+            for spec in ("", ":>5"):
+                src = '(f"{x%s%s}" for x in [])' % (suffix, spec)
+                with self.subTest(src=src):
+                    code = compile(src, "<?>", "eval").co_consts[0]
+                    node = Decompiler(code).ast
+                    assert isinstance(node, ast.GeneratorExp)
+                    value = node.elt
+                    assert isinstance(value, ast.FormattedValue)
+                    self.assertEqual(value.conversion, conversion)
+                    if spec:
+                        assert isinstance(value.format_spec, ast.Constant)
+                        self.assertEqual(value.format_spec.value, ">5")
+                    else:
+                        self.assertIsNone(value.format_spec)
+
 
 for i, gen in enumerate(generate_gens()):
-    test_method = create_test(gen)
-    test_method.__name__ = "test_decompiler_%d" % i
-    setattr(TestDecompiler, test_method.__name__, test_method)
+    generated_test = create_test(gen)
+    generated_test.__name__ = "test_decompiler_%d" % i
+    setattr(TestDecompiler, generated_test.__name__, generated_test)
 
 
 for line_number, source in enumerate(test_lines.split("\n")):
     source = source.strip()
     if not source or source.startswith("#"):
         continue
-    test_method = create_test_line_test(line_number, source)
-    setattr(TestDecompiler, test_method.__name__, test_method)
+    generated_test = create_test_line_test(line_number, source)
+    setattr(TestDecompiler, generated_test.__name__, generated_test)

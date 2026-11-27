@@ -39,7 +39,10 @@ def isbn10_checksum(digits):
     if len(digits) != 9:
         raise ValueError()
     reminder = (
-        sum(digit * coef for digit, coef in zip(map(int, digits), range(10, 1, -1)))
+        sum(
+            digit * coef
+            for digit, coef in zip(map(int, digits), range(10, 1, -1), strict=True)
+        )
         % 11
     )
     if reminder == 1:
@@ -51,7 +54,11 @@ def isbn13_checksum(digits):
     if len(digits) != 12:
         raise ValueError()
     reminder = (
-        sum(digit * coef for digit, coef in zip(map(int, digits), (1, 3) * 6)) % 10
+        sum(
+            digit * coef
+            for digit, coef in zip(map(int, digits), (1, 3) * 6, strict=True)
+        )
+        % 10
     )
     return (reminder and str(10 - reminder)) or "0"
 
@@ -200,7 +207,7 @@ def str2date(s):
     return date(int(year), int(month), int(day))
 
 
-def str2time(s):
+def str2time(s: str) -> time:
     s = s.strip().lower()
     match = time_re.match(s)
     if match is None:
@@ -209,7 +216,7 @@ def str2time(s):
     return time(hh, mm, ss, mcs)
 
 
-def str2datetime(s):
+def str2datetime(s: str) -> datetime:
     s = s.strip().lower()
     for datetime_re in datetime_re_list:
         match = datetime_re.match(s)
@@ -253,15 +260,15 @@ def _extract_time_parts(groupdict):
     return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 
-def str2timedelta(s):
+def str2timedelta(s: str) -> timedelta:
     negative = s.startswith("-")
     if "." in s:
         s, fractional = s.split(".")
         microseconds = int((fractional + "000000")[:6])
     else:
         microseconds = 0
-    h, m, s = map(int, s.split(":"))
-    td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
+    h, m, sec = map(int, s.split(":"))
+    td = timedelta(hours=abs(h), minutes=m, seconds=sec, microseconds=microseconds)
     return -td if negative else td
 
 

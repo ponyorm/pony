@@ -360,6 +360,7 @@ class TestInheritance(unittest.TestCase):
             y = Entity2(b=20, c=30)
         with db_session:
             obj = Entity1.get(b=20)
+            assert obj is not None
             self.assertEqual(obj.a, "Entity2")
             self.assertEqual(obj.b, 20)
             self.assertEqual(obj._pkval_, ("Entity2", 20))

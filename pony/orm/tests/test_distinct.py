@@ -1,4 +1,5 @@
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.tests import setup_database, teardown_database
@@ -6,19 +7,24 @@ from pony.orm.tests.testutils import *
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Department(db.Entity):
+
+class Department(Entity):
     number = PrimaryKey(int)
     groups = Set("Group")
 
 
-class Group(db.Entity):
+class Group(Entity):
     id = PrimaryKey(int)
     dept = Required("Department")
     students = Set("Student")
 
 
-class Student(db.Entity):
+class Student(Entity):
     name = Required(str)
     age = Required(int)
     group = Required("Group")
@@ -26,7 +32,7 @@ class Student(db.Entity):
     courses = Set("Course")
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     PrimaryKey(name, semester)

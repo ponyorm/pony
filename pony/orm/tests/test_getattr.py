@@ -43,7 +43,7 @@ class Test(unittest.TestCase):
 
     @db_session
     def test_no_caching(self):
-        for attr_name, attr_type in zip(["name", "age"], [str, int]):
+        for attr_name, attr_type in zip(["name", "age"], [str, int], strict=False):
             val = select(getattr(x, attr_name) for x in self.db.Artist).first()
             self.assertIsInstance(val, attr_type)
 
@@ -89,15 +89,15 @@ class Test(unittest.TestCase):
     )
     @db_session
     def test_not_string(self):
-        select(getattr(x, 1) for x in self.db.Artist)
+        select(getattr(x, 1) for x in self.db.Artist)  # pyright: ignore[reportArgumentType]
 
     @raises_exception(
         TypeError, "In `getattr(x, name)` second argument should be a string. Got: 1"
     )
     @db_session
-    def test_not_string(self):
+    def test_not_string_with_variable(self):
         name = 1
-        select(getattr(x, name) for x in self.db.Artist)
+        select(getattr(x, name) for x in self.db.Artist)  # pyright: ignore[reportArgumentType]
 
     @db_session
     def test_lambda_1(self):

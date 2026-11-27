@@ -1,13 +1,19 @@
 import unittest
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from pony.orm import *
 from pony.orm.tests import setup_database, teardown_database
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class User(db.Entity):
+
+class User(Entity):
     id = PrimaryKey(int)
     login = Required(str)
     password = Required(str)
@@ -19,8 +25,7 @@ class TestLambda(unittest.TestCase):
     def setUpClass(cls) -> None:
         setup_database(db)
 
-    @classmethod
-    def setUp(cls) -> None:
+    def setUp(self) -> None:
         with db_session:
             User(
                 id=1,
@@ -40,8 +45,7 @@ class TestLambda(unittest.TestCase):
     def tearDownClass(cls) -> None:
         teardown_database(db)
 
-    @classmethod
-    def tearDown(cls) -> None:
+    def tearDown(self) -> None:
         with db_session:
             User.select().delete()
 

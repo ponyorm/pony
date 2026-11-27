@@ -50,6 +50,16 @@ class TestDiag(unittest.TestCase):
         class Foo(db.Entity):
             x = Required(int, interleave=True)
 
+    @raises_exception(
+        TypeError, "Interleave attribute should be part of relationship. Got: Foo.x"
+    )
+    def test_4a(self):
+        db = Database()
+
+        class Foo(db.Entity):
+            x = Required(int, interleave=True)
+            y = Required(int)
+
     def test_5(self):
         db = Database(**db_params)
 

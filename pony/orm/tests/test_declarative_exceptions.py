@@ -1,7 +1,7 @@
-import sys
 import unittest
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 from pony.orm.sqltranslation import IncomparableTypesError
@@ -11,8 +11,13 @@ from pony.py23compat import PY314, PYPY
 
 db = Database()
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Student(db.Entity):
+
+class Student(Entity):
     name = Required(str)
     dob = Optional(date)
     gpa = Optional(float)
@@ -21,18 +26,18 @@ class Student(db.Entity):
     courses = Set("Course")
 
 
-class Group(db.Entity):
+class Group(Entity):
     number = PrimaryKey(int)
     students = Set(Student)
     dept = Required("Department")
 
 
-class Department(db.Entity):
+class Department(Entity):
     number = PrimaryKey(int)
     groups = Set(Group)
 
 
-class Course(db.Entity):
+class Course(Entity):
     name = Required(str)
     semester = Required(int)
     PrimaryKey(name, semester)
@@ -97,7 +102,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         else "`1 in 2` raises TypeError: 'int' object is not iterable",
     )
     def test6(self):
-        select(s for s in Student if 1 in 2)
+        select(s for s in Student if 1 in 2)  # error expected  # pyright: ignore[reportOperatorIssue]
 
     @raises_exception(NotImplementedError, "Group[s.group.number]")
     def test7(self):
@@ -244,7 +249,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'str'",
     )
     def test29(self):
-        select(s for s in Student if s.dob < date("2011", 1, 1))
+        select(s for s in Student if s.dob < date("2011", 1, 1))  # pyright: ignore[reportArgumentType]
 
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
     def test30(self):
@@ -254,10 +259,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         ExprEvalError,
         "`max()` raises TypeError: max() expects at least one argument"
         if PYPY
-        else "`max()` raises TypeError: max expected 1 arguments, got 0"
-        if sys.version_info[:2] < (3, 8)
-        else "`max()` raises TypeError: max expected 1 argument, got 0"
-        if sys.version_info[:2] < (3, 9)
         else "`max()` raises TypeError: max expected at least 1 argument, got 0",
     )
     def test31(self):
@@ -321,7 +322,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         else "`len(1, 2) == 3` raises TypeError: len() takes exactly one argument (2 given)",
     )
     def test40(self):
-        select(s for s in Student if len(1, 2) == 3)
+        select(s for s in Student if len(1, 2) == 3)  # error expected  # pyright: ignore[reportCallIssue]
 
     @raises_exception(
         TypeError,

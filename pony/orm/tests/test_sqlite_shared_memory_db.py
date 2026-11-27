@@ -1,12 +1,18 @@
 import threading
 import unittest
+from typing import TYPE_CHECKING
 
 from pony.orm.core import *
 
 db = Database("sqlite", ":sharedmemory:")
 
+if TYPE_CHECKING:
+    from pony.orm.core import Entity
+else:
+    Entity = db.Entity
 
-class Person(db.Entity):
+
+class Person(Entity):
     name = Required(str)
 
 
