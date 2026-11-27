@@ -73,6 +73,25 @@ python -m ruff check .
 python -m ruff format --check .
 ```
 
+Run  the type checkers:
+
+```console
+python -m pyright
+python -m mypy
+```
+
+Run unit tests:
+
+```console
+python -m unittest discover
+```
+
+Run the test suites as well as the type checkers
+for Python 3.10 through 3.14:
+
+```console
+python run_tests.py
+```
 
 License
 -------
